@@ -361,6 +361,10 @@ if [ ! -f /app/storage/database/crucible.sqlite ]; then
     touch /app/storage/database/crucible.sqlite
 fi
 
+if [ ! -f /app/vendor/autoload.php ]; then
+    composer install --no-interaction --prefer-dist --ignore-platform-req=ext-pcntl
+fi
+
 exec "$@"
 ```
 
@@ -398,16 +402,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
         unzip \
-        libzip-dev \
-        libpq-dev \
+        nodejs \
+        npm \
         default-mysql-client \
         postgresql-client \
     && install-php-extensions \
+        pcntl \
         pdo_mysql \
         pdo_pgsql \
         redis \
         zip \
-        pcntl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -469,6 +473,15 @@ services:
       redis:
         condition: service_healthy
 
+  node:
+    image: node:24-alpine
+    command: ["sh", "-lc", "npm install && npm run dev -- --host=0.0.0.0"]
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+
   redis:
     image: redis:7-alpine
     ports:
@@ -524,7 +537,7 @@ volumes:
   target_mysql_data:
 ```
 
-Expected: Compose defines app, worker, scheduler, Redis, Mailpit, and target databases.
+Expected: Compose defines app, worker, scheduler, Node/Vite, Redis, Mailpit, and target databases.
 
 - [ ] **Step 5: Update `.gitignore`**
 

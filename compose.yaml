@@ -1,0 +1,104 @@
+services:
+  app:
+    build:
+      context: .
+    command: ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000", "--workers=2", "--max-requests=500"]
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - crucible_storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+    command: ["php", "artisan", "horizon"]
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - crucible_storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: .
+    command: ["php", "artisan", "schedule:work"]
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - crucible_storage:/app/storage
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  node:
+    image: node:24-alpine
+    command: ["sh", "-lc", "npm install && npm run dev -- --host=0.0.0.0"]
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
+  target-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: crucible_target
+      POSTGRES_USER: crucible
+      POSTGRES_PASSWORD: crucible
+    ports:
+      - "5433:5432"
+    volumes:
+      - target_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crucible -d crucible_target"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  target-mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: crucible_target
+      MYSQL_USER: crucible
+      MYSQL_PASSWORD: crucible
+      MYSQL_ROOT_PASSWORD: crucible_root
+    ports:
+      - "3307:3306"
+    volumes:
+      - target_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ucrucible", "-pcrucible"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  crucible_storage:
+  target_postgres_data:
+  target_mysql_data:
