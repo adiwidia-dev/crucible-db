@@ -4,7 +4,7 @@
 
 **Goal:** Build the first runnable Crucible DB Laravel 13 scaffold with React/Inertia auth, Laravel Boost, Docker Compose, FrankenPHP/Octane, Redis, and local SQLite-compatible metadata storage.
 
-**Architecture:** Scaffold Laravel in the repository root from a temporary Laravel project, preserving existing docs. Use the official React/Inertia starter as the frontend/auth foundation, then add runtime and infrastructure files around it. Keep domain features out of this slice so the baseline is easy to verify.
+**Architecture:** Scaffold Laravel in the repository root from a temporary Laravel project, preserving existing docs. Use Dockerized Composer/Node/PHP commands so the host only needs Docker. Use the official React/Inertia starter as the frontend/auth foundation, then add runtime and infrastructure files around it. Keep domain features out of this slice so the baseline is easy to verify.
 
 **Tech Stack:** Laravel 13, Inertia, React, TypeScript, Tailwind CSS v4, Kumo UI, Laravel Boost, Laravel Octane, FrankenPHP, Redis, SQLite-compatible metadata storage, Docker Compose, Mailpit, PostgreSQL and MySQL target databases.
 
@@ -36,7 +36,7 @@
 Run:
 
 ```bash
-composer create-project laravel/laravel /private/tmp/crucible-db-laravel "13.*"
+docker run --rm -v /private/tmp:/work composer:2 create-project laravel/laravel /work/crucible-db-laravel "13.*"
 ```
 
 Expected: Composer creates a Laravel 13 project in `/private/tmp/crucible-db-laravel`.
@@ -56,7 +56,7 @@ Expected: Laravel files appear in the repo root and existing `docs/` files remai
 Run:
 
 ```bash
-php artisan --version
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan --version
 ```
 
 Expected: Output reports Laravel Framework 13.x.
@@ -86,7 +86,7 @@ Expected: Initial Laravel scaffold is committed.
 Run:
 
 ```bash
-php artisan starter-kit:install react
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan starter-kit:install react
 ```
 
 Expected: React/Inertia starter files are installed with TypeScript auth pages.
@@ -96,7 +96,7 @@ Expected: React/Inertia starter files are installed with TypeScript auth pages.
 Run:
 
 ```bash
-npm install
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app node:24-alpine npm install
 ```
 
 Expected: `node_modules` and `package-lock.json` are created or updated.
@@ -106,7 +106,7 @@ Expected: `node_modules` and `package-lock.json` are created or updated.
 Run:
 
 ```bash
-npm install @cloudflare/kumo
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app node:24-alpine npm install @cloudflare/kumo
 ```
 
 Expected: `@cloudflare/kumo` is present in `package.json`.
@@ -128,7 +128,7 @@ Expected: Tailwind can scan Kumo components and Kumo styles load before app-spec
 Run:
 
 ```bash
-npm run build
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app node:24-alpine npm run build
 ```
 
 Expected: Vite builds assets successfully.
@@ -242,7 +242,7 @@ Expected: Local SQLite-compatible database file exists.
 Run:
 
 ```bash
-php artisan test
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan test
 ```
 
 Expected: Feature and unit tests pass.
@@ -272,8 +272,8 @@ Expected: Environment defaults and health endpoint are committed.
 Run:
 
 ```bash
-composer require laravel/octane laravel/horizon
-composer require laravel/boost --dev
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 composer require laravel/octane laravel/horizon
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 composer require laravel/boost --dev
 ```
 
 Expected: Octane, Horizon, and Boost are installed.
@@ -283,7 +283,7 @@ Expected: Octane, Horizon, and Boost are installed.
 Run:
 
 ```bash
-php artisan octane:install --server=frankenphp
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan octane:install --server=frankenphp
 ```
 
 Expected: Octane config is published and `OCTANE_SERVER=frankenphp` can be used.
@@ -293,7 +293,7 @@ Expected: Octane config is published and `OCTANE_SERVER=frankenphp` can be used.
 Run:
 
 ```bash
-php artisan horizon:install
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan horizon:install
 ```
 
 Expected: Horizon config and assets are published.
@@ -303,7 +303,7 @@ Expected: Horizon config and assets are published.
 Run:
 
 ```bash
-php artisan boost:install
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan boost:install
 ```
 
 Expected: Boost installs Laravel-specific guidelines and MCP configuration.
@@ -313,8 +313,8 @@ Expected: Boost installs Laravel-specific guidelines and MCP configuration.
 Run:
 
 ```bash
-php artisan test
-npm run build
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan test
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app node:24-alpine npm run build
 ```
 
 Expected: Tests and frontend build pass.
@@ -554,7 +554,7 @@ Run:
 
 ```bash
 cp .env.example .env
-php artisan key:generate
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan key:generate
 ```
 
 Expected: `.env` exists and `APP_KEY` is set.
@@ -564,7 +564,7 @@ Expected: `.env` exists and `APP_KEY` is set.
 Run:
 
 ```bash
-php artisan migrate --force
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan migrate --force
 ```
 
 Expected: Laravel auth starter migrations run against the local SQLite-compatible metadata database.
@@ -574,7 +574,7 @@ Expected: Laravel auth starter migrations run against the local SQLite-compatibl
 Run:
 
 ```bash
-php artisan test
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan test
 ```
 
 Expected: All tests pass.
@@ -584,7 +584,7 @@ Expected: All tests pass.
 Run:
 
 ```bash
-npm run build
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app node:24-alpine npm run build
 ```
 
 Expected: Vite build passes.
