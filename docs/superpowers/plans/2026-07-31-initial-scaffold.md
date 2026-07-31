@@ -128,7 +128,7 @@ Expected: Tailwind can scan Kumo components and Kumo styles load before app-spec
 Run:
 
 ```bash
-docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app node:24-alpine npm run build
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 sh -lc 'apk add --no-cache nodejs npm >/dev/null && npm run build'
 ```
 
 Expected: Vite builds assets successfully.
@@ -314,7 +314,7 @@ Run:
 
 ```bash
 docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 php artisan test
-docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app node:24-alpine npm run build
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 sh -lc 'apk add --no-cache nodejs npm >/dev/null && npm run build'
 ```
 
 Expected: Tests and frontend build pass.
@@ -584,7 +584,7 @@ Expected: All tests pass.
 Run:
 
 ```bash
-docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app node:24-alpine npm run build
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 sh -lc 'apk add --no-cache nodejs npm >/dev/null && npm run build'
 ```
 
 Expected: Vite build passes.
