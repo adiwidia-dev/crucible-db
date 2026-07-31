@@ -190,18 +190,25 @@ Create `tests/Feature/HealthTest.php`:
 ```php
 <?php
 
+namespace Tests\Feature;
+
 use Illuminate\Support\Facades\Cache;
+use Tests\TestCase;
 
-it('reports application health', function () {
-    Cache::put('health-check', 'ok', 5);
+class HealthTest extends TestCase
+{
+    public function test_it_reports_application_health(): void
+    {
+        Cache::put('health-check', 'ok', 5);
 
-    $this->get('/health')
-        ->assertOk()
-        ->assertJson([
-            'status' => 'ok',
-            'cache' => 'ok',
-        ]);
-});
+        $this->get('/health')
+            ->assertOk()
+            ->assertJson([
+                'status' => 'ok',
+                'cache' => 'ok',
+            ]);
+    }
+}
 ```
 
 Expected: Test fails until `/health` exists.
