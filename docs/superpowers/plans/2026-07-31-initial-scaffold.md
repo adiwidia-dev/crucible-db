@@ -279,7 +279,7 @@ Expected: Environment defaults and health endpoint are committed.
 Run:
 
 ```bash
-docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 composer require laravel/octane laravel/horizon
+docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 composer require laravel/octane laravel/horizon --ignore-platform-req=ext-pcntl
 docker run --rm -v /Users/danielpanjaitan/personal-project/crucible-db:/app -w /app composer:2 composer require laravel/boost --dev
 ```
 
