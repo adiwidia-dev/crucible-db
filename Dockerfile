@@ -16,6 +16,7 @@ RUN apt-get update \
         pdo_pgsql \
         redis \
         zip \
+    && npm install -g npm@10.9.0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

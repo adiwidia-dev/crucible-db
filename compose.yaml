@@ -5,10 +5,9 @@ services:
     command: ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000", "--workers=2", "--max-requests=500"]
     ports:
       - "8000:8000"
-    env_file:
-      - .env
     volumes:
       - .:/app
+      - node_modules:/app/node_modules
       - crucible_storage:/app/storage
     depends_on:
       redis:
@@ -18,8 +17,6 @@ services:
     build:
       context: .
     command: ["php", "artisan", "horizon"]
-    env_file:
-      - .env
     volumes:
       - .:/app
       - crucible_storage:/app/storage
@@ -31,8 +28,6 @@ services:
     build:
       context: .
     command: ["php", "artisan", "schedule:work"]
-    env_file:
-      - .env
     volumes:
       - .:/app
       - crucible_storage:/app/storage
@@ -41,13 +36,15 @@ services:
         condition: service_healthy
 
   node:
-    image: node:24-alpine
+    build:
+      context: .
     command: ["sh", "-lc", "npm install && npm run dev -- --host=0.0.0.0"]
     working_dir: /app
     ports:
       - "5173:5173"
     volumes:
       - .:/app
+      - node_modules:/app/node_modules
 
   redis:
     image: redis:7-alpine
@@ -100,5 +97,6 @@ services:
 
 volumes:
   crucible_storage:
+  node_modules:
   target_postgres_data:
   target_mysql_data:
