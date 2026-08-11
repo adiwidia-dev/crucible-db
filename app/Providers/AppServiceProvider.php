@@ -2,11 +2,16 @@
 
 namespace App\Providers;
 
+use App\Services\ApplicationSettings;
 use Carbon\CarbonImmutable;
+use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use SocialiteProviders\Manager\SocialiteWasCalled;
+use SocialiteProviders\Microsoft\Provider as MicrosoftProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -24,6 +29,17 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->configureApplicationSettings();
+        $this->configureSocialiteProviders();
+        $this->configureMailFromApplicationSettings();
+    }
+
+    protected function configureApplicationSettings(): void
+    {
+        $settings = app(ApplicationSettings::class);
+
+        config(['app.name' => $settings->appName()]);
+        $settings->applyRuntimeConfiguration();
     }
 
     /**
@@ -46,5 +62,21 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    protected function configureSocialiteProviders(): void
+    {
+        Event::listen(function (SocialiteWasCalled $event): void {
+            $event->extendSocialite('microsoft', MicrosoftProvider::class);
+        });
+    }
+
+    protected function configureMailFromApplicationSettings(): void
+    {
+        Event::listen(function (NotificationSending $event): void {
+            if ($event->channel === 'mail') {
+                app(ApplicationSettings::class)->applyRuntimeConfiguration();
+            }
+        });
     }
 }

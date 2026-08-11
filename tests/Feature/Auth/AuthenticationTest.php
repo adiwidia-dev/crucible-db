@@ -12,6 +12,13 @@ class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        User::factory()->create();
+    }
+
     public function test_login_screen_can_be_rendered()
     {
         $response = $this->get(route('login'));

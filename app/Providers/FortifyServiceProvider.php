@@ -4,8 +4,12 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Models\AuthProvider;
+use App\Models\User;
+use App\Services\ApplicationSettings;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -30,6 +34,7 @@ class FortifyServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureActions();
+        $this->configureAuthentication();
         $this->configureViews();
         $this->configureRateLimiting();
     }
@@ -44,14 +49,49 @@ class FortifyServiceProvider extends ServiceProvider
     }
 
     /**
+     * Configure authentication checks.
+     */
+    private function configureAuthentication(): void
+    {
+        Fortify::authenticateUsing(function (Request $request): ?User {
+            if (! app(ApplicationSettings::class)->passwordLoginEnabled()) {
+                return null;
+            }
+
+            $user = User::query()
+                ->where('email', $request->input(Fortify::username()))
+                ->first();
+
+            if (! $user instanceof User || $user->isDisabled()) {
+                return null;
+            }
+
+            return Hash::check((string) $request->input('password'), $user->password)
+                ? $user
+                : null;
+        });
+    }
+
+    /**
      * Configure Fortify views.
      */
     private function configureViews(): void
     {
-        Fortify::loginView(fn (Request $request) => Inertia::render('auth/login', [
-            'canResetPassword' => Features::enabled(Features::resetPasswords()),
-            'status' => $request->session()->get('status'),
-        ]));
+        Fortify::loginView(function (Request $request) {
+            $settings = app(ApplicationSettings::class);
+
+            return Inertia::render('auth/login', [
+                'canResetPassword' => $settings->passwordLoginEnabled() && Features::enabled(Features::resetPasswords()),
+                'passwordLoginEnabled' => $settings->passwordLoginEnabled(),
+                'passkeyLoginEnabled' => $settings->passkeyLoginEnabled() && Features::canManagePasskeys(),
+                'status' => $request->session()->get('status'),
+                'authProviders' => AuthProvider::query()
+                    ->where('is_enabled', true)
+                    ->orderBy('provider')
+                    ->get()
+                    ->map(fn (AuthProvider $authProvider): array => $authProvider->authPayload()),
+            ]);
+        });
 
         Fortify::resetPasswordView(fn (Request $request) => Inertia::render('auth/reset-password', [
             'email' => $request->email,

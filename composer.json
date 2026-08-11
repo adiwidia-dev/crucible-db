@@ -1,11 +1,13 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/react-starter-kit",
+    "name": "crucible-db/crucible-db",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "A database access control plane for reviewed, scheduled, and audited SQL execution.",
     "keywords": [
+        "database",
+        "access-control",
         "laravel",
-        "framework"
+        "sql"
     ],
     "license": "MIT",
     "require": {
@@ -16,8 +18,10 @@
         "laravel/framework": "^13.17",
         "laravel/horizon": "^5.48",
         "laravel/octane": "^2.18",
+        "laravel/socialite": "^5.29",
         "laravel/tinker": "^3.0",
-        "laravel/wayfinder": "^0.1.14"
+        "laravel/wayfinder": "^0.1.14",
+        "socialiteproviders/microsoft": "^4.10"
     },
     "require-dev": {
         "fakerphp/faker": "^1.24",
@@ -47,9 +51,10 @@
         "setup": [
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+            "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
             "@php artisan key:generate",
             "@php artisan migrate --force",
-            "npm install",
+            "npm ci",
             "npm run build"
         ],
         "dev": [

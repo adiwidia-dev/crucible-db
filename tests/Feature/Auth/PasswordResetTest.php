@@ -18,6 +18,7 @@ class PasswordResetTest extends TestCase
         parent::setUp();
 
         $this->skipUnlessFortifyHas(Features::resetPasswords());
+        User::factory()->create();
     }
 
     public function test_reset_password_link_screen_can_be_rendered()

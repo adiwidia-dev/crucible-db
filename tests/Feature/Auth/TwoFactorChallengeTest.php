@@ -17,6 +17,7 @@ class TwoFactorChallengeTest extends TestCase
         parent::setUp();
 
         $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
+        User::factory()->create();
     }
 
     public function test_two_factor_challenge_redirects_to_login_when_not_authenticated(): void

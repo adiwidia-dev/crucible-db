@@ -2,6 +2,13 @@ export type User = {
     id: number;
     name: string;
     email: string;
+    timezone: string;
+    roles?: {
+        id: number;
+        name: string;
+        slug: string;
+        is_admin: boolean;
+    }[];
     avatar?: string;
     email_verified_at: string | null;
     two_factor_enabled?: boolean;

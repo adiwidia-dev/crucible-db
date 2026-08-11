@@ -4,6 +4,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { initializeTheme } from '@/hooks/use-appearance';
 import AppLayout from '@/layouts/app-layout';
 import AuthLayout from '@/layouts/auth-layout';
+import AdminSettingsLayout from '@/layouts/settings/admin-layout';
 import SettingsLayout from '@/layouts/settings/layout';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
@@ -16,6 +17,14 @@ createInertiaApp({
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;
+            case name.startsWith('setup/'):
+                return AuthLayout;
+            case name.startsWith('settings/admin/'):
+            case name.startsWith('settings/authentication-providers/'):
+            case name.startsWith('users/'):
+            case name.startsWith('roles/'):
+            case name.startsWith('audit-logs/'):
+                return [AppLayout, AdminSettingsLayout];
             case name.startsWith('settings/'):
                 return [AppLayout, SettingsLayout];
             default:

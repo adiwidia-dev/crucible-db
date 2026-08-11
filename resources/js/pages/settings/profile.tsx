@@ -18,9 +18,11 @@ type PageProps = {
 export default function Profile({
     mustVerifyEmail,
     status,
+    timezones,
 }: {
     mustVerifyEmail: boolean;
     status?: string;
+    timezones: string[];
 }) {
     const { auth } = usePage<PageProps>().props;
 
@@ -82,6 +84,34 @@ export default function Profile({
                                 <InputError
                                     className="mt-2"
                                     message={errors.email}
+                                />
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor="timezone">Timezone</Label>
+
+                                <select
+                                    id="timezone"
+                                    name="timezone"
+                                    defaultValue={auth.user.timezone ?? 'UTC'}
+                                    className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                    required
+                                >
+                                    {timezones.map((timezone) => (
+                                        <option key={timezone} value={timezone}>
+                                            {timezone}
+                                        </option>
+                                    ))}
+                                </select>
+
+                                <p className="text-xs text-muted-foreground">
+                                    Scheduled query inputs and operational
+                                    timestamps use this timezone.
+                                </p>
+
+                                <InputError
+                                    className="mt-2"
+                                    message={errors.timezone}
                                 />
                             </div>
 

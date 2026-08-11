@@ -10,7 +10,7 @@ import { edit } from '@/routes/profile';
 import { edit as editSecurity } from '@/routes/security';
 import type { NavItem } from '@/types';
 
-const sidebarNavItems: NavItem[] = [
+const accountNavItems: NavItem[] = [
     {
         title: 'Profile',
         href: edit(),
@@ -30,12 +30,13 @@ const sidebarNavItems: NavItem[] = [
 
 export default function SettingsLayout({ children }: PropsWithChildren) {
     const { isCurrentOrParentUrl } = useCurrentUrl();
+    const sidebarNavItems = accountNavItems;
 
     return (
         <div className="px-4 py-6">
             <Heading
-                title="Settings"
-                description="Manage your profile and account settings"
+                title="Personal settings"
+                description="Manage your profile, security, and interface preferences."
             />
 
             <div className="flex flex-col lg:flex-row lg:space-x-12">
@@ -67,8 +68,8 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
 
                 <Separator className="my-6 lg:hidden" />
 
-                <div className="flex-1 md:max-w-2xl">
-                    <section className="max-w-xl space-y-12">
+                <div className="min-w-0 flex-1">
+                    <section className={cn('space-y-12', 'max-w-xl')}>
                         {children}
                     </section>
                 </div>

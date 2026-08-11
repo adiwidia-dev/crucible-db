@@ -30,6 +30,7 @@ class ProfileUpdateTest extends TestCase
             ->patch(route('profile.update'), [
                 'name' => 'Test User',
                 'email' => 'test@example.com',
+                'timezone' => 'Asia/Jakarta',
             ]);
 
         $response
@@ -40,7 +41,22 @@ class ProfileUpdateTest extends TestCase
 
         $this->assertSame('Test User', $user->name);
         $this->assertSame('test@example.com', $user->email);
+        $this->assertSame('Asia/Jakarta', $user->timezone);
         $this->assertNull($user->email_verified_at);
+    }
+
+    public function test_profile_timezone_must_be_valid(): void
+    {
+        $user = User::factory()->create();
+
+        $this
+            ->actingAs($user)
+            ->patch(route('profile.update'), [
+                'name' => 'Test User',
+                'email' => $user->email,
+                'timezone' => 'Jakarta',
+            ])
+            ->assertSessionHasErrors('timezone');
     }
 
     public function test_email_verification_status_is_unchanged_when_the_email_address_is_unchanged()
@@ -52,6 +68,7 @@ class ProfileUpdateTest extends TestCase
             ->patch(route('profile.update'), [
                 'name' => 'Test User',
                 'email' => $user->email,
+                'timezone' => $user->timezone,
             ]);
 
         $response

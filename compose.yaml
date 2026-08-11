@@ -3,6 +3,8 @@ services:
     build:
       context: .
     command: ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000", "--workers=2", "--max-requests=500"]
+    environment:
+      OCTANE_SERVER: frankenphp
     ports:
       - "8000:8000"
     volumes:
@@ -17,6 +19,8 @@ services:
     build:
       context: .
     command: ["php", "artisan", "horizon"]
+    healthcheck:
+      disable: true
     volumes:
       - .:/app
       - crucible_storage:/app/storage
@@ -28,6 +32,8 @@ services:
     build:
       context: .
     command: ["php", "artisan", "schedule:work"]
+    healthcheck:
+      disable: true
     volumes:
       - .:/app
       - crucible_storage:/app/storage
@@ -38,8 +44,10 @@ services:
   node:
     build:
       context: .
-    command: ["sh", "-lc", "npm install && npm run dev -- --host=0.0.0.0"]
+    command: ["sh", "-lc", "npm install && npm run dev -- --host"]
     working_dir: /app
+    healthcheck:
+      disable: true
     ports:
       - "5173:5173"
     volumes:
@@ -55,12 +63,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-
-  mailpit:
-    image: axllent/mailpit:latest
-    ports:
-      - "8025:8025"
-      - "1025:1025"
 
   target-postgres:
     image: postgres:17-alpine

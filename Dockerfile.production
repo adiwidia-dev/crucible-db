@@ -1,0 +1,68 @@
+FROM composer:2 AS vendor
+
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+
+RUN composer install \
+    --no-dev \
+    --no-interaction \
+    --no-progress \
+    --prefer-dist \
+    --optimize-autoloader \
+    --ignore-platform-req=ext-pcntl \
+    --no-scripts
+
+FROM dunglas/frankenphp:1-php8.4 AS frontend
+
+WORKDIR /app
+
+# Vite invokes Wayfinder, which boots Laravel while generating typed routes.
+# This key is only used in this disposable build stage.
+ENV APP_ENV=production \
+    APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+    DB_DATABASE=/app/storage/database/crucible.sqlite
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends nodejs npm \
+    && npm install -g npm@10.9.0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=vendor /app/vendor /app/vendor
+COPY package.json package-lock.json ./
+
+RUN npm ci
+
+COPY . ./
+
+RUN mkdir -p \
+        /app/storage/database \
+        /app/storage/framework/cache \
+        /app/storage/framework/sessions \
+        /app/storage/framework/views \
+        /app/storage/logs \
+    && touch /app/storage/database/crucible.sqlite \
+    && php artisan package:discover --ansi --no-interaction \
+    && php artisan wayfinder:generate --with-form --no-interaction \
+    && npm run build
+
+FROM dunglas/frankenphp:1-php8.4 AS production
+
+WORKDIR /app
+
+RUN install-php-extensions \
+    pcntl \
+    pdo_mysql \
+    pdo_pgsql \
+    redis \
+    zip
+
+COPY --from=vendor /app/vendor /app/vendor
+COPY . ./
+COPY --from=frontend /app/public/build /app/public/build
+COPY .docker/production-entrypoint.sh /usr/local/bin/crucible-production-entrypoint
+
+RUN chmod +x /usr/local/bin/crucible-production-entrypoint
+
+ENTRYPOINT ["crucible-production-entrypoint"]
+CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]

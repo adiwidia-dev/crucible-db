@@ -39,7 +39,7 @@ class SecurityTest extends TestCase
             );
     }
 
-    public function test_security_page_requires_password_confirmation_when_enabled()
+    public function test_security_page_does_not_require_password_confirmation()
     {
         $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
 
@@ -53,7 +53,7 @@ class SecurityTest extends TestCase
         $response = $this->actingAs($user)
             ->get(route('security.edit'));
 
-        $response->assertRedirect(route('password.confirm'));
+        $response->assertOk();
     }
 
     public function test_security_page_renders_without_two_factor_when_feature_is_disabled()
