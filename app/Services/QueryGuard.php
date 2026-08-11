@@ -49,6 +49,12 @@ class QueryGuard
     {
         $statement = $this->validateExecutable($sql);
 
+        if (preg_match('/^explain\b/i', $statement) === 1 && preg_match('/\banalyze\b/i', $this->executableSql($statement)) === 1) {
+            throw ValidationException::withMessages([
+                'sql' => 'EXPLAIN ANALYZE is not supported because it can execute the explained statement.',
+            ]);
+        }
+
         if (preg_match('/^(select|show|describe|desc|explain)\b/i', $statement) === 1) {
             return QueryType::Read;
         }
@@ -79,7 +85,13 @@ class QueryGuard
 
     private function containsStatementTerminator(string $sql): bool
     {
+        return str_contains($this->executableSql($sql), ';');
+    }
+
+    private function executableSql(string $sql): string
+    {
         $length = strlen($sql);
+        $executableSql = '';
         $singleQuoted = false;
         $doubleQuoted = false;
         $lineComment = false;
@@ -93,6 +105,7 @@ class QueryGuard
             if ($lineComment) {
                 if ($current === "\n") {
                     $lineComment = false;
+                    $executableSql .= "\n";
                 }
 
                 continue;
@@ -148,6 +161,7 @@ class QueryGuard
 
             if ($current === '-' && $next === '-') {
                 $lineComment = true;
+                $executableSql .= ' ';
                 $index++;
 
                 continue;
@@ -155,6 +169,7 @@ class QueryGuard
 
             if ($current === '/' && $next === '*') {
                 $blockComment = true;
+                $executableSql .= ' ';
                 $index++;
 
                 continue;
@@ -162,28 +177,29 @@ class QueryGuard
 
             if ($current === "'") {
                 $singleQuoted = true;
+                $executableSql .= ' ';
 
                 continue;
             }
 
             if ($current === '"') {
                 $doubleQuoted = true;
+                $executableSql .= ' ';
 
                 continue;
             }
 
             if ($current === '$' && preg_match('/\G\$[A-Za-z_][A-Za-z0-9_]*\$|\G\$\$/', $sql, $matches, 0, $index) === 1) {
                 $dollarQuoteTag = $matches[0];
+                $executableSql .= ' ';
                 $index += strlen($dollarQuoteTag) - 1;
 
                 continue;
             }
 
-            if ($current === ';') {
-                return true;
-            }
+            $executableSql .= $current;
         }
 
-        return false;
+        return $executableSql;
     }
 }

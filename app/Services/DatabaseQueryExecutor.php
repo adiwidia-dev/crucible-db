@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\DatabaseDriver;
 use App\Enums\QueryType;
 use App\Models\DatabaseConnection;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Pdo\Mysql;
@@ -37,29 +38,7 @@ class DatabaseQueryExecutor
 
         try {
             if ($queryType === QueryType::Read) {
-                $rowCount = 0;
-                $sampleRows = [];
-                $resultTruncated = false;
-
-                foreach (DB::connection($connectionName)->cursor($sql) as $row) {
-                    if ($rowCount >= self::ResultRowLimit) {
-                        $resultTruncated = true;
-
-                        break;
-                    }
-
-                    $rowCount++;
-
-                    if (count($sampleRows) < self::SampleRowLimit) {
-                        $sampleRows[] = json_decode(json_encode($row, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR);
-                    }
-                }
-
-                return [
-                    'row_count' => $rowCount,
-                    'sample_rows' => $sampleRows,
-                    'result_truncated' => $resultTruncated,
-                ];
+                return $this->executeReadOnly(DB::connection($connectionName), $databaseConnection->driver, $sql);
             }
 
             $affected = DB::connection($connectionName)->affectingStatement($sql);
@@ -72,6 +51,59 @@ class DatabaseQueryExecutor
         } finally {
             DB::disconnect($connectionName);
             DB::purge($connectionName);
+        }
+    }
+
+    /**
+     * @return array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_truncated:bool}
+     */
+    private function executeReadOnly(ConnectionInterface $connection, DatabaseDriver $driver, string $sql): array
+    {
+        $transactionStarted = false;
+        $rows = null;
+
+        try {
+            if ($driver === DatabaseDriver::MySql) {
+                $connection->statement('SET TRANSACTION READ ONLY');
+            }
+
+            $connection->beginTransaction();
+            $transactionStarted = true;
+
+            if ($driver === DatabaseDriver::PostgreSql) {
+                $connection->statement('SET TRANSACTION READ ONLY');
+            }
+
+            $rowCount = 0;
+            $sampleRows = [];
+            $resultTruncated = false;
+            $rows = $connection->cursor($sql);
+
+            foreach ($rows as $row) {
+                if ($rowCount >= self::ResultRowLimit) {
+                    $resultTruncated = true;
+
+                    break;
+                }
+
+                $rowCount++;
+
+                if (count($sampleRows) < self::SampleRowLimit) {
+                    $sampleRows[] = json_decode(json_encode($row, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR);
+                }
+            }
+
+            return [
+                'row_count' => $rowCount,
+                'sample_rows' => $sampleRows,
+                'result_truncated' => $resultTruncated,
+            ];
+        } finally {
+            unset($rows);
+
+            if ($transactionStarted) {
+                $connection->rollBack();
+            }
         }
     }
 
