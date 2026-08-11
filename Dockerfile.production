@@ -56,12 +56,17 @@ RUN install-php-extensions \
     redis \
     zip
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=vendor /app/vendor /app/vendor
 COPY . ./
 COPY --from=frontend /app/public/build /app/public/build
 COPY .docker/production-entrypoint.sh /usr/local/bin/crucible-production-entrypoint
+COPY .docker/production-supervisord.conf /etc/supervisor/conf.d/crucible.conf
 
 RUN chmod +x /usr/local/bin/crucible-production-entrypoint
 
 ENTRYPOINT ["crucible-production-entrypoint"]
-CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/crucible.conf"]

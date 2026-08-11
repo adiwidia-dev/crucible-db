@@ -1,11 +1,10 @@
 services:
-  migrate:
-    image: &application-image ${CRUCIBLE_IMAGE:-hephaestus/crucible-db:alpha}
+  app:
+    image: ${CRUCIBLE_IMAGE:-hephaestus/crucible-db:alpha}
     pull_policy: always
-    command: ["php", "artisan", "migrate", "--force", "--no-interaction"]
     env_file:
       - ${CRUCIBLE_ENV_FILE:-.env.production}
-    environment: &application-environment
+    environment:
       APP_ENV: production
       APP_DEBUG: "false"
       CACHE_STORE: redis
@@ -19,83 +18,13 @@ services:
       REDIS_HOST: redis
       SESSION_DRIVER: redis
     init: true
-    restart: "no"
-    healthcheck:
-      disable: true
-    volumes:
-      - crucible_storage:/app/storage
-    depends_on:
-      redis:
-        condition: service_healthy
-    networks:
-      - backend
-
-  app:
-    image: *application-image
-    pull_policy: always
-    command:
-      - sh
-      - -lc
-      - >-
-        exec php artisan octane:start --server=frankenphp --host=0.0.0.0 --port=8000
-        --workers="${OCTANE_WORKERS:-2}" --max-requests="${OCTANE_MAX_REQUESTS:-500}"
-    env_file:
-      - ${CRUCIBLE_ENV_FILE:-.env.production}
-    environment: *application-environment
-    init: true
     restart: unless-stopped
-    stop_grace_period: 30s
+    stop_grace_period: 60s
     ports:
       - "8000:8000"
     volumes:
       - crucible_storage:/app/storage
     depends_on:
-      migrate:
-        condition: service_completed_successfully
-      redis:
-        condition: service_healthy
-    networks:
-      - backend
-
-  worker:
-    image: *application-image
-    pull_policy: always
-    command: ["php", "artisan", "horizon"]
-    env_file:
-      - ${CRUCIBLE_ENV_FILE:-.env.production}
-    environment: *application-environment
-    init: true
-    restart: unless-stopped
-    stop_grace_period: 60s
-    healthcheck:
-      disable: true
-    volumes:
-      - crucible_storage:/app/storage
-    depends_on:
-      app:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - backend
-
-  scheduler:
-    image: *application-image
-    pull_policy: always
-    command: ["php", "artisan", "schedule:work"]
-    env_file:
-      - ${CRUCIBLE_ENV_FILE:-.env.production}
-    environment: *application-environment
-    init: true
-    restart: unless-stopped
-    stop_grace_period: 30s
-    healthcheck:
-      disable: true
-    volumes:
-      - crucible_storage:/app/storage
-    depends_on:
-      app:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:

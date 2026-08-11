@@ -15,5 +15,6 @@ if [ ! -f /app/storage/database/crucible.sqlite ]; then
 fi
 
 php artisan package:discover --ansi --no-interaction
+php artisan migrate --force --no-interaction
 
 exec "$@"
