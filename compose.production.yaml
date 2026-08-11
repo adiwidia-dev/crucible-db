@@ -1,8 +1,7 @@
 services:
   migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile.production
+    image: &application-image ${CRUCIBLE_IMAGE:-hephaestus/crucible-db:alpha}
+    pull_policy: always
     command: ["php", "artisan", "migrate", "--force", "--no-interaction"]
     env_file:
       - ${CRUCIBLE_ENV_FILE:-.env.production}
@@ -32,9 +31,8 @@ services:
       - backend
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile.production
+    image: *application-image
+    pull_policy: always
     command:
       - sh
       - -lc
@@ -60,9 +58,8 @@ services:
       - backend
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.production
+    image: *application-image
+    pull_policy: always
     command: ["php", "artisan", "horizon"]
     env_file:
       - ${CRUCIBLE_ENV_FILE:-.env.production}
@@ -83,9 +80,8 @@ services:
       - backend
 
   scheduler:
-    build:
-      context: .
-      dockerfile: Dockerfile.production
+    image: *application-image
+    pull_policy: always
     command: ["php", "artisan", "schedule:work"]
     env_file:
       - ${CRUCIBLE_ENV_FILE:-.env.production}

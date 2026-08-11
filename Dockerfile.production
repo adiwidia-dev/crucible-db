@@ -20,7 +20,6 @@ WORKDIR /app
 # Vite invokes Wayfinder, which boots Laravel while generating typed routes.
 # This key is only used in this disposable build stage.
 ENV APP_ENV=production \
-    APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
     DB_DATABASE=/app/storage/database/crucible.sqlite
 
 RUN apt-get update \
@@ -42,9 +41,9 @@ RUN mkdir -p \
         /app/storage/framework/views \
         /app/storage/logs \
     && touch /app/storage/database/crucible.sqlite \
-    && php artisan package:discover --ansi --no-interaction \
-    && php artisan wayfinder:generate --with-form --no-interaction \
-    && npm run build
+    && APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= php artisan package:discover --ansi --no-interaction \
+    && APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= php artisan wayfinder:generate --with-form --no-interaction \
+    && APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= npm run build
 
 FROM dunglas/frankenphp:1-php8.4 AS production
 
