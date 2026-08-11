@@ -154,7 +154,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
                     'latest_query_type' => $queryRequest->latestExecution?->query_type?->value,
                     'effective_query_type' => (bool) $queryRequest->has_write_execution
                         ? QueryType::Write->value
-                        : ($queryRequest->latestExecution?->query_type?->value ?? $queryRequest->query_type->value),
+                        : (/** @phpstan-ignore-next-line nullsafe.neverNull */
+                            $queryRequest->latestExecution?->query_type?->value ?? $queryRequest->query_type->value),
                     'request_kind' => $queryRequest->request_kind->value,
                     'requires_approval' => $queryRequest->requires_approval,
                     'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
@@ -162,9 +163,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
                     'connection' => $queryRequest->databaseConnection->name,
                     'created_at' => $queryRequest->created_at?->toIso8601String(),
                     'active_session_expires_at' => $queryRequest->latestSession?->isActive()
-                        ? $queryRequest->latestSession->expires_at?->toIso8601String()
+                        ? $queryRequest->latestSession->expires_at->toIso8601String()
                         : null,
-                    'latest_session_expires_at' => $queryRequest->latestSession?->expires_at?->toIso8601String(),
+                    'latest_session_expires_at' => $queryRequest->latestSession?->expires_at->toIso8601String(),
                 ]),
         ]);
     })->name('dashboard');

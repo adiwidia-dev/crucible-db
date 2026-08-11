@@ -57,22 +57,24 @@ class DatabaseSchemaBrowser
             $tables = [];
 
             foreach ($rows as $row) {
-                $tableName = (string) ($row->table_name ?? $row->TABLE_NAME);
+                /** @var array<string, mixed> $attributes */
+                $attributes = get_object_vars($row);
+                $tableName = (string) ($attributes['table_name'] ?? $attributes['TABLE_NAME'] ?? '');
 
                 $tables[$tableName] ??= [
                     'name' => $tableName,
                     'columns' => [],
                 ];
 
-                $columnName = $row->column_name ?? $row->COLUMN_NAME ?? null;
+                $columnName = $attributes['column_name'] ?? $attributes['COLUMN_NAME'] ?? null;
 
                 if ($columnName !== null) {
-                    $nullable = $row->is_nullable ?? $row->IS_NULLABLE ?? null;
+                    $nullable = $attributes['is_nullable'] ?? $attributes['IS_NULLABLE'] ?? null;
 
                     $tables[$tableName]['columns'][] = [
                         'name' => (string) $columnName,
-                        'type' => isset($row->data_type) || isset($row->DATA_TYPE)
-                            ? (string) ($row->data_type ?? $row->DATA_TYPE)
+                        'type' => isset($attributes['data_type']) || isset($attributes['DATA_TYPE'])
+                            ? (string) ($attributes['data_type'] ?? $attributes['DATA_TYPE'])
                             : null,
                         'nullable' => is_string($nullable) ? strtoupper($nullable) === 'YES' : null,
                     ];

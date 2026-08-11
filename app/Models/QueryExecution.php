@@ -33,6 +33,9 @@ class QueryExecution extends Model
     /** @use HasFactory<QueryExecutionFactory> */
     use HasFactory;
 
+    /**
+     * @return array{status: class-string<ExecutionStatus>, query_type: class-string<QueryType>|null, started_at: 'datetime', finished_at: 'datetime', duration_ms: 'integer', row_count: 'integer', result_truncated: 'boolean', sample_rows: 'array'}
+     */
     protected function casts(): array
     {
         return [

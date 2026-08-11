@@ -7,6 +7,8 @@ use Laravel\Socialite\Contracts\Factory;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\SocialiteManager;
+use LogicException;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 
 class SsoProviderConfigurator
 {
@@ -14,11 +16,7 @@ class SsoProviderConfigurator
     {
         $provider = $authProvider->provider->value;
 
-        /** @var SocialiteManager $socialite */
-        $socialite = app(Factory::class);
-        if (method_exists($socialite, 'forgetDrivers')) {
-            $socialite->forgetDrivers();
-        }
+        $this->forgetDrivers(app(Factory::class));
 
         config([
             "services.{$provider}" => array_filter([
@@ -29,6 +27,30 @@ class SsoProviderConfigurator
             ], fn (mixed $value): bool => $value !== null && $value !== ''),
         ]);
 
-        return Socialite::driver($provider);
+        $driver = Socialite::driver($provider);
+
+        return $driver;
+    }
+
+    public function redirect(AuthProvider $authProvider): RedirectResponse
+    {
+        $driver = $this->driver($authProvider);
+        $configureScopes = [$driver, 'scopes'];
+
+        if (! is_callable($configureScopes)) {
+            throw new LogicException("The {$authProvider->provider->value} SSO driver does not support OAuth scopes.");
+        }
+
+        /** @var Provider $scopedDriver */
+        $scopedDriver = call_user_func($configureScopes, $authProvider->effectiveScopes());
+
+        return $scopedDriver->redirect();
+    }
+
+    private function forgetDrivers(Factory $socialite): void
+    {
+        if ($socialite instanceof SocialiteManager) {
+            $socialite->forgetDrivers();
+        }
     }
 }

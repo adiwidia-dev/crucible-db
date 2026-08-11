@@ -7,6 +7,7 @@ use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
 use App\Http\Requests\StoreQueryRequestRequest;
 use App\Models\DatabaseConnection;
+use App\Models\QueryExecution;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\QuerySessionQuery;
@@ -147,9 +148,11 @@ class QueryRequestController extends Controller
             ->latest('started_at')
             ->paginate(10, ['*'], 'executions_page')
             ->withQueryString()
-            ->through(fn ($execution): array => [
+            ->through(fn (QueryExecution $execution): array => [
                 'id' => $execution->id,
                 'status' => $execution->status->value,
+                // query_type is nullable for executions created before SQL metadata was introduced.
+                /** @phpstan-ignore-next-line nullsafe.neverNull */
                 'query_type' => $execution->query_type?->value ?? $queryRequest->query_type->value,
                 'sql' => $execution->sql ?? $queryRequest->sql,
                 'started_at' => $execution->started_at?->toIso8601String(),
@@ -204,13 +207,13 @@ class QueryRequestController extends Controller
                 'executions' => $executions,
                 'sessions' => $sessions->map(fn (QuerySession $session): array => [
                     'id' => $session->id,
-                    'started_at' => $session->started_at?->toIso8601String(),
-                    'expires_at' => $session->expires_at?->toIso8601String(),
+                    'started_at' => $session->started_at->toIso8601String(),
+                    'expires_at' => $session->expires_at->toIso8601String(),
                     'ended_at' => $session->ended_at?->toIso8601String(),
                 ])->values(),
                 'active_session' => $activeSession ? [
                     'id' => $activeSession->id,
-                    'expires_at' => $activeSession->expires_at?->toIso8601String(),
+                    'expires_at' => $activeSession->expires_at->toIso8601String(),
                 ] : null,
             ],
             'can_review' => request()->user()->can('review', $queryRequest),
@@ -302,6 +305,7 @@ class QueryRequestController extends Controller
     }
 
     /**
+     * @param  Builder<QueryRequest>  $query
      * @param  array{search: string, status: string, request_kind: string, query_type: string, connection_id: string}  $filters
      */
     private function applyFilters(Builder $query, array $filters): void
@@ -326,12 +330,12 @@ class QueryRequestController extends Controller
     {
         $session = $queryRequest->latestSession;
 
-        return $session?->isActive() ? $session->expires_at?->toIso8601String() : null;
+        return $session?->isActive() ? $session->expires_at->toIso8601String() : null;
     }
 
     private function latestSessionExpiresAt(QueryRequest $queryRequest): ?string
     {
-        return $queryRequest->latestSession?->expires_at?->toIso8601String();
+        return $queryRequest->latestSession?->expires_at->toIso8601String();
     }
 
     private function effectiveQueryType(QueryRequest $queryRequest): string
@@ -340,6 +344,8 @@ class QueryRequestController extends Controller
             return QueryType::Write->value;
         }
 
+        // query_type is nullable for executions created before SQL metadata was introduced.
+        /** @phpstan-ignore-next-line nullsafe.neverNull */
         return $queryRequest->latestExecution?->query_type?->value
             ?? $queryRequest->query_type->value;
     }

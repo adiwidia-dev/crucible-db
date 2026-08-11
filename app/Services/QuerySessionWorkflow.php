@@ -66,7 +66,7 @@ class QuerySessionWorkflow
     }
 
     /**
-     * @return array{query:QuerySessionQuery, result:array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_truncated:bool}|null}
+     * @return array{query:QuerySessionQuery, result:array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_truncated?:bool}|null}
      *
      * @throws ValidationException
      */

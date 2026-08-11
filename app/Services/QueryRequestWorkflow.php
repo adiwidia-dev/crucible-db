@@ -35,8 +35,8 @@ class QueryRequestWorkflow
         $permission = $requester->effectiveDatabasePermission($databaseConnection);
 
         if ($requestKind === QueryRequestKind::SingleExecution) {
-            $queryType = $this->queryGuard->classify((string) $data['sql']);
-            $sql = $this->queryGuard->validateExecutable((string) $data['sql']);
+            $queryType = $this->queryGuard->classify((string) ($data['sql'] ?? ''));
+            $sql = $this->queryGuard->validateExecutable((string) ($data['sql'] ?? ''));
         }
 
         if (! $requester->isAdmin()) {

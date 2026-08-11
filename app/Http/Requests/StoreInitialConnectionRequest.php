@@ -11,8 +11,10 @@ class StoreInitialConnectionRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return (bool) $this->user()?->isAdmin()
-            && $this->session()->get('setup.owner_id') === $this->user()?->id;
+        $user = $this->user();
+
+        return $user->isAdmin()
+            && $this->session()->get('setup.owner_id') === $user->id;
     }
 
     /**

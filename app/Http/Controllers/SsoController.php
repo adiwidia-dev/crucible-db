@@ -27,10 +27,7 @@ class SsoController extends Controller
 
         session()->forget('sso.invitation');
 
-        return $configurator
-            ->driver($authProvider)
-            ->scopes($authProvider->effectiveScopes())
-            ->redirect();
+        return $configurator->redirect($authProvider);
     }
 
     public function invitationRedirect(User $user, string $token, AuthProvider $authProvider, SsoProviderConfigurator $configurator): SymfonyRedirectResponse
@@ -46,10 +43,7 @@ class SsoController extends Controller
             ],
         ]);
 
-        return $configurator
-            ->driver($authProvider)
-            ->scopes($authProvider->effectiveScopes())
-            ->redirect();
+        return $configurator->redirect($authProvider);
     }
 
     public function testRedirect(Request $request, AuthProvider $authProvider, SsoProviderConfigurator $configurator): SymfonyRedirectResponse
@@ -62,10 +56,7 @@ class SsoController extends Controller
             'admin_user_id' => $request->user()->id,
         ]);
 
-        return $configurator
-            ->driver($authProvider)
-            ->scopes($authProvider->effectiveScopes())
-            ->redirect();
+        return $configurator->redirect($authProvider);
     }
 
     public function callback(

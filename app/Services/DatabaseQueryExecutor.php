@@ -16,7 +16,7 @@ class DatabaseQueryExecutor
     private const int SampleRowLimit = 25;
 
     /**
-     * @return array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_truncated:bool}
+     * @return array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_truncated?:bool}
      */
     public function execute(DatabaseConnection $databaseConnection, string $sql, QueryType $queryType): array
     {
@@ -76,7 +76,7 @@ class DatabaseQueryExecutor
     }
 
     /**
-     * @return array<string, bool|string|null>
+     * @return array<string, array<int, bool>|bool|string|null>
      */
     private function driverOptions(DatabaseConnection $databaseConnection): array
     {

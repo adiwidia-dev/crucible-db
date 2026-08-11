@@ -107,7 +107,9 @@ class SetupController extends Controller
 
     private function ensureInitialSetupOwner(): void
     {
-        abort_unless(request()->user()?->isAdmin(), 403);
-        abort_unless(request()->session()->get('setup.owner_id') === request()->user()?->id, 404);
+        $user = request()->user();
+
+        abort_unless($user->isAdmin(), 403);
+        abort_unless(request()->session()->get('setup.owner_id') === $user->id, 404);
     }
 }

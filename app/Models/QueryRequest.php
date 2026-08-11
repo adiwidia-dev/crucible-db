@@ -34,9 +34,13 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $completed_at
  * @property array<string, mixed>|null $result_summary
  * @property string|null $last_error
+ * @property-read bool $has_write_execution
  * @property-read User $requester
+ * @property-read User|null $approvedBy
  * @property-read User|null $dispatchedBy
  * @property-read DatabaseConnection $databaseConnection
+ * @property-read QueryExecution|null $latestExecution
+ * @property-read QuerySession|null $latestSession
  */
 #[Fillable(['requester_id', 'database_connection_id', 'approved_by_id', 'dispatched_by_id', 'title', 'description', 'sql', 'query_type', 'request_kind', 'status', 'requires_approval', 'scheduled_at', 'access_duration_minutes', 'approved_at', 'dispatched_at', 'completed_at', 'result_summary', 'last_error'])]
 class QueryRequest extends Model
@@ -44,6 +48,9 @@ class QueryRequest extends Model
     /** @use HasFactory<QueryRequestFactory> */
     use HasFactory;
 
+    /**
+     * @return array{query_type: class-string<QueryType>, request_kind: class-string<QueryRequestKind>, status: class-string<QueryRequestStatus>, requires_approval: 'boolean', scheduled_at: 'datetime', access_duration_minutes: 'integer', approved_at: 'datetime', dispatched_at: 'datetime', completed_at: 'datetime', result_summary: 'array'}
+     */
     protected function casts(): array
     {
         return [
