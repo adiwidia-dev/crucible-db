@@ -18,6 +18,13 @@ class InitialSetupTest extends TestCase
             ->assertRedirect(route('setup.show'));
     }
 
+    public function test_setup_response_does_not_emit_asset_preload_headers(): void
+    {
+        $this->get(route('setup.show'))
+            ->assertOk()
+            ->assertHeaderMissing('Link');
+    }
+
     public function test_setup_creates_the_first_administrator_and_moves_to_optional_connection_setup(): void
     {
         $this->post(route('setup.store'), [
