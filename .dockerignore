@@ -6,6 +6,7 @@
 .agents
 .codex
 graphify-out
+frankenphp
 node_modules
 vendor
 storage
