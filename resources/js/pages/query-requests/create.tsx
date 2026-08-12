@@ -11,6 +11,7 @@ import {
 import { useState } from 'react';
 import { format } from 'sql-formatter';
 import QueryRequestController from '@/actions/App/Http/Controllers/QueryRequestController';
+import { ConnectionCombobox } from '@/components/crucible/connection-combobox';
 import { PageHeader } from '@/components/crucible/page-header';
 import { SqlEditor } from '@/components/crucible/sql-editor';
 import InputError from '@/components/input-error';
@@ -24,7 +25,6 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { driverLabel } from '@/lib/crucible';
 import type { DatabaseConnectionSummary } from '@/lib/crucible';
 import { zonedDateTimeLocalToIso } from '@/lib/timezone';
 import { index } from '@/routes/query-requests';
@@ -173,44 +173,12 @@ export default function QueryRequestCreate({ connections }: Props) {
                                         />
                                     </div>
 
-                                    <div className="grid gap-2">
-                                        <Label htmlFor="database_connection_id">
-                                            Connection
-                                        </Label>
-                                        <select
-                                            id="database_connection_id"
-                                            name="database_connection_id"
-                                            value={selectedConnectionId}
-                                            onChange={(event) =>
-                                                setSelectedConnectionId(
-                                                    event.target.value,
-                                                )
-                                            }
-                                            className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                            required
-                                        >
-                                            <option value="">
-                                                Select a connection
-                                            </option>
-                                            {connections.map((connection) => (
-                                                <option
-                                                    key={connection.id}
-                                                    value={connection.id}
-                                                >
-                                                    {connection.name} (
-                                                    {driverLabel(
-                                                        connection.driver,
-                                                    )}
-                                                    )
-                                                </option>
-                                            ))}
-                                        </select>
-                                        <InputError
-                                            message={
-                                                errors.database_connection_id
-                                            }
-                                        />
-                                    </div>
+                                    <ConnectionCombobox
+                                        connections={connections}
+                                        value={selectedConnectionId}
+                                        onValueChange={setSelectedConnectionId}
+                                        error={errors.database_connection_id}
+                                    />
 
                                     <div className="grid gap-2">
                                         <Label htmlFor="title">Title</Label>

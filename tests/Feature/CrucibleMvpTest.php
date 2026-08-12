@@ -348,6 +348,30 @@ class CrucibleMvpTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_query_request_create_page_includes_searchable_connection_metadata(): void
+    {
+        $admin = $this->adminUser();
+        DatabaseConnection::factory()->create([
+            'name' => 'Analytics Primary',
+            'driver' => DatabaseDriver::PostgreSql,
+            'is_active' => true,
+        ]);
+        DatabaseConnection::factory()->create([
+            'name' => 'Legacy Archive',
+            'driver' => DatabaseDriver::MySql,
+            'is_active' => false,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.create'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('query-requests/create')
+                ->has('connections', 1)
+                ->where('connections.0.name', 'Analytics Primary')
+                ->where('connections.0.driver', DatabaseDriver::PostgreSql->value));
+    }
+
     public function test_create_table_statement_is_classified_as_write_access(): void
     {
         Queue::fake();
