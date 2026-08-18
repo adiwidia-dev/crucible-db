@@ -11,6 +11,8 @@ class ApplicationSettings
 {
     public const AppName = 'app_name';
 
+    public const DefaultTimezone = 'default_timezone';
+
     public const PasswordLoginEnabled = 'password_login_enabled';
 
     public const PasskeyLoginEnabled = 'passkey_login_enabled';
@@ -43,6 +45,7 @@ class ApplicationSettings
 
         return [
             'app_name' => $this->string(self::AppName, config('app.name'), $values),
+            'default_timezone' => $this->defaultTimezone($values),
             'mail_host' => $this->string(self::MailHost, config('mail.mailers.smtp.host'), $values),
             'mail_port' => $this->integer(self::MailPort, (int) config('mail.mailers.smtp.port'), $values),
             'mail_username' => $this->string(self::MailUsername, config('mail.mailers.smtp.username'), $values),
@@ -56,6 +59,15 @@ class ApplicationSettings
     public function appName(): string
     {
         return $this->string(self::AppName, (string) config('app.name')) ?? (string) config('app.name');
+    }
+
+    /**
+     * @param  array<string, string|null>|null  $values
+     */
+    public function defaultTimezone(?array $values = null): string
+    {
+        return $this->string(self::DefaultTimezone, (string) config('app.timezone'), $values)
+            ?? (string) config('app.timezone');
     }
 
     public function passwordLoginEnabled(): bool

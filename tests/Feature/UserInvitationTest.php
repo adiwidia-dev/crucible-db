@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ApplicationSetting;
 use App\Models\Role;
 use App\Models\User;
 use App\Notifications\UserInvitationNotification;
@@ -52,6 +53,27 @@ class UserInvitationTest extends TestCase
         ]);
 
         Notification::assertSentTo($user, UserInvitationNotification::class);
+    }
+
+    public function test_invited_users_receive_the_application_default_timezone(): void
+    {
+        Notification::fake();
+        $admin = $this->adminUser();
+        ApplicationSetting::factory()->create([
+            'key' => 'default_timezone',
+            'value' => 'Asia/Jakarta',
+        ]);
+
+        $this->actingAs($admin)->post(route('users.store'), [
+            'first_name' => 'Ada',
+            'last_name' => 'Lovelace',
+            'email' => 'ada@example.com',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            'Asia/Jakarta',
+            User::query()->where('email', 'ada@example.com')->value('timezone'),
+        );
     }
 
     public function test_non_admin_cannot_invite_users(): void

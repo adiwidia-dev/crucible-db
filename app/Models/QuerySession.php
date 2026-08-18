@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Database\Factories\QuerySessionFactory;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
@@ -22,6 +24,7 @@ use Illuminate\Support\Carbon;
  * @property-read QueryRequest $queryRequest
  * @property-read User $user
  * @property-read DatabaseConnection $databaseConnection
+ * @property-read Collection<int, DatabaseConnection> $databaseConnections
  */
 class QuerySession extends Model
 {
@@ -71,6 +74,15 @@ class QuerySession extends Model
     public function databaseConnection(): BelongsTo
     {
         return $this->belongsTo(DatabaseConnection::class);
+    }
+
+    /**
+     * @return BelongsToMany<DatabaseConnection, $this>
+     */
+    public function databaseConnections(): BelongsToMany
+    {
+        return $this->belongsToMany(DatabaseConnection::class, 'query_session_connections')
+            ->withTimestamps();
     }
 
     /**

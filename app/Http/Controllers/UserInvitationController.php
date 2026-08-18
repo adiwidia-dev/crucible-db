@@ -7,6 +7,7 @@ use App\Http\Requests\StoreUserInvitationRequest;
 use App\Models\AuthProvider;
 use App\Models\User;
 use App\Notifications\UserInvitationNotification;
+use App\Services\ApplicationSettings;
 use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -26,19 +27,20 @@ class UserInvitationController extends Controller
         return Inertia::render('users/create');
     }
 
-    public function store(StoreUserInvitationRequest $request, AuditLogger $auditLogger): RedirectResponse
+    public function store(StoreUserInvitationRequest $request, ApplicationSettings $settings, AuditLogger $auditLogger): RedirectResponse
     {
         $token = Str::random(64);
         $name = Str::of($request->validated('first_name').' '.$request->validated('last_name'))
             ->squish()
             ->toString();
 
-        $user = DB::transaction(function () use ($request, $name, $token): User {
+        $user = DB::transaction(function () use ($request, $name, $settings, $token): User {
             return User::query()->create([
                 'first_name' => $request->validated('first_name'),
                 'last_name' => $request->validated('last_name'),
                 'name' => $name,
                 'email' => $request->validated('email'),
+                'timezone' => $settings->defaultTimezone(),
                 'password' => Str::random(64),
                 'invited_by_id' => $request->user()->id,
                 'invited_at' => now(),

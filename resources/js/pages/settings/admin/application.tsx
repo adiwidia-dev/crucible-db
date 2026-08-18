@@ -2,7 +2,7 @@ import { Form, Head } from '@inertiajs/react';
 import { AlertTriangle, Mail, Save, Settings2 } from 'lucide-react';
 import { useState } from 'react';
 import ApplicationSettingsController from '@/actions/App/Http/Controllers/Settings/ApplicationSettingsController';
-import Heading from '@/components/heading';
+import { PageHeader } from '@/components/crucible/page-header';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,6 +30,7 @@ import { edit, factoryReset } from '@/routes/application-settings';
 type Props = {
     settings: {
         app_name: string;
+        default_timezone?: string;
         mail_host: string | null;
         mail_port: number | null;
         mail_username: string | null;
@@ -38,20 +39,25 @@ type Props = {
         mail_from_name: string | null;
         has_mail_password: boolean;
     };
+    timezones?: string[];
     factory_reset_confirmation_phrase: string;
 };
 
 export default function ApplicationSettings({
     settings,
+    timezones = [],
     factory_reset_confirmation_phrase: factoryResetConfirmationPhrase,
 }: Props) {
+    const defaultTimezone = settings.default_timezone ?? 'UTC';
+    const availableTimezones =
+        timezones.length > 0 ? timezones : [defaultTimezone];
+
     return (
         <>
             <Head title="Application settings" />
 
-            <div className="space-y-6">
-                <Heading
-                    variant="small"
+            <div className="crucible-page">
+                <PageHeader
                     title="Application settings"
                     description="Set the workspace identity and outbound email transport without changing deployment configuration."
                 />
@@ -63,8 +69,8 @@ export default function ApplicationSettings({
                 >
                     {({ processing, errors }) => (
                         <>
-                            <Card>
-                                <CardHeader className="border-b px-4 pb-4 sm:px-6">
+                            <Card className="max-w-3xl gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                                <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle className="flex items-center gap-2">
                                         <Settings2 className="size-4 text-muted-foreground" />
                                         Workspace identity
@@ -75,22 +81,55 @@ export default function ApplicationSettings({
                                         default.
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="grid max-w-xl gap-2 pt-6">
-                                    <Label htmlFor="app_name">
-                                        Application name
-                                    </Label>
-                                    <Input
-                                        id="app_name"
-                                        name="app_name"
-                                        defaultValue={settings.app_name}
-                                        required
-                                    />
-                                    <InputError message={errors.app_name} />
+                                <CardContent className="grid max-w-xl gap-5 px-4 py-5 sm:px-5">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="app_name">
+                                            Application name
+                                        </Label>
+                                        <Input
+                                            id="app_name"
+                                            name="app_name"
+                                            defaultValue={settings.app_name}
+                                            required
+                                        />
+                                        <InputError message={errors.app_name} />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="default_timezone">
+                                            Default timezone
+                                        </Label>
+                                        <select
+                                            id="default_timezone"
+                                            name="default_timezone"
+                                            defaultValue={defaultTimezone}
+                                            className="h-9 rounded-md border border-input bg-card px-3 text-sm transition-[color,border-color,box-shadow] duration-150 ease-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-reduce:transition-none"
+                                            required
+                                        >
+                                            {availableTimezones.map(
+                                                (timezone) => (
+                                                    <option
+                                                        key={timezone}
+                                                        value={timezone}
+                                                    >
+                                                        {timezone}
+                                                    </option>
+                                                ),
+                                            )}
+                                        </select>
+                                        <p className="text-xs text-muted-foreground">
+                                            Used for people invited after this
+                                            change. Each person can override it
+                                            in Profile settings.
+                                        </p>
+                                        <InputError
+                                            message={errors.default_timezone}
+                                        />
+                                    </div>
                                 </CardContent>
                             </Card>
 
-                            <Card>
-                                <CardHeader className="border-b px-4 pb-4 sm:px-6">
+                            <Card className="gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                                <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle className="flex items-center gap-2">
                                         <Mail className="size-4 text-muted-foreground" />
                                         SMTP delivery
@@ -102,7 +141,7 @@ export default function ApplicationSettings({
                                         never shown again.
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="grid gap-5 pt-6 sm:grid-cols-2">
+                                <CardContent className="grid gap-5 px-4 py-5 sm:grid-cols-2 sm:px-5">
                                     <div className="grid gap-2 sm:col-span-2">
                                         <Label htmlFor="mail_host">
                                             SMTP host
@@ -246,7 +285,7 @@ export default function ApplicationSettings({
 }
 
 ApplicationSettings.layout = {
-    breadcrumbs: [{ title: 'Admin settings', href: edit() }],
+    breadcrumbs: [{ title: 'Application', href: edit() }],
 };
 
 function FactoryResetCard({
@@ -257,8 +296,8 @@ function FactoryResetCard({
     const [confirmation, setConfirmation] = useState('');
 
     return (
-        <Card className="border-destructive/35">
-            <CardHeader className="border-b px-4 pb-4 sm:px-6">
+        <Card className="gap-0 overflow-hidden border-destructive/35 py-0">
+            <CardHeader className="border-b px-4 py-3 sm:px-5">
                 <CardTitle className="flex items-center gap-2 text-destructive">
                     <AlertTriangle className="size-4" />
                     Factory reset
@@ -269,7 +308,7 @@ function FactoryResetCard({
                     records. Target databases are never changed.
                 </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <CardContent className="flex flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <p className="max-w-2xl text-sm text-muted-foreground">
                     This returns the control plane to the initial web setup.
                     This action cannot be undone.

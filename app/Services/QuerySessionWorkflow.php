@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Enums\ExecutionStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
+use App\Models\DatabaseConnection;
 use App\Models\QueryExecution;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\QuerySessionQuery;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -39,17 +41,30 @@ class QuerySessionWorkflow
             ]);
         }
 
+        $queryRequest->loadMissing('accessConnections', 'databaseConnection');
+        $databaseConnections = $this->sessionConnections($queryRequest);
+
+        if (! $user->isAdmin() && $databaseConnections->contains(
+            fn (DatabaseConnection $connection): bool => ! $user->canAccessDatabase($connection),
+        )) {
+            throw ValidationException::withMessages([
+                'query_request' => 'You no longer have access to every database approved for this session.',
+            ]);
+        }
+
         $startedAt = now();
         $durationMinutes = $queryRequest->access_duration_minutes ?? 60;
 
-        return DB::transaction(function () use ($queryRequest, $user, $startedAt, $durationMinutes): QuerySession {
+        return DB::transaction(function () use ($queryRequest, $user, $databaseConnections, $startedAt, $durationMinutes): QuerySession {
             $session = QuerySession::query()->create([
                 'query_request_id' => $queryRequest->id,
                 'user_id' => $user->id,
-                'database_connection_id' => $queryRequest->database_connection_id,
+                'database_connection_id' => $databaseConnections->first()->id,
                 'started_at' => $startedAt,
                 'expires_at' => $startedAt->copy()->addMinutes($durationMinutes),
             ]);
+
+            $session->databaseConnections()->sync($databaseConnections->modelKeys());
 
             $queryRequest->forceFill([
                 'status' => QueryRequestStatus::Running,
@@ -59,6 +74,7 @@ class QuerySessionWorkflow
             $this->auditLogger->log('query_session.started', $user, $session, [
                 'query_request_id' => $queryRequest->id,
                 'expires_at' => $session->expires_at->toIso8601String(),
+                'database_connection_ids' => $databaseConnections->modelKeys(),
             ]);
 
             return $session;
@@ -70,7 +86,7 @@ class QuerySessionWorkflow
      *
      * @throws ValidationException
      */
-    public function execute(QuerySession $querySession, User $user, string $sql): array
+    public function execute(QuerySession $querySession, User $user, string $sql, ?DatabaseConnection $databaseConnection = null): array
     {
         if (! $querySession->isActive()) {
             throw ValidationException::withMessages([
@@ -78,9 +94,18 @@ class QuerySessionWorkflow
             ]);
         }
 
+        $querySession->loadMissing('databaseConnection', 'databaseConnections');
+        $databaseConnection ??= $querySession->databaseConnection;
+
+        if (! $querySession->databaseConnections->contains('id', $databaseConnection->id)) {
+            throw ValidationException::withMessages([
+                'database_connection_id' => 'Select a connection approved for this session.',
+            ]);
+        }
+
         $queryType = $this->queryGuard->classify($sql);
         $normalizedSql = $this->queryGuard->validateExecutable($sql);
-        $permission = $user->effectiveDatabasePermission($querySession->databaseConnection);
+        $permission = $user->effectiveDatabasePermission($databaseConnection);
 
         if (! $user->isAdmin() && ! $permission['access_mode']->allows($queryType)) {
             throw ValidationException::withMessages([
@@ -92,6 +117,7 @@ class QuerySessionWorkflow
 
         $sessionQuery = QuerySessionQuery::query()->create([
             'query_session_id' => $querySession->id,
+            'database_connection_id' => $databaseConnection->id,
             'user_id' => $user->id,
             'sql' => $normalizedSql,
             'query_type' => $queryType,
@@ -100,7 +126,7 @@ class QuerySessionWorkflow
         ]);
 
         try {
-            $result = $this->executor->execute($querySession->databaseConnection, $normalizedSql, $queryType);
+            $result = $this->executor->execute($databaseConnection, $normalizedSql, $queryType);
             $finishedAt = now();
 
             $sessionQuery->forceFill([
@@ -114,6 +140,7 @@ class QuerySessionWorkflow
 
             QueryExecution::query()->create([
                 'query_request_id' => $querySession->query_request_id,
+                'database_connection_id' => $databaseConnection->id,
                 'executed_by_id' => $user->id,
                 'sql' => $normalizedSql,
                 'query_type' => $queryType,
@@ -129,7 +156,7 @@ class QuerySessionWorkflow
             $this->auditLogger->log('query_session.query_executed', $user, $sessionQuery, [
                 'query_session_id' => $querySession->id,
                 'query_request_id' => $querySession->query_request_id,
-                'database_connection_id' => $querySession->database_connection_id,
+                'database_connection_id' => $databaseConnection->id,
                 'query_type' => $queryType->value,
                 'row_count' => $result['row_count'],
                 'result_truncated' => $result['result_truncated'] ?? false,
@@ -152,6 +179,7 @@ class QuerySessionWorkflow
 
             QueryExecution::query()->create([
                 'query_request_id' => $querySession->query_request_id,
+                'database_connection_id' => $databaseConnection->id,
                 'executed_by_id' => $user->id,
                 'sql' => $normalizedSql,
                 'query_type' => $queryType,
@@ -165,7 +193,7 @@ class QuerySessionWorkflow
             $this->auditLogger->log('query_session.query_failed', $user, $sessionQuery, [
                 'query_session_id' => $querySession->id,
                 'query_request_id' => $querySession->query_request_id,
-                'database_connection_id' => $querySession->database_connection_id,
+                'database_connection_id' => $databaseConnection->id,
                 'query_type' => $queryType->value,
                 'error' => $exception->getMessage(),
                 'sql' => $normalizedSql,
@@ -196,5 +224,15 @@ class QuerySessionWorkflow
 
             $this->auditLogger->log('query_session.ended', $user, $querySession);
         });
+    }
+
+    /**
+     * @return Collection<int, DatabaseConnection>
+     */
+    private function sessionConnections(QueryRequest $queryRequest): Collection
+    {
+        return $queryRequest->accessConnections->isNotEmpty()
+            ? $queryRequest->accessConnections
+            : new Collection([$queryRequest->databaseConnection]);
     }
 }

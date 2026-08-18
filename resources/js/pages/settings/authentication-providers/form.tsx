@@ -2,7 +2,7 @@ import { Form, Head, Link } from '@inertiajs/react';
 import { ExternalLink, FlaskConical, Save, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import AuthProviderController from '@/actions/App/Http/Controllers/AuthProviderController';
-import Heading from '@/components/heading';
+import { PageHeader } from '@/components/crucible/page-header';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -72,9 +72,8 @@ export default function AuthProviderForm({
                 title={isEditing ? 'Edit auth provider' : 'New auth provider'}
             />
 
-            <div className="space-y-6">
-                <Heading
-                    variant="small"
+            <div className="crucible-page">
+                <PageHeader
                     title={
                         isEditing
                             ? 'Edit authentication provider'
@@ -86,15 +85,15 @@ export default function AuthProviderForm({
                 <Form {...action} disableWhileProcessing className="grid gap-6">
                     {({ processing, errors }) => (
                         <>
-                            <Card>
-                                <CardHeader className="border-b px-4 pb-4 sm:px-6">
+                            <Card className="gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                                <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle>Provider</CardTitle>
                                     <CardDescription>
                                         Use the callback URL in the OAuth app
                                         registration for this provider.
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="grid max-w-3xl gap-5 pt-6">
+                                <CardContent className="grid max-w-3xl gap-5 px-4 py-5 sm:px-5">
                                     <div className="grid gap-2">
                                         <Label htmlFor="provider">
                                             Provider
@@ -265,8 +264,8 @@ export default function AuthProviderForm({
                             </Card>
 
                             {selectedOption && (
-                                <Card>
-                                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
+                                <Card className="max-w-3xl gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                                    <CardHeader className="border-b px-4 py-3 sm:px-5">
                                         <CardTitle>
                                             Set up {selectedOption.label}
                                         </CardTitle>
@@ -277,7 +276,7 @@ export default function AuthProviderForm({
                                             }
                                         </CardDescription>
                                     </CardHeader>
-                                    <CardContent className="space-y-4 pt-6">
+                                    <CardContent className="space-y-4 px-4 py-5 sm:px-5">
                                         <ol className="grid list-decimal gap-2 pl-5 text-sm leading-6 text-muted-foreground">
                                             {selectedOption.setup_guide.steps.map(
                                                 (step) => (

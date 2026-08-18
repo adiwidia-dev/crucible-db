@@ -21,6 +21,7 @@ class UpdateApplicationSettingsRequest extends FormRequest
     {
         return [
             'app_name' => ['required', 'string', 'max:120'],
+            'default_timezone' => ['required', 'string', 'timezone:all'],
             'mail_host' => ['nullable', 'string', 'max:255'],
             'mail_port' => ['nullable', 'integer', 'between:1,65535'],
             'mail_username' => ['nullable', 'string', 'max:255'],

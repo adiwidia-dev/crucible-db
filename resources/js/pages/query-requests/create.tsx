@@ -16,18 +16,14 @@ import {
 import { useState } from 'react';
 import { format } from 'sql-formatter';
 import QueryRequestController from '@/actions/App/Http/Controllers/QueryRequestController';
-import { ConnectionCombobox } from '@/components/crucible/connection-combobox';
+import {
+    ConnectionCombobox,
+    ConnectionMultiCombobox,
+} from '@/components/crucible/connection-combobox';
 import { PageHeader } from '@/components/crucible/page-header';
 import { SqlEditor } from '@/components/crucible/sql-editor';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { DatabaseConnectionSummary } from '@/lib/crucible';
@@ -41,10 +37,14 @@ import type { Auth } from '@/types';
 type EditableQueryRequest = {
     id: number;
     database_connection_id: number;
+    database_connection_ids: number[];
     request_kind: 'single_execution' | 'query_access';
     title: string;
     description: string | null;
-    statements: Array<{ sql: string }>;
+    statements: Array<{
+        sql: string;
+        database_connection_id: number;
+    }>;
     scheduled_at: string | null;
     access_duration_minutes: number | null;
     was_approved: boolean;
@@ -60,20 +60,31 @@ type Props = {
 type StatementDraft = {
     key: string;
     sql: string;
+    databaseConnectionId: string;
 };
 
 function initialStatements(
     queryRequest: EditableQueryRequest | null,
+    defaultConnectionId: string,
 ): StatementDraft[] {
     const statements = queryRequest?.statements ?? [];
 
     if (statements.length === 0) {
-        return [{ key: 'statement-1', sql: '' }];
+        return [
+            {
+                key: 'statement-1',
+                sql: '',
+                databaseConnectionId: defaultConnectionId,
+            },
+        ];
     }
 
     return statements.map((statement, index) => ({
         key: `statement-${index + 1}`,
         sql: statement.sql,
+        databaseConnectionId: String(
+            statement.database_connection_id ?? defaultConnectionId,
+        ),
     }));
 }
 
@@ -93,23 +104,22 @@ export default function QueryRequestCreate({
     );
     const [scheduledAtLocal, setScheduledAtLocal] = useState(() =>
         query_request?.scheduled_at
-            ? isoToZonedDateTimeLocal(
-                  query_request.scheduled_at,
-                  userTimezone,
-              )
+            ? isoToZonedDateTimeLocal(query_request.scheduled_at, userTimezone)
             : '',
     );
-    const [selectedConnectionId, setSelectedConnectionId] = useState(
-        query_request ? String(query_request.database_connection_id) : '',
+    const defaultConnectionId = query_request
+        ? String(query_request.database_connection_id)
+        : connections.length === 1
+          ? String(connections[0].id)
+          : '';
+    const [selectedConnectionIds, setSelectedConnectionIds] = useState(
+        () =>
+            query_request?.database_connection_ids.map(String) ??
+            (defaultConnectionId === '' ? [] : [defaultConnectionId]),
     );
     const [statements, setStatements] = useState<StatementDraft[]>(() =>
-        initialStatements(query_request),
+        initialStatements(query_request, defaultConnectionId),
     );
-    const selectedConnection = connections.find(
-        (connection) => String(connection.id) === selectedConnectionId,
-    );
-    const formatterLanguage =
-        selectedConnection?.driver === 'mysql' ? 'mysql' : 'postgresql';
     const form = query_request
         ? QueryRequestController.update.form(query_request.id)
         : QueryRequestController.store.form();
@@ -122,12 +132,27 @@ export default function QueryRequestCreate({
         );
     }
 
+    function updateStatementConnection(
+        index: number,
+        databaseConnectionId: string,
+    ): void {
+        setStatements((current) =>
+            current.map((statement, statementIndex) =>
+                statementIndex === index
+                    ? { ...statement, databaseConnectionId }
+                    : statement,
+            ),
+        );
+    }
+
     function addStatement(): void {
         setStatements((current) => [
             ...current,
             {
                 key: `statement-${Date.now()}-${current.length}`,
                 sql: '',
+                databaseConnectionId:
+                    current.at(-1)?.databaseConnectionId ?? defaultConnectionId,
             },
         ]);
     }
@@ -158,6 +183,11 @@ export default function QueryRequestCreate({
 
     function formatStatement(index: number): void {
         const sql = statements[index]?.sql.trim();
+        const statementConnection = connections.find(
+            (connection) =>
+                String(connection.id) ===
+                statements[index]?.databaseConnectionId,
+        );
 
         if (!sql) {
             return;
@@ -166,7 +196,10 @@ export default function QueryRequestCreate({
         updateStatement(
             index,
             format(sql, {
-                language: formatterLanguage,
+                language:
+                    statementConnection?.driver === 'mysql'
+                        ? 'mysql'
+                        : 'postgresql',
                 keywordCase: 'upper',
             }),
         );
@@ -181,12 +214,13 @@ export default function QueryRequestCreate({
             <div className="crucible-page">
                 <PageHeader
                     icon={FileCode2}
-                    eyebrow="Deployment Request"
-                    title={isEditing ? 'Edit Query Request' : 'New Query Request'}
+                    title={
+                        isEditing ? 'Edit Query Request' : 'New Query Request'
+                    }
                     description={
                         isEditing
                             ? 'Revise the deployment batch and send the complete request back for approval.'
-                            : 'Group every ordered SQL statement for one deployment ticket into a single request.'
+                            : 'Prepare a governed deployment batch or request time-boxed query access.'
                     }
                 />
 
@@ -212,22 +246,71 @@ export default function QueryRequestCreate({
                 >
                     {({ processing, errors }) => (
                         <>
-                            <Card>
-                                <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                                    <CardTitle>Request Details</CardTitle>
-                                    <CardDescription>
-                                        Identify the ticket, target, and access
-                                        pattern.
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="grid gap-5 pt-6">
+                            <section className="border-y bg-card sm:rounded-lg sm:border">
+                                <div className="border-b px-4 py-3 sm:px-5">
+                                    <h2 className="text-sm font-semibold">
+                                        Request details
+                                    </h2>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        Start with the operational context, then
+                                        choose how the work should run.
+                                    </p>
+                                </div>
+                                <div className="grid gap-5 p-4 sm:p-5">
+                                    <div className="grid gap-5">
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="title">
+                                                Ticket / request title
+                                            </Label>
+                                            <Input
+                                                id="title"
+                                                name="title"
+                                                defaultValue={
+                                                    query_request?.title ?? ''
+                                                }
+                                                placeholder="DEP-1234: customer data migration"
+                                                autoFocus={!isEditing}
+                                            />
+                                            <InputError
+                                                message={errors.title}
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="description">
+                                                {requestKind ===
+                                                'single_execution'
+                                                    ? 'Deployment notes (optional)'
+                                                    : 'Access purpose (optional)'}
+                                            </Label>
+                                            <textarea
+                                                id="description"
+                                                name="description"
+                                                rows={4}
+                                                defaultValue={
+                                                    query_request?.description ??
+                                                    ''
+                                                }
+                                                className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm transition-[color,border-color,box-shadow] duration-150 ease-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-reduce:transition-none"
+                                                placeholder={
+                                                    requestKind ===
+                                                    'single_execution'
+                                                        ? 'Purpose, expected impact, and rollback context'
+                                                        : 'Why access is needed and what you plan to investigate'
+                                                }
+                                            />
+                                            <InputError
+                                                message={errors.description}
+                                            />
+                                        </div>
+                                    </div>
+
                                     <div className="grid gap-2">
                                         <Label htmlFor="request_kind">
-                                            Request Type
+                                            Workflow
                                         </Label>
                                         <div className="grid gap-3 md:grid-cols-2">
                                             <label
-                                                className={`flex cursor-pointer gap-3 rounded-lg border bg-background p-4 shadow-xs ${requestKind === 'single_execution' ? 'border-primary bg-primary/5' : ''}`}
+                                                className={`flex cursor-pointer gap-3 rounded-md border bg-background p-3.5 transition-colors duration-150 ease-out hover:bg-accent/35 motion-reduce:transition-none ${requestKind === 'single_execution' ? 'border-primary bg-primary/5' : ''}`}
                                             >
                                                 <input
                                                     type="radio"
@@ -242,7 +325,7 @@ export default function QueryRequestCreate({
                                                             'single_execution',
                                                         )
                                                     }
-                                                    className="mt-1"
+                                                    className="mt-0.5 accent-primary"
                                                 />
                                                 <span className="grid gap-1">
                                                     <span className="flex items-center gap-2 font-medium">
@@ -257,7 +340,7 @@ export default function QueryRequestCreate({
                                                 </span>
                                             </label>
                                             <label
-                                                className={`flex cursor-pointer gap-3 rounded-lg border bg-background p-4 shadow-xs ${requestKind === 'query_access' ? 'border-primary bg-primary/5' : ''}`}
+                                                className={`flex cursor-pointer gap-3 rounded-md border bg-background p-3.5 transition-colors duration-150 ease-out hover:bg-accent/35 motion-reduce:transition-none ${requestKind === 'query_access' ? 'border-primary bg-primary/5' : ''}`}
                                             >
                                                 <input
                                                     type="radio"
@@ -272,7 +355,7 @@ export default function QueryRequestCreate({
                                                             'query_access',
                                                         )
                                                     }
-                                                    className="mt-1"
+                                                    className="mt-0.5 accent-primary"
                                                 />
                                                 <span className="grid gap-1">
                                                     <span className="flex items-center gap-2 font-medium">
@@ -292,96 +375,58 @@ export default function QueryRequestCreate({
                                         />
                                     </div>
 
-                                    <ConnectionCombobox
-                                        connections={connections}
-                                        value={selectedConnectionId}
-                                        onValueChange={setSelectedConnectionId}
-                                        error={errors.database_connection_id}
-                                    />
-
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="title">
-                                                Ticket / request title
-                                            </Label>
-                                            <Input
-                                                id="title"
-                                                name="title"
-                                                defaultValue={
-                                                    query_request?.title ?? ''
+                                    {requestKind === 'query_access' && (
+                                        <div className="grid gap-3 rounded-md border bg-muted/20 p-3.5">
+                                            <ConnectionMultiCombobox
+                                                connections={connections}
+                                                values={selectedConnectionIds}
+                                                onValueChange={
+                                                    setSelectedConnectionIds
                                                 }
-                                                placeholder="DEP-1234 — customer data migration"
-                                            />
-                                            <InputError
-                                                message={errors.title}
+                                                error={
+                                                    errors.database_connection_ids
+                                                }
+                                                label="Session connections"
+                                                description="Choose every database that this time-boxed session may access. Approval is evaluated across all selected targets."
                                             />
                                         </div>
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="description">
-                                                Deployment notes
-                                            </Label>
-                                            <textarea
-                                                id="description"
-                                                name="description"
-                                                rows={3}
-                                                defaultValue={
-                                                    query_request?.description ??
-                                                    ''
-                                                }
-                                                className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                                placeholder="Purpose, expected impact, and rollback context"
-                                            />
-                                            <InputError
-                                                message={errors.description}
-                                            />
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
+                                    )}
+                                </div>
+                            </section>
 
                             {requestKind === 'single_execution' ? (
-                                <Card>
-                                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
+                                <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                                    <div className="border-b px-4 py-3 sm:px-5">
                                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                             <div>
-                                                <CardTitle>
-                                                    Ordered Statements
-                                                </CardTitle>
-                                                <CardDescription className="mt-1">
+                                                <h2 className="text-sm font-semibold">
+                                                    Ordered statements
+                                                </h2>
+                                                <p className="mt-1 text-xs text-muted-foreground">
                                                     Statements run top to
                                                     bottom. Execution stops at
                                                     the first failure.
-                                                </CardDescription>
+                                                </p>
                                             </div>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={addStatement}
-                                                disabled={
-                                                    statements.length >= 50
-                                                }
-                                            >
-                                                <Plus />
-                                                Add statement
-                                            </Button>
                                         </div>
-                                    </CardHeader>
-                                    <CardContent className="grid gap-4 pt-6">
+                                    </div>
+                                    <div className="grid gap-4 p-4 sm:p-5">
                                         <InputError
                                             message={errors.statements}
                                         />
                                         {statements.map((statement, index) => (
                                             <section
                                                 key={statement.key}
-                                                className="overflow-hidden rounded-lg border bg-background shadow-xs"
+                                                className="overflow-hidden border bg-background sm:rounded-md"
                                             >
-                                                <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b bg-muted/40 px-3 py-2">
+                                                <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
                                                     <div className="flex items-center gap-2 text-sm font-medium">
                                                         <span className="flex size-6 items-center justify-center rounded-full border bg-background font-mono text-xs">
                                                             {index + 1}
                                                         </span>
                                                         <span>
-                                                            Statement {index + 1}
+                                                            Statement{' '}
+                                                            {index + 1}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-1">
@@ -390,7 +435,9 @@ export default function QueryRequestCreate({
                                                             variant="ghost"
                                                             size="icon"
                                                             aria-label="Move statement up"
-                                                            disabled={index === 0}
+                                                            disabled={
+                                                                index === 0
+                                                            }
                                                             onClick={() =>
                                                                 moveStatement(
                                                                     index,
@@ -456,6 +503,32 @@ export default function QueryRequestCreate({
                                                     name={`statements[${index}][sql]`}
                                                     value={statement.sql}
                                                 />
+                                                <div className="border-b px-3 py-3">
+                                                    <ConnectionCombobox
+                                                        connections={
+                                                            connections
+                                                        }
+                                                        name={`statements[${index}][database_connection_id]`}
+                                                        label="Target connection"
+                                                        description="This statement runs on the selected target."
+                                                        value={
+                                                            statement.databaseConnectionId
+                                                        }
+                                                        onValueChange={(
+                                                            value,
+                                                        ) =>
+                                                            updateStatementConnection(
+                                                                index,
+                                                                value,
+                                                            )
+                                                        }
+                                                        error={
+                                                            errors[
+                                                                `statements.${index}.database_connection_id`
+                                                            ]
+                                                        }
+                                                    />
+                                                </div>
                                                 <SqlEditor
                                                     value={statement.sql}
                                                     onChange={(sql) =>
@@ -465,7 +538,13 @@ export default function QueryRequestCreate({
                                                         )
                                                     }
                                                     driver={
-                                                        selectedConnection?.driver
+                                                        connections.find(
+                                                            (connection) =>
+                                                                String(
+                                                                    connection.id,
+                                                                ) ===
+                                                                statement.databaseConnectionId,
+                                                        )?.driver
                                                     }
                                                     minHeight="13rem"
                                                     placeholder={`-- Statement ${index + 1}\nSELECT * FROM table_name`}
@@ -481,76 +560,30 @@ export default function QueryRequestCreate({
                                                 </div>
                                             </section>
                                         ))}
-
-                                        <div className="grid gap-3 rounded-lg border bg-muted/30 p-4 md:w-96">
-                                            <label className="flex items-center gap-2 text-sm font-medium">
-                                                <input
-                                                    type="checkbox"
-                                                    name="schedule_query"
-                                                    value="1"
-                                                    checked={scheduleQuery}
-                                                    onChange={(event) =>
-                                                        setScheduleQuery(
-                                                            event.target.checked,
-                                                        )
-                                                    }
-                                                />
-                                                <CalendarClock className="size-4 text-muted-foreground" />
-                                                Schedule after approval
-                                            </label>
-                                            {scheduleQuery && (
-                                                <div className="grid gap-2">
-                                                    <Label htmlFor="scheduled_at">
-                                                        Scheduled At
-                                                    </Label>
-                                                    <Input
-                                                        id="scheduled_at"
-                                                        type="datetime-local"
-                                                        value={
-                                                            scheduledAtLocal
-                                                        }
-                                                        onChange={(event) =>
-                                                            setScheduledAtLocal(
-                                                                event.target
-                                                                    .value,
-                                                            )
-                                                        }
-                                                        className="bg-background"
-                                                        required
-                                                    />
-                                                    <input
-                                                        type="hidden"
-                                                        name="scheduled_at"
-                                                        value={
-                                                            scheduledAtLocal
-                                                                ? zonedDateTimeLocalToIso(
-                                                                      scheduledAtLocal,
-                                                                      userTimezone,
-                                                                  )
-                                                                : ''
-                                                        }
-                                                    />
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Interpreted in{' '}
-                                                        <span className="font-mono">
-                                                            {userTimezone}
-                                                        </span>
-                                                        .
-                                                    </p>
-                                                </div>
-                                            )}
-                                            <InputError
-                                                message={errors.scheduled_at}
-                                            />
-                                        </div>
-                                    </CardContent>
-                                </Card>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="self-start border-dashed"
+                                            onClick={addStatement}
+                                            disabled={statements.length >= 50}
+                                        >
+                                            <Plus />
+                                            Add statement
+                                        </Button>
+                                    </div>
+                                </section>
                             ) : (
-                                <Card>
-                                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                                        <CardTitle>Access Window</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="pt-6">
+                                <section className="border-y bg-card sm:rounded-lg sm:border">
+                                    <div className="border-b px-4 py-3 sm:px-5">
+                                        <h2 className="text-sm font-semibold">
+                                            Access window
+                                        </h2>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            Set how long the approved browser
+                                            session remains available.
+                                        </p>
+                                    </div>
+                                    <div className="p-4 sm:p-5">
                                         <div className="grid gap-2 md:w-96">
                                             <div className="flex items-center gap-2">
                                                 <Clock3 className="size-4 text-muted-foreground" />
@@ -582,38 +615,164 @@ export default function QueryRequestCreate({
                                                 }
                                             />
                                         </div>
-                                    </CardContent>
-                                </Card>
+                                    </div>
+                                </section>
                             )}
 
-                            <div className="flex items-center gap-3">
-                                <Button disabled={processing}>
-                                    <Check />
-                                    {processing
-                                        ? 'Saving...'
-                                        : isEditing
-                                          ? 'Save & request approval'
-                                          : 'Submit for approval'}
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    asChild
-                                >
-                                    <Link
-                                        href={
-                                            query_request
-                                                ? QueryRequestController.show(
-                                                      query_request.id,
-                                                  )
-                                                : index()
-                                        }
-                                    >
-                                        <X />
-                                        Cancel
-                                    </Link>
-                                </Button>
-                            </div>
+                            {requestKind === 'single_execution' && (
+                                <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                                    <div className="border-b px-4 py-3 sm:px-5">
+                                        <h2 className="text-sm font-semibold">
+                                            Execution plan
+                                        </h2>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                            Choose whether the approved batch
+                                            runs immediately or at a planned
+                                            time.
+                                        </p>
+                                    </div>
+                                    <div className="grid gap-5 px-4 py-5 sm:px-5 lg:grid-cols-[minmax(11rem,0.55fr)_minmax(0,2fr)] lg:gap-8">
+                                        <div>
+                                            <h3 className="text-sm font-semibold">
+                                                Schedule execution
+                                            </h3>
+                                            <p className="mt-2 max-w-xs text-sm text-muted-foreground">
+                                                Unscheduled batches are ready to
+                                                execute after approval.
+                                            </p>
+                                        </div>
+                                        <div className="grid gap-3">
+                                            <label className="flex items-center gap-2 text-sm font-medium">
+                                                <input
+                                                    type="checkbox"
+                                                    name="schedule_query"
+                                                    value="1"
+                                                    checked={scheduleQuery}
+                                                    onChange={(event) =>
+                                                        setScheduleQuery(
+                                                            event.target
+                                                                .checked,
+                                                        )
+                                                    }
+                                                    className="accent-primary"
+                                                />
+                                                <CalendarClock className="size-4 text-muted-foreground" />
+                                                Schedule after approval
+                                            </label>
+                                            {scheduleQuery && (
+                                                <div className="grid gap-2">
+                                                    <Label htmlFor="scheduled_at">
+                                                        Scheduled time
+                                                    </Label>
+                                                    <Input
+                                                        id="scheduled_at"
+                                                        type="datetime-local"
+                                                        value={scheduledAtLocal}
+                                                        onChange={(event) =>
+                                                            setScheduledAtLocal(
+                                                                event.target
+                                                                    .value,
+                                                            )
+                                                        }
+                                                        required
+                                                    />
+                                                    <input
+                                                        type="hidden"
+                                                        name="scheduled_at"
+                                                        value={
+                                                            scheduledAtLocal
+                                                                ? zonedDateTimeLocalToIso(
+                                                                      scheduledAtLocal,
+                                                                      userTimezone,
+                                                                  )
+                                                                : ''
+                                                        }
+                                                    />
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Interpreted in{' '}
+                                                        <span className="font-mono">
+                                                            {userTimezone}
+                                                        </span>
+                                                        .
+                                                    </p>
+                                                </div>
+                                            )}
+                                            <InputError
+                                                message={errors.scheduled_at}
+                                            />
+                                        </div>
+                                    </div>
+                                </section>
+                            )}
+
+                            <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                                <div className="border-b px-4 py-3 sm:px-5">
+                                    <h2 className="text-sm font-semibold">
+                                        Review and submit
+                                    </h2>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                        Review is determined from the access
+                                        policy for every selected target.
+                                    </p>
+                                </div>
+                                <div className="flex flex-col gap-4 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                                    <div className="text-sm text-muted-foreground">
+                                        {requestKind === 'single_execution' ? (
+                                            <p>
+                                                {statements.length}{' '}
+                                                {statements.length === 1
+                                                    ? 'ordered statement'
+                                                    : 'ordered statements'}{' '}
+                                                will run in sequence.
+                                                {scheduleQuery
+                                                    ? ' The batch is scheduled after approval.'
+                                                    : ' The batch is ready after approval.'}
+                                            </p>
+                                        ) : (
+                                            <p>
+                                                {selectedConnectionIds.length}{' '}
+                                                {selectedConnectionIds.length ===
+                                                1
+                                                    ? 'connection is'
+                                                    : 'connections are'}{' '}
+                                                included in this time-boxed
+                                                session.
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            asChild
+                                        >
+                                            <Link
+                                                href={
+                                                    query_request
+                                                        ? QueryRequestController.show(
+                                                              query_request.id,
+                                                          )
+                                                        : index()
+                                                }
+                                            >
+                                                <X />
+                                                Cancel
+                                            </Link>
+                                        </Button>
+                                        <Button disabled={processing}>
+                                            <Check />
+                                            {processing
+                                                ? 'Saving...'
+                                                : isEditing &&
+                                                    query_request?.was_approved
+                                                  ? 'Save & request review'
+                                                  : isEditing
+                                                    ? 'Save changes'
+                                                    : 'Submit request'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </section>
                         </>
                     )}
                 </Form>

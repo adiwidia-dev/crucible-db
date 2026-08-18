@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\ExecutionStatus;
 use App\Http\Requests\StoreQuerySessionQueryRequest;
+use App\Models\DatabaseConnection;
 use App\Models\QuerySession;
 use App\Services\QuerySessionWorkflow;
 use Illuminate\Http\RedirectResponse;
@@ -15,7 +16,15 @@ class QuerySessionQueryController extends Controller
     public function store(StoreQuerySessionQueryRequest $request, QuerySession $querySession, QuerySessionWorkflow $workflow): RedirectResponse
     {
         try {
-            $execution = $workflow->execute($querySession, $request->user(), $request->string('sql')->toString());
+            $databaseConnection = DatabaseConnection::query()->findOrFail(
+                $request->integer('database_connection_id'),
+            );
+            $execution = $workflow->execute(
+                $querySession,
+                $request->user(),
+                $request->string('sql')->toString(),
+                $databaseConnection,
+            );
         } catch (ValidationException $exception) {
             Inertia::flash('toast', [
                 'type' => 'error',

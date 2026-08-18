@@ -1,0 +1,162 @@
+{
+    "schemaVersion": 2,
+    "generatedAt": "2026-08-18T14:00:00+07:00",
+    "title": "Design System: Crucible DB",
+    "extensions": {
+        "colorMeta": {
+            "brand": {
+                "role": "brand",
+                "displayName": "Crucible Orange",
+                "canonical": "oklch(0.59 0.18 43)",
+                "tonalRamp": [
+                    "oklch(0.2 0.07 42)",
+                    "oklch(0.3 0.11 42)",
+                    "oklch(0.4 0.14 42)",
+                    "oklch(0.49 0.16 42)",
+                    "oklch(0.59 0.18 43)",
+                    "oklch(0.68 0.14 42)",
+                    "oklch(0.82 0.08 42)",
+                    "oklch(0.95 0.025 42)"
+                ]
+            },
+            "canvas": {
+                "role": "neutral",
+                "displayName": "Application Canvas",
+                "canonical": "oklch(0.985 0.002 247)",
+                "tonalRamp": [
+                    "oklch(0.15 0.008 75)",
+                    "oklch(0.25 0.008 75)",
+                    "oklch(0.38 0.008 75)",
+                    "oklch(0.52 0.008 75)",
+                    "oklch(0.66 0.008 75)",
+                    "oklch(0.78 0.008 75)",
+                    "oklch(0.9 0.008 75)",
+                    "oklch(0.985 0.002 247)"
+                ]
+            },
+            "ink": {
+                "role": "neutral",
+                "displayName": "Graphite Ink",
+                "canonical": "oklch(0.235 0.014 52)",
+                "tonalRamp": [
+                    "oklch(0.15 0.014 52)",
+                    "oklch(0.235 0.014 52)",
+                    "oklch(0.35 0.014 52)",
+                    "oklch(0.48 0.014 52)",
+                    "oklch(0.61 0.014 52)",
+                    "oklch(0.74 0.014 52)",
+                    "oklch(0.86 0.014 52)",
+                    "oklch(0.95 0.014 52)"
+                ]
+            }
+        },
+        "typographyMeta": {
+            "headline": {
+                "displayName": "Page headline",
+                "purpose": "Compact page titles."
+            },
+            "body": {
+                "displayName": "Interface body",
+                "purpose": "Controls, descriptions, and tabular content."
+            },
+            "label": {
+                "displayName": "Operational label",
+                "purpose": "Navigation groups, metadata, and table headings."
+            }
+        },
+        "shadows": [
+            {
+                "name": "overlay",
+                "value": "0 16px 48px rgb(38 31 24 / 0.16)",
+                "purpose": "Menus, sheets, and dialogs only."
+            }
+        ],
+        "motion": [
+            {
+                "name": "state-fast",
+                "value": "150ms cubic-bezier(0.22, 1, 0.36, 1)",
+                "purpose": "Hover, focus, and selection feedback."
+            },
+            {
+                "name": "panel",
+                "value": "220ms cubic-bezier(0.22, 1, 0.36, 1)",
+                "purpose": "Sidebar and disclosure transitions."
+            }
+        ],
+        "breakpoints": [
+            { "name": "sm", "value": "640px" },
+            { "name": "md", "value": "768px" },
+            { "name": "lg", "value": "1024px" },
+            { "name": "xl", "value": "1280px" }
+        ]
+    },
+    "components": [
+        {
+            "name": "Primary Button",
+            "kind": "button",
+            "refersTo": "button-primary",
+            "description": "Compact decisive action using Action Blue.",
+            "html": "<button class=\"ds-button-primary\">New request</button>",
+            "css": ".ds-button-primary { height: 36px; padding: 0 14px; border: 0; border-radius: 6px; background: var(--primary); color: var(--primary-foreground); font: 600 14px/1 ui-sans-serif, system-ui, sans-serif; transition: background 150ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-button-primary:hover { background: oklch(0.47 0.16 258); } .ds-button-primary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }"
+        },
+        {
+            "name": "Operational Input",
+            "kind": "input",
+            "refersTo": "input",
+            "description": "Compact field with explicit keyboard focus.",
+            "html": "<input class=\"ds-input\" aria-label=\"Search connections\" placeholder=\"Search connections\">",
+            "css": ".ds-input { height: 36px; padding: 0 12px; border: 1px solid var(--input); border-radius: 6px; background: var(--card); color: var(--foreground); font: 400 14px/1.5 ui-sans-serif, system-ui, sans-serif; } .ds-input:hover { border-color: var(--muted-foreground); } .ds-input:focus-visible { outline: 2px solid color-mix(in oklch, var(--ring) 35%, transparent); outline-offset: 1px; border-color: var(--ring); }"
+        },
+        {
+            "name": "Active Navigation",
+            "kind": "nav",
+            "refersTo": "navigation-active",
+            "description": "Quiet selected surface with a small blue interaction cue.",
+            "html": "<a class=\"ds-nav-active\" href=\"#\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"4\" fill=\"currentColor\"/></svg><span>Connections</span></a>",
+            "css": ".ds-nav-active { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: 6px; background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); font: 600 14px/1 ui-sans-serif, system-ui, sans-serif; text-decoration: none; } .ds-nav-active svg { width: 16px; height: 16px; color: var(--primary); } .ds-nav-active:focus-visible { outline: 2px solid var(--sidebar-ring); outline-offset: 2px; }"
+        }
+    ],
+    "narrative": {
+        "northStar": "The Quiet Engineering Utility",
+        "overview": "Crucible DB feels like infrastructure software made by and for engineers: direct, compact, and dependable. Neutral surfaces carry the work, blue identifies interaction, and orange is limited to the Crucible brand.",
+        "keyCharacteristics": [
+            "Cool neutral canvas with white work surfaces",
+            "Compact desktop density with responsive structural changes",
+            "Orange reserved for product identity; blue reserved for interaction",
+            "Monospaced data for SQL, endpoints, identifiers, and timestamps",
+            "Flat-by-default layering with borders and spacing instead of shadow"
+        ],
+        "rules": [
+            {
+                "name": "The Brand Boundary Rule",
+                "body": "Orange identifies Crucible DB; it does not indicate ordinary actions or selected navigation.",
+                "section": "colors"
+            },
+            {
+                "name": "The Semantic Integrity Rule",
+                "body": "Green, amber, red, and blue never decorate neutral content. They always communicate state.",
+                "section": "colors"
+            },
+            {
+                "name": "The Exact Data Rule",
+                "body": "SQL, endpoints, identifiers, timestamps, and database names use monospace; ordinary prose never does.",
+                "section": "typography"
+            },
+            {
+                "name": "The Work Stays Flat Rule",
+                "body": "Tables, filters, sections, and dashboard content never receive decorative shadows.",
+                "section": "elevation"
+            }
+        ],
+        "dos": [
+            "Do organize navigation around Work, Data, and Admin.",
+            "Do keep approval, risk, schedule, execution, and access state visible near the object.",
+            "Do use 36px controls and compact table rows for repeated desktop workflows."
+        ],
+        "donts": [
+            "Don't resemble a generic CRUD admin template, decorative SaaS dashboard, Cloudflare clone, or toy SQL editor.",
+            "Don't use oversized marketing headers, vanity metric cards, nested card layouts, decorative gradients, or glass effects.",
+            "Don't use colored side-stripe borders, gradient text, or decorative status colors."
+        ]
+    }
+}

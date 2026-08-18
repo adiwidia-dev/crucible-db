@@ -156,15 +156,15 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
                 >
                     {({ processing, errors }) => (
                         <>
-                            <Card>
-                                <CardHeader className="border-b px-4 pb-4 sm:px-6">
+                            <Card className="gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                                <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle>Role Profile</CardTitle>
                                     <CardDescription>
                                         Role name and operator-facing
                                         description.
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="grid max-w-2xl gap-5 pt-6">
+                                <CardContent className="grid max-w-2xl gap-5 px-4 py-5 sm:px-5">
                                     <div className="grid gap-2">
                                         <Label htmlFor="name">Role Name</Label>
                                         <Input
@@ -194,8 +194,8 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
                                 </CardContent>
                             </Card>
 
-                            <Card>
-                                <CardHeader className="border-b px-4 pb-4 sm:px-6">
+                            <Card className="gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                                <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle>Database Policies</CardTitle>
                                     <CardDescription>
                                         Define connection access, reviewer
@@ -248,20 +248,20 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
                                                 <div className="overflow-x-auto rounded-md border">
                                                     <table className="w-full min-w-[1040px] text-sm">
                                                         <thead>
-                                                            <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                                                                <th className="py-3 pr-4 pl-4 font-medium">
+                                                            <tr className="border-b bg-muted/45 text-left text-xs text-muted-foreground">
+                                                                <th className="py-2.5 pr-4 pl-3 font-medium sm:pl-4">
                                                                     Connection
                                                                 </th>
-                                                                <th className="py-3 pr-4 font-medium">
+                                                                <th className="py-2.5 pr-4 font-medium">
                                                                     Access
                                                                 </th>
-                                                                <th className="py-3 pr-4 font-medium">
+                                                                <th className="py-2.5 pr-4 font-medium">
                                                                     Review
                                                                 </th>
-                                                                <th className="py-3 pr-4 font-medium">
+                                                                <th className="py-2.5 pr-4 font-medium">
                                                                     Approval
                                                                 </th>
-                                                                <th className="py-3 pr-4 font-medium">
+                                                                <th className="py-2.5 pr-3 text-right font-medium sm:pr-4">
                                                                     Remove
                                                                 </th>
                                                             </tr>

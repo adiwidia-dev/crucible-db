@@ -26,7 +26,7 @@ class ExecuteQueryRequest implements ShouldQueue
     public function handle(DatabaseQueryExecutor $executor, AuditLogger $auditLogger): void
     {
         $queryRequest = QueryRequest::query()
-            ->with('databaseConnection', 'requester', 'dispatchedBy', 'statements')
+            ->with('databaseConnection', 'requester', 'dispatchedBy', 'statements.databaseConnection')
             ->findOrFail($this->queryRequestId);
 
         if ($queryRequest->request_kind !== QueryRequestKind::SingleExecution) {
@@ -47,6 +47,7 @@ class ExecuteQueryRequest implements ShouldQueue
         $statements = $queryRequest->statements->map(fn ($statement): array => [
             'id' => $statement->id,
             'position' => $statement->position,
+            'database_connection' => $statement->databaseConnection ?? $queryRequest->databaseConnection,
             'sql' => $statement->sql,
             'query_type' => $statement->query_type,
         ]);
@@ -55,6 +56,7 @@ class ExecuteQueryRequest implements ShouldQueue
             $statements->push([
                 'id' => null,
                 'position' => 1,
+                'database_connection' => $queryRequest->databaseConnection,
                 'sql' => $queryRequest->sql,
                 'query_type' => $queryRequest->query_type,
             ]);
@@ -70,6 +72,7 @@ class ExecuteQueryRequest implements ShouldQueue
             $execution = QueryExecution::query()->create([
                 'query_request_id' => $queryRequest->id,
                 'query_request_statement_id' => $statement['id'],
+                'database_connection_id' => $statement['database_connection']->id,
                 'executed_by_id' => $executorUser->id,
                 'sql' => $statement['sql'],
                 'query_type' => $statement['query_type'],
@@ -79,7 +82,7 @@ class ExecuteQueryRequest implements ShouldQueue
             $executionIds[] = $execution->id;
 
             try {
-                $result = $executor->execute($queryRequest->databaseConnection, $statement['sql'], $statement['query_type']);
+                $result = $executor->execute($statement['database_connection'], $statement['sql'], $statement['query_type']);
                 $finishedAt = now();
 
                 $execution->forceFill([
@@ -102,6 +105,7 @@ class ExecuteQueryRequest implements ShouldQueue
 
                 $auditLogger->log('query_request.statement_executed', $executorUser, $queryRequest, [
                     'statement_position' => $statement['position'],
+                    'database_connection_id' => $statement['database_connection']->id,
                     'execution_id' => $execution->id,
                     'row_count' => $result['row_count'],
                     'result_truncated' => $result['result_truncated'] ?? false,
@@ -132,6 +136,7 @@ class ExecuteQueryRequest implements ShouldQueue
 
                 $auditLogger->log('query_request.execution_failed', $executorUser, $queryRequest, [
                     'statement_position' => $statement['position'],
+                    'database_connection_id' => $statement['database_connection']->id,
                     'execution_id' => $execution->id,
                     'error' => $exception->getMessage(),
                 ]);

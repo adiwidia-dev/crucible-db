@@ -218,7 +218,7 @@ class DatabaseConnectionController extends Controller
 
         return [
             'search' => $request->string('search')->trim()->toString(),
-            'driver' => $driver?->value ?? '',
+            'driver' => $driver instanceof DatabaseDriver ? $driver->value : '',
             'status' => in_array($status, ['active', 'disabled'], true) ? $status : '',
         ];
     }

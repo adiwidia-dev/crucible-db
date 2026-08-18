@@ -45,6 +45,7 @@ class InitialSetupTest extends TestCase
         $this->assertTrue($user->isAdmin());
         $this->assertSame($adminRole->id, $user->role_id);
         $this->assertSame('Crucible DB', ApplicationSetting::query()->where('key', 'app_name')->firstOrFail()->value);
+        $this->assertSame('UTC', ApplicationSetting::query()->where('key', 'default_timezone')->firstOrFail()->value);
         $this->assertDatabaseHas('audit_logs', ['action' => 'application.initialized']);
     }
 

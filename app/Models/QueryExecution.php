@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $query_request_id
  * @property int|null $query_request_statement_id
+ * @property int|null $database_connection_id
  * @property int|null $executed_by_id
  * @property string|null $sql
  * @property QueryType|null $query_type
@@ -28,8 +29,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $error_message
  * @property-read User|null $executor
  * @property-read QueryRequestStatement|null $statement
+ * @property-read DatabaseConnection|null $databaseConnection
  */
-#[Fillable(['query_request_id', 'query_request_statement_id', 'executed_by_id', 'sql', 'query_type', 'status', 'started_at', 'finished_at', 'duration_ms', 'row_count', 'result_truncated', 'sample_rows', 'error_message'])]
+#[Fillable(['query_request_id', 'query_request_statement_id', 'database_connection_id', 'executed_by_id', 'sql', 'query_type', 'status', 'started_at', 'finished_at', 'duration_ms', 'row_count', 'result_truncated', 'sample_rows', 'error_message'])]
 class QueryExecution extends Model
 {
     /** @use HasFactory<QueryExecutionFactory> */
@@ -74,5 +76,13 @@ class QueryExecution extends Model
     public function statement(): BelongsTo
     {
         return $this->belongsTo(QueryRequestStatement::class, 'query_request_statement_id');
+    }
+
+    /**
+     * @return BelongsTo<DatabaseConnection, $this>
+     */
+    public function databaseConnection(): BelongsTo
+    {
+        return $this->belongsTo(DatabaseConnection::class);
     }
 }

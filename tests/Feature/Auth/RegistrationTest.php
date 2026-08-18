@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Models\ApplicationSetting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Fortify\Features;
 use Tests\TestCase;
@@ -26,6 +27,11 @@ class RegistrationTest extends TestCase
 
     public function test_new_users_can_register()
     {
+        ApplicationSetting::factory()->create([
+            'key' => 'default_timezone',
+            'value' => 'America/New_York',
+        ]);
+
         $response = $this->post(route('register.store'), [
             'name' => 'Test User',
             'email' => 'test@example.com',
@@ -34,6 +40,7 @@ class RegistrationTest extends TestCase
         ]);
 
         $this->assertAuthenticated();
+        $this->assertSame('America/New_York', auth()->user()->timezone);
         $response->assertRedirect(route('dashboard', absolute: false));
     }
 }

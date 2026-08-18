@@ -1,18 +1,13 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
-import { Ban, Plus, Save, Undo2, UserCog } from 'lucide-react';
+import { Ban, Plus, Save, Undo2, UserCog, UsersRound } from 'lucide-react';
 import { useState } from 'react';
 import UserRoleController from '@/actions/App/Http/Controllers/UserRoleController';
+import { DataRegistry } from '@/components/crucible/data-registry';
+import { EmptyState } from '@/components/crucible/empty-state';
+import { PageHeader } from '@/components/crucible/page-header';
 import { StatusBadge } from '@/components/crucible/status-badge';
-import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
 import {
     Dialog,
     DialogClose,
@@ -303,17 +298,22 @@ function UserTable({
     userTimezone: string;
 }) {
     return (
-        <Card>
-            <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <CardTitle>{title}</CardTitle>
-                        <CardDescription>{description}</CardDescription>
-                    </div>
-                    <StatusBadge value="none" label={`${users.length} users`} />
+        <DataRegistry
+            title={title}
+            description={description}
+            actions={
+                <StatusBadge value="none" label={`${users.length} users`} />
+            }
+        >
+            {users.length === 0 ? (
+                <div className="p-6">
+                    <EmptyState
+                        icon={UsersRound}
+                        title={`No ${title.toLowerCase()} found`}
+                        detail="People will appear here when they are invited or their account status changes."
+                    />
                 </div>
-            </CardHeader>
-            <CardContent className="p-0">
+            ) : (
                 <div className="overflow-x-auto">
                     <table className="w-full min-w-[820px] table-fixed text-sm">
                         <colgroup>
@@ -324,18 +324,20 @@ function UserTable({
                             <col className="w-[14%]" />
                         </colgroup>
                         <thead>
-                            <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                                <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
+                            <tr className="border-b bg-muted/45 text-left text-xs text-muted-foreground">
+                                <th className="py-2.5 pr-4 pl-3 font-medium sm:pl-4">
                                     User
                                 </th>
-                                <th className="py-3 pr-4 font-medium">Roles</th>
-                                <th className="py-3 pr-4 font-medium">
+                                <th className="py-2.5 pr-4 font-medium">
+                                    Roles
+                                </th>
+                                <th className="py-2.5 pr-4 font-medium">
                                     Status
                                 </th>
-                                <th className="py-3 pr-4 font-medium">
+                                <th className="py-2.5 pr-4 font-medium">
                                     Joined
                                 </th>
-                                <th className="py-3 pr-4 font-medium">
+                                <th className="py-2.5 pr-3 text-right font-medium sm:pr-4">
                                     Actions
                                 </th>
                             </tr>
@@ -346,7 +348,7 @@ function UserTable({
                                     key={user.id}
                                     className="border-b transition-colors last:border-0 hover:bg-accent/40"
                                 >
-                                    <td className="py-3.5 pr-4 pl-4 sm:pl-6">
+                                    <td className="py-3 pr-4 pl-3 sm:pl-4">
                                         <div className="truncate font-medium">
                                             {user.name}
                                         </div>
@@ -354,7 +356,7 @@ function UserTable({
                                             {user.email}
                                         </div>
                                     </td>
-                                    <td className="py-3.5 pr-4">
+                                    <td className="py-3 pr-4">
                                         {user.roles.length > 0 ? (
                                             <div className="grid max-w-80 gap-2">
                                                 {user.roles.map((role) => (
@@ -383,7 +385,7 @@ function UserTable({
                                             />
                                         )}
                                     </td>
-                                    <td className="py-3.5 pr-4">
+                                    <td className="py-3 pr-4">
                                         <div className="flex flex-wrap gap-2">
                                             <StatusBadge
                                                 value={
@@ -415,14 +417,14 @@ function UserTable({
                                             )}
                                         </div>
                                     </td>
-                                    <td className="py-3.5 pr-4 text-muted-foreground">
+                                    <td className="py-3 pr-4 text-muted-foreground">
                                         {formatDate(
                                             user.created_at,
                                             userTimezone,
                                         )}
                                     </td>
-                                    <td className="py-3.5 pr-4">
-                                        <div className="flex items-center gap-2 whitespace-nowrap">
+                                    <td className="py-3 pr-3 sm:pr-4">
+                                        <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                                             <RoleAssignmentForm
                                                 user={user}
                                                 roles={roles}
@@ -432,21 +434,11 @@ function UserTable({
                                     </td>
                                 </tr>
                             ))}
-                            {users.length === 0 && (
-                                <tr>
-                                    <td
-                                        colSpan={5}
-                                        className="px-4 py-10 text-center text-sm text-muted-foreground sm:px-6"
-                                    >
-                                        No users in this section.
-                                    </td>
-                                </tr>
-                            )}
                         </tbody>
                     </table>
                 </div>
-            </CardContent>
-        </Card>
+            )}
+        </DataRegistry>
     );
 }
 
@@ -463,20 +455,19 @@ export default function UsersIndex({
         <>
             <Head title="Users" />
 
-            <div className="space-y-6">
-                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                    <Heading
-                        variant="small"
-                        title="Users"
-                        description={`${users.length} users registered in Crucible DB`}
-                    />
-                    <Button asChild>
-                        <Link href={create()}>
-                            <Plus />
-                            New user
-                        </Link>
-                    </Button>
-                </div>
+            <div className="crucible-page">
+                <PageHeader
+                    title="Users"
+                    description={`${users.length} users registered in Crucible DB`}
+                    actions={
+                        <Button asChild>
+                            <Link href={create()}>
+                                <Plus />
+                                New user
+                            </Link>
+                        </Button>
+                    }
+                />
 
                 <UserTable
                     title="Active Users"

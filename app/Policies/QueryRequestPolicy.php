@@ -4,8 +4,10 @@ namespace App\Policies;
 
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
+use App\Models\DatabaseConnection;
 use App\Models\QueryRequest;
 use App\Models\User;
+use Illuminate\Support\Collection;
 
 class QueryRequestPolicy
 {
@@ -16,12 +18,12 @@ class QueryRequestPolicy
 
     public function view(User $user, QueryRequest $queryRequest): bool
     {
-        $queryRequest->loadMissing('databaseConnection');
-
         return $user->isAdmin()
             || $queryRequest->requester_id === $user->id
-            || $user->canAccessDatabase($queryRequest->databaseConnection)
-            || $user->canReviewDatabase($queryRequest->databaseConnection);
+            || $this->scopedConnections($queryRequest)->every(
+                fn ($connection): bool => $user->canAccessDatabase($connection)
+                    || $user->canReviewDatabase($connection),
+            );
     }
 
     public function create(User $user): bool
@@ -54,8 +56,10 @@ class QueryRequestPolicy
     public function review(User $user, QueryRequest $queryRequest): bool
     {
         return $queryRequest->status === QueryRequestStatus::PendingReview
-            && $queryRequest->requester_id !== $user->id
-            && $user->canReviewDatabase($queryRequest->databaseConnection);
+        && $queryRequest->requester_id !== $user->id
+        && $this->scopedConnections($queryRequest)->every(
+            fn ($connection): bool => $user->canReviewDatabase($connection),
+        );
     }
 
     public function dispatch(User $user, QueryRequest $queryRequest): bool
@@ -63,7 +67,9 @@ class QueryRequestPolicy
         return $queryRequest->request_kind === QueryRequestKind::SingleExecution
             && $queryRequest->status === QueryRequestStatus::Approved
             && $queryRequest->dispatched_at === null
-            && ($user->isAdmin() || $queryRequest->requester_id === $user->id || $user->canReviewDatabase($queryRequest->databaseConnection));
+            && ($user->isAdmin() || $queryRequest->requester_id === $user->id || $this->scopedConnections($queryRequest)->every(
+                fn ($connection): bool => $user->canReviewDatabase($connection),
+            ));
     }
 
     public function startSession(User $user, QueryRequest $queryRequest): bool
@@ -71,5 +77,27 @@ class QueryRequestPolicy
         return $queryRequest->request_kind === QueryRequestKind::QueryAccess
             && $queryRequest->status === QueryRequestStatus::Approved
             && ($user->isAdmin() || $queryRequest->requester_id === $user->id);
+    }
+
+    /**
+     * @return Collection<int, DatabaseConnection>
+     */
+    private function scopedConnections(QueryRequest $queryRequest): Collection
+    {
+        $queryRequest->loadMissing('databaseConnection', 'accessConnections', 'statements.databaseConnection');
+
+        if ($queryRequest->request_kind === QueryRequestKind::QueryAccess
+            && $queryRequest->accessConnections->isNotEmpty()) {
+            return $queryRequest->accessConnections;
+        }
+
+        $connections = $queryRequest->statements
+            ->map(fn ($statement) => $statement->databaseConnection ?? $queryRequest->databaseConnection)
+            ->unique('id')
+            ->values();
+
+        return $connections->isNotEmpty()
+            ? $connections
+            : collect([$queryRequest->databaseConnection]);
     }
 }

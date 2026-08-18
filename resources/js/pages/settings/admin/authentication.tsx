@@ -1,8 +1,8 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import { KeyRound, Save, ShieldCheck } from 'lucide-react';
 import AuthenticationMethodController from '@/actions/App/Http/Controllers/Settings/AuthenticationMethodController';
+import { PageHeader } from '@/components/crucible/page-header';
 import { StatusBadge } from '@/components/crucible/status-badge';
-import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -39,9 +39,8 @@ export default function AuthenticationMethods({
         <>
             <Head title="Sign-in methods" />
 
-            <div className="space-y-6">
-                <Heading
-                    variant="small"
+            <div className="crucible-page">
+                <PageHeader
                     title="Sign-in methods"
                     description="Control which approved sign-in options are visible and accepted on the login page."
                 />
@@ -53,8 +52,8 @@ export default function AuthenticationMethods({
                 >
                     {({ processing, errors }) => (
                         <>
-                            <Card>
-                                <CardHeader className="border-b px-4 pb-4 sm:px-6">
+                            <Card className="max-w-3xl gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                                <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle>Login options</CardTitle>
                                     <CardDescription>
                                         At least one sign-in option must remain
@@ -67,7 +66,7 @@ export default function AuthenticationMethods({
                                         .
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="grid divide-y pt-2">
+                                <CardContent className="grid divide-y px-4 py-2 sm:px-5">
                                     <label className="flex cursor-pointer items-start gap-3 py-4">
                                         <input
                                             type="hidden"
@@ -137,8 +136,8 @@ export default function AuthenticationMethods({
                     )}
                 </Form>
 
-                <Card>
-                    <CardHeader className="flex flex-row items-start justify-between gap-4 border-b px-4 pb-4 sm:px-6">
+                <Card className="max-w-3xl gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                    <CardHeader className="flex flex-row items-start justify-between gap-4 border-b px-4 py-3 sm:px-5">
                         <div className="space-y-1">
                             <CardTitle>Configured SSO providers</CardTitle>
                             <CardDescription>
@@ -156,7 +155,7 @@ export default function AuthenticationMethods({
                         {configured_sso_providers.map((provider) => (
                             <div
                                 key={provider.id}
-                                className="flex items-center justify-between gap-4 px-4 py-4 sm:px-6"
+                                className="flex items-center justify-between gap-4 px-4 py-3 sm:px-5"
                             >
                                 <div className="min-w-0">
                                     <div className="font-medium">
@@ -181,7 +180,7 @@ export default function AuthenticationMethods({
                             </div>
                         ))}
                         {configured_sso_providers.length === 0 && (
-                            <div className="px-4 py-10 text-center text-sm text-muted-foreground sm:px-6">
+                            <div className="px-4 py-10 text-center text-sm text-muted-foreground sm:px-5">
                                 No SSO providers are configured.
                             </div>
                         )}

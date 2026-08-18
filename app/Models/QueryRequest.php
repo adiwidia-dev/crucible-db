@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
@@ -40,6 +41,7 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $approvedBy
  * @property-read User|null $dispatchedBy
  * @property-read DatabaseConnection $databaseConnection
+ * @property-read Collection<int, DatabaseConnection> $accessConnections
  * @property-read QueryExecution|null $latestExecution
  * @property-read Collection<int, QueryRequestStatement> $statements
  * @property-read QuerySession|null $latestSession
@@ -99,6 +101,15 @@ class QueryRequest extends Model
     public function databaseConnection(): BelongsTo
     {
         return $this->belongsTo(DatabaseConnection::class);
+    }
+
+    /**
+     * @return BelongsToMany<DatabaseConnection, $this>
+     */
+    public function accessConnections(): BelongsToMany
+    {
+        return $this->belongsToMany(DatabaseConnection::class, 'query_request_connections')
+            ->withTimestamps();
     }
 
     /**

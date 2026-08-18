@@ -32,6 +32,18 @@ class ApplicationAdministrationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_administrator_can_view_the_default_timezone_setting(): void
+    {
+        $admin = $this->administrator();
+
+        $this->actingAs($admin)
+            ->get(route('application-settings.edit'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('settings.default_timezone', 'UTC')
+                ->has('timezones'));
+    }
+
     public function test_administrator_can_update_application_settings_without_exposing_smtp_secret(): void
     {
         $admin = $this->administrator();
@@ -39,6 +51,7 @@ class ApplicationAdministrationTest extends TestCase
         $this->actingAs($admin)
             ->patch(route('application-settings.update'), [
                 'app_name' => 'Operations Crucible',
+                'default_timezone' => 'Asia/Jakarta',
                 'mail_host' => 'smtp.example.com',
                 'mail_port' => 587,
                 'mail_username' => 'mailer',
@@ -53,11 +66,29 @@ class ApplicationAdministrationTest extends TestCase
             'smtp-secret',
             ApplicationSetting::query()->where('key', 'mail_password')->firstOrFail()->value,
         );
+        $this->assertSame(
+            'Asia/Jakarta',
+            ApplicationSetting::query()->where('key', 'default_timezone')->firstOrFail()->value,
+        );
         $auditLog = AuditLog::query()->latest('id')->firstOrFail();
 
         $this->assertSame('application_settings.updated', $auditLog->action);
         $this->assertArrayNotHasKey('mail_password', $auditLog->metadata['before']);
         $this->assertArrayNotHasKey('mail_password', $auditLog->metadata['after']);
+    }
+
+    public function test_administrator_must_choose_a_valid_default_timezone(): void
+    {
+        $admin = $this->administrator();
+
+        $this->actingAs($admin)
+            ->from(route('application-settings.edit'))
+            ->patch(route('application-settings.update'), [
+                'app_name' => 'Operations Crucible',
+                'default_timezone' => 'Not/A-Timezone',
+            ])
+            ->assertRedirect(route('application-settings.edit'))
+            ->assertSessionHasErrors('default_timezone');
     }
 
     public function test_administrator_cannot_disable_every_login_method_without_an_enabled_sso_provider(): void

@@ -1,16 +1,11 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Edit3, FlaskConical, Plus, Trash2 } from 'lucide-react';
+import { BadgeCheck, Edit3, FlaskConical, Plus, Trash2 } from 'lucide-react';
 import AuthProviderController from '@/actions/App/Http/Controllers/AuthProviderController';
+import { DataRegistry } from '@/components/crucible/data-registry';
+import { EmptyState } from '@/components/crucible/empty-state';
+import { PageHeader } from '@/components/crucible/page-header';
 import { StatusBadge } from '@/components/crucible/status-badge';
-import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
 import {
     Dialog,
     DialogClose,
@@ -46,50 +41,61 @@ export default function AuthProvidersIndex({ providers }: Props) {
         <>
             <Head title="Authentication providers" />
 
-            <div className="space-y-6">
-                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                    <Heading
-                        variant="small"
-                        title="Authentication providers"
-                        description="Manage invitation-gated SSO and verify OAuth configuration."
-                    />
-                    <Button asChild>
-                        <Link href={create()}>
-                            <Plus />
-                            New provider
-                        </Link>
-                    </Button>
-                </div>
+            <div className="crucible-page">
+                <PageHeader
+                    title="Authentication providers"
+                    description="Manage invitation-gated SSO and verify OAuth configuration."
+                    actions={
+                        <Button asChild>
+                            <Link href={create()}>
+                                <Plus />
+                                New provider
+                            </Link>
+                        </Button>
+                    }
+                />
 
-                <Card>
-                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                        <CardTitle>Provider Registry</CardTitle>
-                        <CardDescription>
-                            OAuth credentials are stored encrypted. Disable a
-                            provider to stop new SSO logins.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-0">
+                <DataRegistry
+                    title="Provider registry"
+                    description="OAuth credentials are encrypted. Disable a provider to stop new SSO logins."
+                >
+                    {providers.length === 0 ? (
+                        <div className="p-6">
+                            <EmptyState
+                                icon={BadgeCheck}
+                                title="No SSO providers configured"
+                                detail="Add an OAuth provider when invited users should be able to sign in with SSO."
+                                action={
+                                    <Button size="sm" asChild>
+                                        <Link href={create()}>
+                                            <Plus />
+                                            New provider
+                                        </Link>
+                                    </Button>
+                                }
+                            />
+                        </div>
+                    ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full min-w-[980px] text-sm">
                                 <thead>
-                                    <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                                        <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
+                                    <tr className="border-b bg-muted/45 text-left text-xs text-muted-foreground">
+                                        <th className="py-2.5 pr-4 pl-3 font-medium sm:pl-4">
                                             Provider
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-4 font-medium">
                                             Status
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-4 font-medium">
                                             Domains
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-4 font-medium">
                                             Callback URL
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-4 font-medium">
                                             Linked Users
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-3 text-right font-medium sm:pr-4">
                                             Actions
                                         </th>
                                     </tr>
@@ -105,7 +111,7 @@ export default function AuthProvidersIndex({ providers }: Props) {
                                                 key={provider.id}
                                                 className="border-b transition-colors last:border-0 hover:bg-accent/40"
                                             >
-                                                <td className="py-3.5 pr-4 pl-4 sm:pl-6">
+                                                <td className="py-3 pr-4 pl-3 sm:pl-4">
                                                     <div className="font-medium">
                                                         {provider.name}
                                                     </div>
@@ -116,7 +122,7 @@ export default function AuthProvidersIndex({ providers }: Props) {
                                                         / {provider.client_id}
                                                     </div>
                                                 </td>
-                                                <td className="py-3.5 pr-4">
+                                                <td className="py-3 pr-4">
                                                     <StatusBadge
                                                         value={
                                                             provider.is_enabled
@@ -130,22 +136,22 @@ export default function AuthProvidersIndex({ providers }: Props) {
                                                         }
                                                     />
                                                 </td>
-                                                <td className="py-3.5 pr-4 text-muted-foreground">
+                                                <td className="py-3 pr-4 text-muted-foreground">
                                                     {provider.allowed_domains ||
                                                         'Any invited email'}
                                                 </td>
-                                                <td className="py-3.5 pr-4">
+                                                <td className="py-3 pr-4">
                                                     <code className="block max-w-xs truncate rounded bg-muted px-2 py-1 text-xs">
                                                         {provider.callback_url}
                                                     </code>
                                                 </td>
-                                                <td className="py-3.5 pr-4">
+                                                <td className="py-3 pr-4 tabular-nums">
                                                     {
                                                         provider.user_identities_count
                                                     }
                                                 </td>
-                                                <td className="py-3.5 pr-4">
-                                                    <div className="flex items-center gap-2">
+                                                <td className="py-3 pr-3 sm:pr-4">
+                                                    <div className="flex items-center justify-end gap-2">
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
@@ -245,21 +251,11 @@ export default function AuthProvidersIndex({ providers }: Props) {
                                             </tr>
                                         );
                                     })}
-                                    {providers.length === 0 && (
-                                        <tr>
-                                            <td
-                                                colSpan={6}
-                                                className="px-6 py-16 text-center text-muted-foreground"
-                                            >
-                                                No SSO providers configured.
-                                            </td>
-                                        </tr>
-                                    )}
                                 </tbody>
                             </table>
                         </div>
-                    </CardContent>
-                </Card>
+                    )}
+                </DataRegistry>
             </div>
         </>
     );

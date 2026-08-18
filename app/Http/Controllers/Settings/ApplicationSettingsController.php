@@ -7,6 +7,7 @@ use App\Http\Requests\ConfirmFactoryResetRequest;
 use App\Http\Requests\UpdateApplicationSettingsRequest;
 use App\Services\ApplicationSettings;
 use App\Services\AuditLogger;
+use DateTimeZone;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,6 +20,7 @@ class ApplicationSettingsController extends Controller
 
         return Inertia::render('settings/admin/application', [
             'settings' => $settings->formValues(),
+            'timezones' => DateTimeZone::listIdentifiers(),
             'factory_reset_confirmation_phrase' => ConfirmFactoryResetRequest::ConfirmationPhrase,
         ]);
     }

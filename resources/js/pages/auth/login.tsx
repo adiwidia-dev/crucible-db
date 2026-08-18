@@ -32,6 +32,15 @@ export default function Login({
         <>
             <Head title="Log in" />
 
+            {status && (
+                <div
+                    role="status"
+                    className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300"
+                >
+                    {status}
+                </div>
+            )}
+
             {passkeyLoginEnabled && (
                 <PasskeyVerify
                     separator={passwordLoginEnabled ? undefined : false}
@@ -42,11 +51,11 @@ export default function Login({
                 <Form
                     {...store.form()}
                     resetOnSuccess={['password']}
-                    className="flex flex-col gap-6"
+                    className="flex flex-col gap-5"
                 >
                     {({ processing, errors }) => (
                         <>
-                            <div className="grid gap-6">
+                            <div className="grid gap-5">
                                 <div className="grid gap-2">
                                     <Label htmlFor="email">Email address</Label>
                                     <Input
@@ -101,7 +110,7 @@ export default function Login({
 
                                 <Button
                                     type="submit"
-                                    className="mt-4 w-full"
+                                    className="mt-1 h-10 w-full"
                                     tabIndex={4}
                                     disabled={processing}
                                     data-test="login-button"
@@ -117,15 +126,10 @@ export default function Login({
 
             <AuthProviderButtons providers={authProviders} />
 
-            <div className="text-center text-sm text-muted-foreground">
-                Access is invitation-only. Ask an admin to invite you.
+            <div className="border-t pt-4 text-center text-xs leading-5 text-muted-foreground">
+                Access is invitation-only. Ask an administrator for an
+                invitation.
             </div>
-
-            {status && (
-                <div className="mb-4 text-center text-sm font-medium text-green-600">
-                    {status}
-                </div>
-            )}
         </>
     );
 }

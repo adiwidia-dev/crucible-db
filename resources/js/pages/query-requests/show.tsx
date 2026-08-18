@@ -1,16 +1,16 @@
 import { Form, Head, Link, usePage, usePoll } from '@inertiajs/react';
 import {
     Check,
+    CircleCheck,
+    CircleMinus,
+    CircleX,
     ChevronDown,
     Download,
     FileCode2,
     KeyRound,
     Pencil,
-    Play,
     RotateCcw,
-    Rows3,
     Send,
-    ShieldCheck,
     Trash2,
 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
@@ -27,13 +27,6 @@ import { StatusBadge } from '@/components/crucible/status-badge';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
-import {
     Dialog,
     DialogClose,
     DialogContent,
@@ -44,7 +37,12 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { driverLabel, formatDate, statusLabel } from '@/lib/crucible';
+import {
+    driverLabel,
+    formatDate,
+    queryRequestKindLabel,
+    statusLabel,
+} from '@/lib/crucible';
 import type {
     ExecutionStatus,
     Paginated,
@@ -70,6 +68,11 @@ type Execution = {
     sample_rows: Array<Record<string, unknown>> | null;
     error_message: string | null;
     executor: string | null;
+    connection: {
+        id: number;
+        name: string;
+        driver: string;
+    };
 };
 
 type QueryRequest = {
@@ -82,6 +85,16 @@ type QueryRequest = {
         position: number;
         sql: string;
         query_type: QueryType;
+        connection: {
+            id: number;
+            name: string;
+            driver: string;
+        };
+        execution: {
+            status: ExecutionStatus;
+            error_message: string | null;
+        } | null;
+        execution_state: ExecutionStatus | 'skipped' | null;
     }>;
     status: QueryRequestStatus;
     query_type: QueryType;
@@ -228,7 +241,6 @@ export default function QueryRequestShow({
     const { auth } = usePage<{ auth: Auth }>().props;
     const userTimezone = auth.user.timezone ?? 'UTC';
     const lastExecution = query_request.executions.data[0];
-    const sampleRows = lastExecution?.sample_rows ?? [];
     const [expandedExecutionIds, setExpandedExecutionIds] = useState<number[]>(
         [],
     );
@@ -262,6 +274,9 @@ export default function QueryRequestShow({
                           position: 1,
                           sql: query_request.sql ?? '',
                           query_type: query_request.query_type,
+                          connection: query_request.connection,
+                          execution: null,
+                          execution_state: null,
                       },
                   ]
             ).map((statement) => {
@@ -270,7 +285,7 @@ export default function QueryRequestShow({
                         ...statement,
                         sql: format(statement.sql, {
                             language:
-                                query_request.connection.driver === 'mysql'
+                                statement.connection.driver === 'mysql'
                                     ? 'mysql'
                                     : 'postgresql',
                             keywordCase: 'upper',
@@ -281,11 +296,14 @@ export default function QueryRequestShow({
                 }
             }),
         [
-            query_request.connection.driver,
+            query_request.connection,
             query_request.query_type,
             query_request.sql,
             query_request.statements,
         ],
+    );
+    const hasStatementLevelFailure = query_request.statements.some(
+        (statement) => statement.execution_state === 'failed',
     );
 
     function toggleExecutionSql(executionId: number): void {
@@ -345,13 +363,13 @@ export default function QueryRequestShow({
             <div className="crucible-page">
                 <PageHeader
                     icon={FileCode2}
-                    eyebrow="Query Request"
                     title={query_request.title}
-                    description={`${query_request.connection.name} / ${driverLabel(query_request.connection.driver)} / ${query_request.requester}`}
+                    description={`Request #${query_request.id} · ${query_request.connection.name} · ${query_request.requester}`}
                     actions={
                         <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge value={query_request.status} />
                             {can_update && (
-                                <Button variant="outline" asChild>
+                                <Button variant="outline" size="sm" asChild>
                                     <Link
                                         href={QueryRequestController.edit(
                                             query_request.id,
@@ -363,7 +381,7 @@ export default function QueryRequestShow({
                                 </Button>
                             )}
                             {query_request.active_session ? (
-                                <Button asChild>
+                                <Button size="sm" asChild>
                                     <Link
                                         href={querySessionShow(
                                             query_request.active_session.id,
@@ -381,7 +399,10 @@ export default function QueryRequestShow({
                                         )}
                                     >
                                         {({ processing }) => (
-                                            <Button disabled={processing}>
+                                            <Button
+                                                size="sm"
+                                                disabled={processing}
+                                            >
                                                 <KeyRound />
                                                 Start Session
                                             </Button>
@@ -392,9 +413,13 @@ export default function QueryRequestShow({
                             {can_delete && (
                                 <Dialog>
                                     <DialogTrigger asChild>
-                                        <Button variant="destructive">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                            aria-label="Delete request"
+                                        >
                                             <Trash2 />
-                                            Delete
                                         </Button>
                                     </DialogTrigger>
                                     <DialogContent>
@@ -438,44 +463,44 @@ export default function QueryRequestShow({
                     }
                 />
 
-                <Card>
-                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <CardTitle>Execution State</CardTitle>
-                            <div className="flex flex-wrap items-center gap-2">
-                                <StatusBadge value={query_request.status} />
-                                <StatusBadge
-                                    value={query_request.request_kind}
-                                    label={
-                                        query_request.request_kind ===
-                                        'query_access'
-                                            ? 'Query Access'
-                                            : 'Single Execution'
-                                    }
-                                />
-                                <StatusBadge
-                                    value={query_request.query_type}
-                                    label={statusLabel(
-                                        query_request.query_type,
-                                    )}
-                                />
-                                <StatusBadge
-                                    value={
-                                        query_request.requires_approval
-                                            ? 'pending_review'
-                                            : 'completed'
-                                    }
-                                    label={
-                                        query_request.requires_approval
-                                            ? 'Approval required'
-                                            : 'Approval bypassed'
-                                    }
-                                />
-                            </div>
+                <section
+                    aria-labelledby="request-details-title"
+                    className="border-y bg-card sm:rounded-lg sm:border"
+                >
+                    <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <h2
+                            id="request-details-title"
+                            className="text-sm font-semibold"
+                        >
+                            Request details
+                        </h2>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <StatusBadge
+                                value={query_request.request_kind}
+                                label={queryRequestKindLabel(
+                                    query_request.request_kind,
+                                )}
+                            />
+                            <StatusBadge
+                                value={query_request.query_type}
+                                label={statusLabel(query_request.query_type)}
+                            />
+                            <StatusBadge
+                                value={
+                                    query_request.requires_approval
+                                        ? 'pending_review'
+                                        : 'completed'
+                                }
+                                label={
+                                    query_request.requires_approval
+                                        ? 'Approval required'
+                                        : 'No approval required'
+                                }
+                            />
                         </div>
-                    </CardHeader>
-                    <CardContent className="px-4 py-4 sm:px-6">
-                        <dl className="grid grid-cols-2 gap-x-5 gap-y-3 text-sm md:grid-cols-3 xl:grid-cols-7">
+                    </div>
+                    <div className="px-4 py-4">
+                        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm md:grid-cols-4 xl:grid-cols-7">
                             <div className="min-w-0">
                                 <dt className="text-xs text-muted-foreground">
                                     Connection
@@ -558,191 +583,249 @@ export default function QueryRequestShow({
                         </dl>
 
                         {query_request.description && (
-                            <div className="mt-4 border-t pt-3 text-sm text-muted-foreground">
+                            <div className="mt-4 border-t pt-4 text-sm leading-6 text-foreground/80">
                                 {query_request.description}
                             </div>
                         )}
 
-                        {query_request.last_error && (
-                            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300">
-                                {query_request.last_error}
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {query_request.request_kind === 'single_execution' ? (
-                    <Card>
-                        <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                            <div className="flex items-center gap-2">
-                                <FileCode2 className="size-4 text-muted-foreground" />
-                                <CardTitle>
-                                    SQL Batch ({formattedStatements.length}{' '}
-                                    {formattedStatements.length === 1
-                                        ? 'statement'
-                                        : 'statements'})
-                                </CardTitle>
-                            </div>
-                            <CardDescription>
-                                Statements execute in this order and stop at
-                                the first failure.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="grid gap-4 p-4 sm:p-6">
-                            {formattedStatements.map((statement) => (
-                                <div
-                                    key={statement.id || statement.position}
-                                    className="overflow-hidden rounded-lg border bg-background"
-                                >
-                                    <div className="flex h-10 items-center justify-between gap-2 border-b bg-muted/40 px-3 text-xs text-muted-foreground">
-                                        <span className="flex items-center gap-2">
-                                            <FileCode2 className="size-3.5" />
-                                            Statement {statement.position}
-                                        </span>
-                                        <StatusBadge
-                                            value={statement.query_type}
-                                        />
-                                    </div>
-                                    <SqlEditor
-                                        value={statement.sql}
-                                        onChange={() => undefined}
-                                        driver={
-                                            query_request.connection.driver
-                                        }
-                                        readOnly
-                                        minHeight="8rem"
-                                    />
-                                </div>
-                            ))}
-                            {can_dispatch && (
-                                <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="text-sm text-muted-foreground">
-                                        This approved batch is ready for one
-                                        ordered execution.
-                                    </div>
-                                    <Form
-                                        {...QueryRequestController.dispatch.form(
-                                            query_request.id,
-                                        )}
-                                        options={{ preserveScroll: true }}
-                                    >
-                                        {({
-                                            processing,
-                                            recentlySuccessful,
-                                        }) => (
-                                            <Button
-                                                className="w-full sm:w-fit"
-                                                disabled={
-                                                    processing ||
-                                                    recentlySuccessful
-                                                }
-                                                onClick={() => {
-                                                    window.sessionStorage.setItem(
-                                                        executionToastStorageKey,
-                                                        '1',
-                                                    );
-                                                    setAwaitingExecution(true);
-                                                }}
-                                            >
-                                                <Send />
-                                                {processing
-                                                    ? 'Dispatching...'
-                                                    : recentlySuccessful
-                                                      ? 'Dispatched'
-                                                      : 'Execute batch'}
-                                            </Button>
-                                        )}
-                                    </Form>
+                        {query_request.last_error &&
+                            !hasStatementLevelFailure && (
+                                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300">
+                                    {query_request.last_error}
                                 </div>
                             )}
-                        </CardContent>
-                    </Card>
-                ) : (
-                    <Card>
-                        <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                            <div className="flex items-center gap-2">
-                                <KeyRound className="size-4 text-muted-foreground" />
-                                <CardTitle>Access Sessions</CardTitle>
+                    </div>
+                </section>
+
+                {query_request.request_kind === 'single_execution' ? (
+                    <section
+                        aria-labelledby="sql-batch-title"
+                        className="overflow-hidden border-y bg-card sm:rounded-lg sm:border"
+                    >
+                        <div className="flex flex-col gap-1 border-b px-4 py-3 sm:px-5">
+                            <h2
+                                id="sql-batch-title"
+                                className="text-sm font-semibold"
+                            >
+                                SQL Batch ({formattedStatements.length}{' '}
+                                {formattedStatements.length === 1
+                                    ? 'statement'
+                                    : 'statements'}
+                                )
+                            </h2>
+                            <p className="text-xs text-muted-foreground">
+                                Statements execute in this order and stop at the
+                                first failure.
+                            </p>
+                        </div>
+                        <div className="divide-y">
+                            {formattedStatements.map((statement) => {
+                                const isSkipped =
+                                    statement.execution_state === 'skipped';
+                                const hasFinishedExecution =
+                                    statement.execution_state === 'succeeded' ||
+                                    statement.execution_state === 'failed' ||
+                                    isSkipped;
+
+                                return (
+                                    <div
+                                        key={statement.id || statement.position}
+                                        className="bg-background"
+                                    >
+                                        <div className="flex h-9 items-center justify-between gap-2 border-b bg-muted/30 px-4 text-xs text-muted-foreground sm:px-5">
+                                            <span className="flex items-center gap-2">
+                                                {statement.execution_state ===
+                                                'succeeded' ? (
+                                                    <CircleCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                                                ) : statement.execution_state ===
+                                                  'failed' ? (
+                                                    <CircleX className="size-3.5 text-red-600 dark:text-red-400" />
+                                                ) : isSkipped ? (
+                                                    <CircleMinus className="size-3.5 text-muted-foreground" />
+                                                ) : (
+                                                    <FileCode2 className="size-3.5" />
+                                                )}
+                                                Statement {statement.position}
+                                                {isSkipped ? (
+                                                    <span className="text-muted-foreground/75">
+                                                        Skipped
+                                                    </span>
+                                                ) : hasFinishedExecution ? (
+                                                    <span className="text-muted-foreground/75">
+                                                        Locked
+                                                    </span>
+                                                ) : null}
+                                            </span>
+                                            <span className="flex items-center gap-2">
+                                                <span className="max-w-48 truncate font-medium text-foreground">
+                                                    {statement.connection.name}
+                                                </span>
+                                                <StatusBadge
+                                                    value={statement.query_type}
+                                                />
+                                            </span>
+                                        </div>
+                                        <div
+                                            aria-disabled={hasFinishedExecution}
+                                            className={
+                                                hasFinishedExecution
+                                                    ? 'bg-muted/20 opacity-75'
+                                                    : undefined
+                                            }
+                                        >
+                                            <SqlEditor
+                                                value={statement.sql}
+                                                onChange={() => undefined}
+                                                driver={
+                                                    statement.connection.driver
+                                                }
+                                                readOnly
+                                                minHeight="8rem"
+                                            />
+                                        </div>
+                                        {statement.execution?.status ===
+                                            'failed' &&
+                                            statement.execution
+                                                .error_message && (
+                                                <div className="flex gap-2 border-t bg-red-50 px-4 py-2 text-xs text-red-800 sm:px-5 dark:bg-red-950/30 dark:text-red-300">
+                                                    <CircleX className="mt-0.5 size-3.5 shrink-0" />
+                                                    <span>
+                                                        {
+                                                            statement.execution
+                                                                .error_message
+                                                        }
+                                                    </span>
+                                                </div>
+                                            )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {can_dispatch && (
+                            <div className="flex flex-col gap-3 border-t bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                                <div className="text-sm text-muted-foreground">
+                                    Approved and ready for ordered execution.
+                                </div>
+                                <Form
+                                    {...QueryRequestController.dispatch.form(
+                                        query_request.id,
+                                    )}
+                                    options={{ preserveScroll: true }}
+                                >
+                                    {({ processing, recentlySuccessful }) => (
+                                        <Button
+                                            className="w-full sm:w-fit"
+                                            disabled={
+                                                processing || recentlySuccessful
+                                            }
+                                            onClick={() => {
+                                                window.sessionStorage.setItem(
+                                                    executionToastStorageKey,
+                                                    '1',
+                                                );
+                                                setAwaitingExecution(true);
+                                            }}
+                                        >
+                                            <Send />
+                                            {processing
+                                                ? 'Dispatching...'
+                                                : recentlySuccessful
+                                                  ? 'Dispatched'
+                                                  : 'Execute batch'}
+                                        </Button>
+                                    )}
+                                </Form>
                             </div>
-                            <CardDescription>
+                        )}
+                    </section>
+                ) : (
+                    <section
+                        aria-labelledby="access-sessions-title"
+                        className="overflow-hidden border-y bg-card sm:rounded-lg sm:border"
+                    >
+                        <div className="border-b px-4 py-3 sm:px-5">
+                            <h2
+                                id="access-sessions-title"
+                                className="text-sm font-semibold"
+                            >
+                                Access sessions
+                            </h2>
+                            <p className="mt-1 text-xs text-muted-foreground">
                                 Time-boxed database browser sessions started
                                 from this request.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="p-0">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead>
-                                        <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                                            <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
-                                                Started
-                                            </th>
-                                            <th className="py-3 pr-4 font-medium">
-                                                Expires
-                                            </th>
-                                            <th className="py-3 pr-4 font-medium">
-                                                Ended
-                                            </th>
+                            </p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
+                                        <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
+                                            Started
+                                        </th>
+                                        <th className="py-3 pr-4 font-medium">
+                                            Expires
+                                        </th>
+                                        <th className="py-3 pr-4 font-medium">
+                                            Ended
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {query_request.sessions.map((session) => (
+                                        <tr
+                                            key={session.id}
+                                            className="border-b last:border-0"
+                                        >
+                                            <td className="py-3.5 pr-4 pl-4 sm:pl-6">
+                                                {formatDate(
+                                                    session.started_at,
+                                                    userTimezone,
+                                                )}
+                                            </td>
+                                            <td className="py-3.5 pr-4">
+                                                {formatDate(
+                                                    session.expires_at,
+                                                    userTimezone,
+                                                )}
+                                            </td>
+                                            <td className="py-3.5 pr-4">
+                                                {formatDate(
+                                                    session.ended_at,
+                                                    userTimezone,
+                                                )}
+                                            </td>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        {query_request.sessions.map(
-                                            (session) => (
-                                                <tr
-                                                    key={session.id}
-                                                    className="border-b last:border-0"
-                                                >
-                                                    <td className="py-3.5 pr-4 pl-4 sm:pl-6">
-                                                        {formatDate(
-                                                            session.started_at,
-                                                            userTimezone,
-                                                        )}
-                                                    </td>
-                                                    <td className="py-3.5 pr-4">
-                                                        {formatDate(
-                                                            session.expires_at,
-                                                            userTimezone,
-                                                        )}
-                                                    </td>
-                                                    <td className="py-3.5 pr-4">
-                                                        {formatDate(
-                                                            session.ended_at,
-                                                            userTimezone,
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ),
-                                        )}
-                                        {query_request.sessions.length ===
-                                            0 && (
-                                            <tr>
-                                                <td
-                                                    colSpan={3}
-                                                    className="py-10 text-center text-muted-foreground"
-                                                >
-                                                    No access sessions started.
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </CardContent>
-                    </Card>
+                                    ))}
+                                    {query_request.sessions.length === 0 && (
+                                        <tr>
+                                            <td
+                                                colSpan={3}
+                                                className="py-10 text-center text-muted-foreground"
+                                            >
+                                                No access sessions started.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
                 )}
 
                 {can_review && (
-                    <Card>
-                        <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                            <div className="flex items-center gap-2">
-                                <ShieldCheck className="size-4 text-muted-foreground" />
-                                <CardTitle>Review</CardTitle>
-                            </div>
-                            <CardDescription>
-                                Approval decision and reviewer comment.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="pt-6">
+                    <section
+                        aria-labelledby="review-title"
+                        className="border-y bg-card sm:rounded-lg sm:border"
+                    >
+                        <div className="border-b px-4 py-3 sm:px-5">
+                            <h2
+                                id="review-title"
+                                className="text-sm font-semibold"
+                            >
+                                Review request
+                            </h2>
+                        </div>
+                        <div className="p-4 sm:p-5">
                             <Form
                                 {...QueryReviewController.store.form(
                                     query_request.id,
@@ -797,241 +880,257 @@ export default function QueryRequestShow({
                                     </>
                                 )}
                             </Form>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </section>
                 )}
 
-                <Card>
-                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                        <div className="flex items-center gap-2">
-                            <Play className="size-4 text-muted-foreground" />
-                            <CardTitle>Execution History</CardTitle>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                                        <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
-                                            Status
-                                        </th>
-                                        <th className="py-3 pr-4 font-medium">
-                                            Type
-                                        </th>
-                                        <th className="py-3 pr-4 font-medium">
-                                            Statement / SQL
-                                        </th>
-                                        <th className="py-3 pr-4 font-medium">
-                                            Started
-                                        </th>
-                                        <th className="py-3 pr-4 font-medium">
-                                            Duration
-                                        </th>
-                                        <th className="py-3 pr-4 font-medium">
-                                            Executor
-                                        </th>
-                                        <th className="py-3 pr-4 font-medium">
-                                            Rows
-                                        </th>
-                                        <th className="py-3 pr-4 font-medium">
-                                            Error
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {query_request.executions.data.map(
-                                        (execution) => {
-                                            const isExpanded =
-                                                expandedExecutionIds.includes(
-                                                    execution.id,
-                                                );
+                <section
+                    aria-labelledby="execution-history-title"
+                    className="overflow-hidden border-y bg-card sm:rounded-lg sm:border"
+                >
+                    <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5">
+                        <h2
+                            id="execution-history-title"
+                            className="text-sm font-semibold"
+                        >
+                            Execution history
+                        </h2>
+                        <span className="text-xs text-muted-foreground">
+                            {query_request.executions.total}{' '}
+                            {query_request.executions.total === 1
+                                ? 'execution'
+                                : 'executions'}
+                        </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
+                                    <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
+                                        Status
+                                    </th>
+                                    <th className="py-3 pr-4 font-medium">
+                                        Type
+                                    </th>
+                                    <th className="py-3 pr-4 font-medium">
+                                        Statement / SQL
+                                    </th>
+                                    <th className="py-3 pr-4 font-medium">
+                                        Connection
+                                    </th>
+                                    <th className="py-3 pr-4 font-medium">
+                                        Started
+                                    </th>
+                                    <th className="py-3 pr-4 font-medium">
+                                        Duration
+                                    </th>
+                                    <th className="py-3 pr-4 font-medium">
+                                        Executor
+                                    </th>
+                                    <th className="py-3 pr-4 font-medium">
+                                        Rows
+                                    </th>
+                                    <th className="py-3 pr-4 font-medium">
+                                        Error
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {query_request.executions.data.map(
+                                    (execution) => {
+                                        const isExpanded =
+                                            expandedExecutionIds.includes(
+                                                execution.id,
+                                            );
 
-                                            return (
-                                                <Fragment key={execution.id}>
-                                                    <tr className="border-b align-top transition-colors last:border-0 hover:bg-accent/40">
-                                                        <td className="py-3.5 pr-4 pl-4 sm:pl-6">
-                                                            <StatusBadge
-                                                                value={
-                                                                    execution.status
-                                                                }
+                                        return (
+                                            <Fragment key={execution.id}>
+                                                <tr className="border-b align-top transition-colors last:border-0 hover:bg-accent/40">
+                                                    <td className="py-3.5 pr-4 pl-4 sm:pl-6">
+                                                        <StatusBadge
+                                                            value={
+                                                                execution.status
+                                                            }
+                                                        />
+                                                    </td>
+                                                    <td className="py-3.5 pr-4">
+                                                        <StatusBadge
+                                                            value={
+                                                                execution.query_type
+                                                            }
+                                                        />
+                                                    </td>
+                                                    <td className="max-w-[36rem] min-w-80 py-3.5 pr-4">
+                                                        <button
+                                                            type="button"
+                                                            className="group flex w-full items-start gap-2 rounded-md text-left"
+                                                            onClick={() =>
+                                                                toggleExecutionSql(
+                                                                    execution.id,
+                                                                )
+                                                            }
+                                                        >
+                                                            <ChevronDown
+                                                                className={`mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform ${
+                                                                    isExpanded
+                                                                        ? 'rotate-180'
+                                                                        : ''
+                                                                }`}
                                                             />
-                                                        </td>
-                                                        <td className="py-3.5 pr-4">
-                                                            <StatusBadge
-                                                                value={
-                                                                    execution.query_type
-                                                                }
-                                                            />
-                                                        </td>
-                                                        <td className="max-w-[36rem] min-w-80 py-3.5 pr-4">
-                                                            <button
-                                                                type="button"
-                                                                className="group flex w-full items-start gap-2 rounded-md text-left"
-                                                                onClick={() =>
-                                                                    toggleExecutionSql(
-                                                                        execution.id,
-                                                                    )
-                                                                }
-                                                            >
-                                                                <ChevronDown
-                                                                    className={`mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform ${
-                                                                        isExpanded
-                                                                            ? 'rotate-180'
-                                                                            : ''
-                                                                    }`}
-                                                                />
-                                                                <code className="line-clamp-2 font-mono text-xs text-muted-foreground group-hover:text-foreground">
-                                                                    {execution.statement_position && (
-                                                                        <span className="mr-2 font-sans font-medium text-foreground">
-                                                                            #{execution.statement_position}
-                                                                        </span>
-                                                                    )}
-                                                                    {execution.sql ??
-                                                                        'SQL not recorded'}
-                                                                </code>
-                                                            </button>
-                                                        </td>
-                                                        <td className="py-3.5 pr-4 text-muted-foreground">
-                                                            {formatDate(
-                                                                execution.started_at,
-                                                                userTimezone,
-                                                            )}
-                                                        </td>
-                                                        <td className="py-3.5 pr-4 font-mono text-xs">
-                                                            {execution.duration_ms ??
-                                                                0}{' '}
-                                                            ms
-                                                        </td>
-                                                        <td className="py-3.5 pr-4 font-medium">
-                                                            {execution.executor ??
-                                                                'Not recorded'}
-                                                        </td>
-                                                        <td className="py-3.5 pr-4 font-mono text-xs">
-                                                            {execution.row_count ??
-                                                                0}
-                                                            {execution.result_truncated
-                                                                ? '+'
-                                                                : ''}
-                                                        </td>
-                                                        <td className="max-w-96 truncate py-3.5 pr-4 text-muted-foreground">
-                                                            {execution.error_message ??
-                                                                ''}
+                                                            <code className="line-clamp-2 font-mono text-xs text-muted-foreground group-hover:text-foreground">
+                                                                {execution.statement_position && (
+                                                                    <span className="mr-2 font-sans font-medium text-foreground">
+                                                                        #
+                                                                        {
+                                                                            execution.statement_position
+                                                                        }
+                                                                    </span>
+                                                                )}
+                                                                {execution.sql ??
+                                                                    'SQL not recorded'}
+                                                            </code>
+                                                        </button>
+                                                    </td>
+                                                    <td className="max-w-48 py-3.5 pr-4">
+                                                        <span className="block truncate text-xs font-medium">
+                                                            {
+                                                                execution
+                                                                    .connection
+                                                                    .name
+                                                            }
+                                                        </span>
+                                                        <span className="text-xs text-muted-foreground">
+                                                            {
+                                                                execution
+                                                                    .connection
+                                                                    .driver
+                                                            }
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3.5 pr-4 text-muted-foreground">
+                                                        {formatDate(
+                                                            execution.started_at,
+                                                            userTimezone,
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3.5 pr-4 font-mono text-xs">
+                                                        {execution.duration_ms ??
+                                                            0}{' '}
+                                                        ms
+                                                    </td>
+                                                    <td className="py-3.5 pr-4 font-medium">
+                                                        {execution.executor ??
+                                                            'Not recorded'}
+                                                    </td>
+                                                    <td className="py-3.5 pr-4 font-mono text-xs">
+                                                        {execution.row_count ??
+                                                            0}
+                                                        {execution.result_truncated
+                                                            ? '+'
+                                                            : ''}
+                                                    </td>
+                                                    <td className="max-w-96 truncate py-3.5 pr-4 text-muted-foreground">
+                                                        {execution.error_message ??
+                                                            ''}
+                                                    </td>
+                                                </tr>
+                                                {isExpanded && (
+                                                    <tr className="border-b bg-muted/20">
+                                                        <td
+                                                            colSpan={8}
+                                                            className="px-4 py-3 sm:px-6"
+                                                        >
+                                                            <div className="grid gap-3">
+                                                                <div>
+                                                                    <div className="mb-2 text-xs font-medium text-muted-foreground uppercase">
+                                                                        SQL
+                                                                    </div>
+                                                                    <pre className="max-h-72 overflow-auto rounded-md border bg-background p-3 font-mono text-xs leading-5 whitespace-pre-wrap">
+                                                                        {execution.sql ??
+                                                                            'SQL not recorded'}
+                                                                    </pre>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="mb-2 text-xs font-medium text-muted-foreground uppercase">
+                                                                        Result
+                                                                    </div>
+                                                                    <ExecutionResult
+                                                                        execution={
+                                                                            execution
+                                                                        }
+                                                                    />
+                                                                </div>
+                                                            </div>
                                                         </td>
                                                     </tr>
-                                                    {isExpanded && (
-                                                        <tr className="border-b bg-muted/20">
-                                                            <td
-                                                                colSpan={8}
-                                                                className="px-4 py-3 sm:px-6"
-                                                            >
-                                                                <div className="grid gap-3">
-                                                                    <div>
-                                                                        <div className="mb-2 text-xs font-medium text-muted-foreground uppercase">
-                                                                            SQL
-                                                                        </div>
-                                                                        <pre className="max-h-72 overflow-auto rounded-md border bg-background p-3 font-mono text-xs leading-5 whitespace-pre-wrap">
-                                                                            {execution.sql ??
-                                                                                'SQL not recorded'}
-                                                                        </pre>
-                                                                    </div>
-                                                                    <div>
-                                                                        <div className="mb-2 text-xs font-medium text-muted-foreground uppercase">
-                                                                            Result
-                                                                        </div>
-                                                                        <ExecutionResult
-                                                                            execution={
-                                                                                execution
-                                                                            }
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    )}
-                                                </Fragment>
-                                            );
-                                        },
-                                    )}
-                                    {query_request.executions.data.length ===
-                                        0 && (
-                                        <tr>
-                                            <td
-                                                colSpan={8}
-                                                className="py-10 text-center text-muted-foreground"
-                                            >
-                                                No executions recorded.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                        <Pagination pagination={query_request.executions} />
-                    </CardContent>
-                </Card>
-
-                {sampleRows.length > 0 && (
-                    <Card>
-                        <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                            <div className="flex items-center gap-2">
-                                <Rows3 className="size-4 text-muted-foreground" />
-                                <CardTitle>Sample Rows</CardTitle>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="p-0">
-                            <SampleRows rows={sampleRows} />
-                        </CardContent>
-                    </Card>
-                )}
+                                                )}
+                                            </Fragment>
+                                        );
+                                    },
+                                )}
+                                {query_request.executions.data.length === 0 && (
+                                    <tr>
+                                        <td
+                                            colSpan={8}
+                                            className="py-10 text-center text-muted-foreground"
+                                        >
+                                            No executions recorded.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                    <Pagination pagination={query_request.executions} />
+                </section>
 
                 {query_request.reviews.length > 0 && (
-                    <Card>
-                        <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                            <div className="flex items-center gap-2">
-                                <ShieldCheck className="size-4 text-muted-foreground" />
-                                <CardTitle>Reviews</CardTitle>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="pt-6">
-                            <div className="grid gap-3">
-                                {query_request.reviews.map((review) => (
-                                    <div
-                                        key={review.id}
-                                        className="rounded-lg border bg-muted/25 p-4 text-sm"
-                                    >
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <StatusBadge
-                                                value={
-                                                    review.decision ===
-                                                    'approved'
-                                                        ? 'approved'
-                                                        : 'rejected'
-                                                }
-                                                label={statusLabel(
-                                                    review.decision,
-                                                )}
-                                            />
-                                            <span className="font-medium">
-                                                {review.reviewer}
-                                            </span>
-                                            <span className="text-muted-foreground">
-                                                {formatDate(
-                                                    review.created_at,
-                                                    userTimezone,
-                                                )}
-                                            </span>
-                                        </div>
-                                        {review.comment && (
-                                            <p className="mt-2 text-muted-foreground">
-                                                {review.comment}
-                                            </p>
-                                        )}
+                    <section
+                        aria-labelledby="reviews-title"
+                        className="overflow-hidden border-y bg-card sm:rounded-lg sm:border"
+                    >
+                        <div className="border-b px-4 py-3 sm:px-5">
+                            <h2
+                                id="reviews-title"
+                                className="text-sm font-semibold"
+                            >
+                                Review history
+                            </h2>
+                        </div>
+                        <div className="divide-y">
+                            {query_request.reviews.map((review) => (
+                                <div
+                                    key={review.id}
+                                    className="px-4 py-3 text-sm sm:px-5"
+                                >
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <StatusBadge
+                                            value={
+                                                review.decision === 'approved'
+                                                    ? 'approved'
+                                                    : 'rejected'
+                                            }
+                                            label={statusLabel(review.decision)}
+                                        />
+                                        <span className="font-medium">
+                                            {review.reviewer}
+                                        </span>
+                                        <span className="text-muted-foreground">
+                                            {formatDate(
+                                                review.created_at,
+                                                userTimezone,
+                                            )}
+                                        </span>
                                     </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
+                                    {review.comment && (
+                                        <p className="mt-2 text-muted-foreground">
+                                            {review.comment}
+                                        </p>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </section>
                 )}
             </div>
         </>

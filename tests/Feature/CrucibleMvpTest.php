@@ -507,7 +507,7 @@ class CrucibleMvpTest extends TestCase
             'request_kind' => QueryRequestKind::SingleExecution->value,
             'title' => 'Create staging table',
             'sql' => 'create table staging_orders (id integer)',
-        ])->assertSessionHasErrors('database_connection_id');
+        ])->assertSessionHasErrors('statements.0.database_connection_id');
 
         RoleDatabasePermission::query()->where('role_id', $this->roleId($developer))->update([
             'access_mode' => AccessMode::Write,
@@ -622,12 +622,6 @@ SQL;
                 ->where('query_requests.data.0.latest_query_type', QueryType::Read->value)
                 ->where('query_requests.data.0.effective_query_type', QueryType::Write->value));
 
-        $this->actingAs($admin)
-            ->get(route('dashboard'))
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->where('recent_requests.0.latest_query_type', QueryType::Read->value)
-                ->where('recent_requests.0.effective_query_type', QueryType::Write->value));
     }
 
     public function test_non_admin_user_can_view_requests_for_accessible_connections(): void

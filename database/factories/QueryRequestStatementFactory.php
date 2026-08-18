@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\QueryType;
+use App\Models\DatabaseConnection;
 use App\Models\QueryRequest;
 use App\Models\QueryRequestStatement;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -21,6 +22,7 @@ class QueryRequestStatementFactory extends Factory
     {
         return [
             'query_request_id' => QueryRequest::factory(),
+            'database_connection_id' => DatabaseConnection::factory(),
             'position' => 1,
             'sql' => 'select 1 as value',
             'query_type' => QueryType::Read,

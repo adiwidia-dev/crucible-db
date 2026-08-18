@@ -1,16 +1,11 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Edit3, Plus, Trash2 } from 'lucide-react';
+import { Edit3, KeyRound, Plus, Trash2 } from 'lucide-react';
 import RoleController from '@/actions/App/Http/Controllers/RoleController';
+import { DataRegistry } from '@/components/crucible/data-registry';
+import { EmptyState } from '@/components/crucible/empty-state';
+import { PageHeader } from '@/components/crucible/page-header';
 import { StatusBadge } from '@/components/crucible/status-badge';
-import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
 import {
     Dialog,
     DialogClose,
@@ -47,29 +42,41 @@ export default function RolesIndex({ roles }: Props) {
         <>
             <Head title="Roles" />
 
-            <div className="space-y-6">
-                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                    <Heading
-                        variant="small"
-                        title="Roles"
-                        description={`${roles.length} roles available for user assignment`}
-                    />
-                    <Button asChild>
-                        <Link href={create()}>
-                            <Plus />
-                            New role
-                        </Link>
-                    </Button>
-                </div>
+            <div className="crucible-page">
+                <PageHeader
+                    title="Roles"
+                    description={`${roles.length} roles available for user assignment`}
+                    actions={
+                        <Button asChild>
+                            <Link href={create()}>
+                                <Plus />
+                                New role
+                            </Link>
+                        </Button>
+                    }
+                />
 
-                <Card>
-                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                        <CardTitle>Role Registry</CardTitle>
-                        <CardDescription>
-                            Manage non-admin roles used by the access matrix.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-0">
+                <DataRegistry
+                    title="Role registry"
+                    description="Manage custom roles used by the access matrix."
+                >
+                    {roles.length === 0 ? (
+                        <div className="p-6">
+                            <EmptyState
+                                icon={KeyRound}
+                                title="No custom roles yet"
+                                detail="Create a role before assigning database policies to people."
+                                action={
+                                    <Button size="sm" asChild>
+                                        <Link href={create()}>
+                                            <Plus />
+                                            New role
+                                        </Link>
+                                    </Button>
+                                }
+                            />
+                        </div>
+                    ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full min-w-[720px] table-fixed text-sm">
                                 <colgroup>
@@ -80,20 +87,20 @@ export default function RolesIndex({ roles }: Props) {
                                     <col className="w-[16%]" />
                                 </colgroup>
                                 <thead>
-                                    <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                                        <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
+                                    <tr className="border-b bg-muted/45 text-left text-xs text-muted-foreground">
+                                        <th className="py-2.5 pr-4 pl-3 font-medium sm:pl-4">
                                             Role
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-4 font-medium">
                                             Type
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-4 font-medium">
                                             Users
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-4 font-medium">
                                             Policies
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-3 text-right font-medium sm:pr-4">
                                             Actions
                                         </th>
                                     </tr>
@@ -111,7 +118,7 @@ export default function RolesIndex({ roles }: Props) {
                                                 key={role.id}
                                                 className="border-b transition-colors last:border-0 hover:bg-accent/40"
                                             >
-                                                <td className="py-3.5 pr-4 pl-4 sm:pl-6">
+                                                <td className="py-3 pr-4 pl-3 sm:pl-4">
                                                     <div className="font-medium">
                                                         {role.name}
                                                     </div>
@@ -124,7 +131,7 @@ export default function RolesIndex({ roles }: Props) {
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="py-3.5 pr-4">
+                                                <td className="py-3 pr-4">
                                                     <StatusBadge
                                                         value={
                                                             role.is_admin
@@ -138,20 +145,20 @@ export default function RolesIndex({ roles }: Props) {
                                                         }
                                                     />
                                                 </td>
-                                                <td className="py-3.5 pr-4">
+                                                <td className="py-3 pr-4">
                                                     <span className="tabular-nums">
                                                         {role.users_count}
                                                     </span>
                                                 </td>
-                                                <td className="py-3.5 pr-4">
+                                                <td className="py-3 pr-4">
                                                     <span className="tabular-nums">
                                                         {
                                                             role.database_permissions_count
                                                         }
                                                     </span>
                                                 </td>
-                                                <td className="py-3.5 pr-4">
-                                                    <div className="flex items-center gap-2">
+                                                <td className="py-3 pr-3 sm:pr-4">
+                                                    <div className="flex items-center justify-end gap-2">
                                                         {role.is_admin ? (
                                                             <Tooltip>
                                                                 <TooltipTrigger
@@ -296,8 +303,8 @@ export default function RolesIndex({ roles }: Props) {
                                 </tbody>
                             </table>
                         </div>
-                    </CardContent>
-                </Card>
+                    )}
+                </DataRegistry>
             </div>
         </>
     );

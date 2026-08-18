@@ -1,8 +1,7 @@
-import { Form, Head, usePage } from '@inertiajs/react';
-import { Link } from '@inertiajs/react';
+import { Form, Head, Link, usePage } from '@inertiajs/react';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
+import { PageHeader } from '@/components/crucible/page-header';
 import DeleteUser from '@/components/delete-user';
-import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,128 +31,144 @@ export default function Profile({
 
             <h1 className="sr-only">Profile settings</h1>
 
-            <div className="space-y-6">
-                <Heading
-                    variant="small"
+            <div className="crucible-page">
+                <PageHeader
                     title="Profile"
-                    description="Update your name and email address"
+                    description="Update your name, email address, and operational timezone."
                 />
 
-                <Form
-                    {...ProfileController.update.form()}
-                    options={{
-                        preserveScroll: true,
-                    }}
-                    className="space-y-6"
-                >
-                    {({ processing, errors }) => (
-                        <>
-                            <div className="grid gap-2">
-                                <Label htmlFor="name">Name</Label>
+                <section className="max-w-3xl overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                    <div className="border-b px-4 py-3 sm:px-5">
+                        <h2 className="text-sm font-semibold">
+                            Personal details
+                        </h2>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                            Information used in request, approval, and audit
+                            records.
+                        </p>
+                    </div>
+                    <Form
+                        {...ProfileController.update.form()}
+                        options={{
+                            preserveScroll: true,
+                        }}
+                        className="space-y-5 px-4 py-6 sm:px-5"
+                    >
+                        {({ processing, errors }) => (
+                            <>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="name">Name</Label>
 
-                                <Input
-                                    id="name"
-                                    className="mt-1 block w-full"
-                                    defaultValue={auth.user.name}
-                                    name="name"
-                                    required
-                                    autoComplete="name"
-                                    placeholder="Full name"
-                                />
+                                    <Input
+                                        id="name"
+                                        className="mt-1 block w-full"
+                                        defaultValue={auth.user.name}
+                                        name="name"
+                                        required
+                                        autoComplete="name"
+                                        placeholder="Full name"
+                                    />
 
-                                <InputError
-                                    className="mt-2"
-                                    message={errors.name}
-                                />
-                            </div>
+                                    <InputError
+                                        className="mt-2"
+                                        message={errors.name}
+                                    />
+                                </div>
 
-                            <div className="grid gap-2">
-                                <Label htmlFor="email">Email address</Label>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="email">Email address</Label>
 
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    className="mt-1 block w-full"
-                                    defaultValue={auth.user.email}
-                                    name="email"
-                                    required
-                                    autoComplete="username"
-                                    placeholder="Email address"
-                                />
+                                    <Input
+                                        id="email"
+                                        type="email"
+                                        className="mt-1 block w-full"
+                                        defaultValue={auth.user.email}
+                                        name="email"
+                                        required
+                                        autoComplete="username"
+                                        placeholder="Email address"
+                                    />
 
-                                <InputError
-                                    className="mt-2"
-                                    message={errors.email}
-                                />
-                            </div>
+                                    <InputError
+                                        className="mt-2"
+                                        message={errors.email}
+                                    />
+                                </div>
 
-                            <div className="grid gap-2">
-                                <Label htmlFor="timezone">Timezone</Label>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="timezone">Timezone</Label>
 
-                                <select
-                                    id="timezone"
-                                    name="timezone"
-                                    defaultValue={auth.user.timezone ?? 'UTC'}
-                                    className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                    required
-                                >
-                                    {timezones.map((timezone) => (
-                                        <option key={timezone} value={timezone}>
-                                            {timezone}
-                                        </option>
-                                    ))}
-                                </select>
-
-                                <p className="text-xs text-muted-foreground">
-                                    Scheduled query inputs and operational
-                                    timestamps use this timezone.
-                                </p>
-
-                                <InputError
-                                    className="mt-2"
-                                    message={errors.timezone}
-                                />
-                            </div>
-
-                            {mustVerifyEmail &&
-                                auth.user.email_verified_at === null && (
-                                    <div>
-                                        <p className="-mt-4 text-sm text-muted-foreground">
-                                            Your email address is unverified.{' '}
-                                            <Link
-                                                href={send()}
-                                                as="button"
-                                                className="text-foreground underline decoration-neutral-300 underline-offset-4 transition-colors duration-300 ease-out hover:decoration-current! dark:decoration-neutral-500"
+                                    <select
+                                        id="timezone"
+                                        name="timezone"
+                                        defaultValue={
+                                            auth.user.timezone ?? 'UTC'
+                                        }
+                                        className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                        required
+                                    >
+                                        {timezones.map((timezone) => (
+                                            <option
+                                                key={timezone}
+                                                value={timezone}
                                             >
-                                                Click here to re-send the
-                                                verification email.
-                                            </Link>
-                                        </p>
+                                                {timezone}
+                                            </option>
+                                        ))}
+                                    </select>
 
-                                        {status ===
-                                            'verification-link-sent' && (
-                                            <div className="mt-2 text-sm font-medium text-green-600">
-                                                A new verification link has been
-                                                sent to your email address.
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                                    <p className="text-xs text-muted-foreground">
+                                        Scheduled query inputs and operational
+                                        timestamps use this timezone.
+                                    </p>
 
-                            <div className="flex items-center gap-4">
-                                <Button
-                                    disabled={processing}
-                                    data-test="update-profile-button"
-                                >
-                                    Save
-                                </Button>
-                            </div>
-                        </>
-                    )}
-                </Form>
+                                    <InputError
+                                        className="mt-2"
+                                        message={errors.timezone}
+                                    />
+                                </div>
+
+                                {mustVerifyEmail &&
+                                    auth.user.email_verified_at === null && (
+                                        <div>
+                                            <p className="-mt-4 text-sm text-muted-foreground">
+                                                Your email address is
+                                                unverified.{' '}
+                                                <Link
+                                                    href={send()}
+                                                    as="button"
+                                                    className="text-foreground underline decoration-neutral-300 underline-offset-4 transition-colors duration-300 ease-out hover:decoration-current! dark:decoration-neutral-500"
+                                                >
+                                                    Click here to re-send the
+                                                    verification email.
+                                                </Link>
+                                            </p>
+
+                                            {status ===
+                                                'verification-link-sent' && (
+                                                <div className="mt-2 text-sm font-medium text-green-600">
+                                                    A new verification link has
+                                                    been sent to your email
+                                                    address.
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                <div className="flex items-center justify-end border-t pt-5">
+                                    <Button
+                                        disabled={processing}
+                                        data-test="update-profile-button"
+                                    >
+                                        Save changes
+                                    </Button>
+                                </div>
+                            </>
+                        )}
+                    </Form>
+                </section>
+                <DeleteUser />
             </div>
-
-            <DeleteUser />
         </>
     );
 }

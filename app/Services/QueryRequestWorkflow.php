@@ -12,8 +12,10 @@ use App\Models\QueryRequest;
 use App\Models\QueryReview;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 
 class QueryRequestWorkflow
 {
@@ -23,37 +25,69 @@ class QueryRequestWorkflow
     ) {}
 
     /**
-     * @param  array{database_connection_id:int,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string}>,scheduled_at?:string|null,access_duration_minutes?:int|null}  $data
+     * @param  DatabaseConnection|array{database_connection_id?:int,database_connection_ids?:array<int, int>,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}  $databaseConnectionOrData
+     * @param  array{database_connection_id?:int,database_connection_ids?:array<int, int>,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}|null  $data
      *
      * @throws ValidationException
      */
-    public function create(User $requester, DatabaseConnection $databaseConnection, array $data): QueryRequest
+    public function create(User $requester, DatabaseConnection|array $databaseConnectionOrData, ?array $data = null): QueryRequest
     {
-        $requestKind = QueryRequestKind::from($data['request_kind']);
-        $statements = [];
-        $permission = $requester->effectiveDatabasePermission($databaseConnection);
+        if ($databaseConnectionOrData instanceof DatabaseConnection) {
+            if ($data === null) {
+                throw new InvalidArgumentException('Query request data is required when creating a request for a database connection.');
+            }
 
-        if ($requestKind === QueryRequestKind::SingleExecution) {
-            $statements = $this->validateStatements($this->statementInput($data));
+            $data['database_connection_id'] ??= $databaseConnectionOrData->id;
+            $data['database_connection_ids'] ??= [$databaseConnectionOrData->id];
+        } else {
+            $data = $databaseConnectionOrData;
+        }
+
+        $requestKind = QueryRequestKind::from($data['request_kind']);
+        $statements = $requestKind === QueryRequestKind::SingleExecution
+            ? $this->validateStatements($this->statementInput($data))
+            : [];
+        $databaseConnections = $requestKind === QueryRequestKind::SingleExecution
+            ? $this->databaseConnectionsForStatements($statements)
+            : $this->databaseConnectionsForAccess($data);
+        $databaseConnection = $requestKind === QueryRequestKind::SingleExecution
+            ? $databaseConnections->get($statements[0]['database_connection_id'])
+            : $databaseConnections->first();
+
+        if (! $databaseConnection instanceof DatabaseConnection) {
+            throw ValidationException::withMessages([
+                'database_connection_id' => 'Select a valid database connection.',
+            ]);
         }
 
         $queryType = $this->batchQueryType($statements);
 
         if (! $requester->isAdmin()) {
-            if ($requestKind === QueryRequestKind::SingleExecution && ! $permission['access_mode']->allows($queryType)) {
-                throw ValidationException::withMessages([
-                    'database_connection_id' => 'Your role is not allowed to run this query type on the selected database.',
-                ]);
+            if ($requestKind === QueryRequestKind::SingleExecution) {
+                foreach ($statements as $index => $statement) {
+                    $permission = $requester->effectiveDatabasePermission($databaseConnections->get($statement['database_connection_id']));
+
+                    if (! $permission['access_mode']->allows($statement['query_type'])) {
+                        throw ValidationException::withMessages([
+                            "statements.{$index}.database_connection_id" => 'Your role is not allowed to run this query type on the selected database.',
+                        ]);
+                    }
+                }
             }
 
-            if ($requestKind === QueryRequestKind::QueryAccess && $permission['access_mode'] === AccessMode::None) {
-                throw ValidationException::withMessages([
-                    'database_connection_id' => 'Your role is not allowed to access the selected database.',
-                ]);
+            if ($requestKind === QueryRequestKind::QueryAccess) {
+                foreach ($databaseConnections as $connection) {
+                    if ($requester->effectiveDatabasePermission($connection)['access_mode'] === AccessMode::None) {
+                        throw ValidationException::withMessages([
+                            'database_connection_ids' => 'Your role is not allowed to access every selected database.',
+                        ]);
+                    }
+                }
             }
         }
 
-        $requiresApproval = ! $requester->isAdmin() && $permission['requires_approval'];
+        $requiresApproval = ! $requester->isAdmin() && $databaseConnections
+            ->contains(fn (DatabaseConnection $connection): bool => $requester->effectiveDatabasePermission($connection)['requires_approval']);
         $scheduledAt = $requestKind === QueryRequestKind::SingleExecution && filled($data['scheduled_at'] ?? null)
             ? Carbon::parse($data['scheduled_at'])
             : null;
@@ -61,7 +95,7 @@ class QueryRequestWorkflow
             ? (int) ($data['access_duration_minutes'] ?? 60)
             : null;
 
-        return DB::transaction(function () use ($requester, $databaseConnection, $data, $requestKind, $queryType, $statements, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
+        return DB::transaction(function () use ($requester, $databaseConnection, $databaseConnections, $data, $requestKind, $queryType, $statements, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
             $status = QueryRequestStatus::PendingReview;
 
             if (! $requiresApproval) {
@@ -85,12 +119,17 @@ class QueryRequestWorkflow
             ]);
 
             $this->replaceStatements($queryRequest, $statements);
+            $queryRequest->accessConnections()->sync(
+                $requestKind === QueryRequestKind::QueryAccess
+                    ? $databaseConnections->pluck('id')->all()
+                    : [],
+            );
 
             $this->auditLogger->log('query_request.created', $requester, $queryRequest, [
                 'status' => $queryRequest->status->value,
                 'query_type' => $queryRequest->query_type->value,
                 'request_kind' => $queryRequest->request_kind->value,
-                'database_connection_id' => $databaseConnection->id,
+                'database_connection_ids' => $databaseConnections->pluck('id')->values()->all(),
                 'statement_count' => count($statements),
             ]);
 
@@ -99,30 +138,52 @@ class QueryRequestWorkflow
     }
 
     /**
-     * @param  array{database_connection_id:int,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string}>,scheduled_at?:string|null,access_duration_minutes?:int|null}  $data
+     * @param  array{database_connection_id?:int,database_connection_ids?:array<int, int>,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}  $data
      *
      * @throws ValidationException
      */
-    public function update(QueryRequest $queryRequest, User $actor, DatabaseConnection $databaseConnection, array $data): QueryRequest
+    public function update(QueryRequest $queryRequest, User $actor, array $data): QueryRequest
     {
         $requestKind = QueryRequestKind::from($data['request_kind']);
         $statements = $requestKind === QueryRequestKind::SingleExecution
             ? $this->validateStatements($this->statementInput($data))
             : [];
+        $databaseConnections = $requestKind === QueryRequestKind::SingleExecution
+            ? $this->databaseConnectionsForStatements($statements)
+            : $this->databaseConnectionsForAccess($data);
+        $databaseConnection = $requestKind === QueryRequestKind::SingleExecution
+            ? $databaseConnections->get($statements[0]['database_connection_id'])
+            : $databaseConnections->first();
+
+        if (! $databaseConnection instanceof DatabaseConnection) {
+            throw ValidationException::withMessages([
+                'database_connection_id' => 'Select a valid database connection.',
+            ]);
+        }
+
         $queryType = $this->batchQueryType($statements);
-        $permission = $actor->effectiveDatabasePermission($databaseConnection);
 
         if (! $actor->isAdmin()) {
-            if ($requestKind === QueryRequestKind::SingleExecution && ! $permission['access_mode']->allows($queryType)) {
-                throw ValidationException::withMessages([
-                    'database_connection_id' => 'Your role is not allowed to run this query type on the selected database.',
-                ]);
+            if ($requestKind === QueryRequestKind::SingleExecution) {
+                foreach ($statements as $index => $statement) {
+                    $permission = $actor->effectiveDatabasePermission($databaseConnections->get($statement['database_connection_id']));
+
+                    if (! $permission['access_mode']->allows($statement['query_type'])) {
+                        throw ValidationException::withMessages([
+                            "statements.{$index}.database_connection_id" => 'Your role is not allowed to run this query type on the selected database.',
+                        ]);
+                    }
+                }
             }
 
-            if ($requestKind === QueryRequestKind::QueryAccess && $permission['access_mode'] === AccessMode::None) {
-                throw ValidationException::withMessages([
-                    'database_connection_id' => 'Your role is not allowed to access the selected database.',
-                ]);
+            if ($requestKind === QueryRequestKind::QueryAccess) {
+                foreach ($databaseConnections as $connection) {
+                    if ($actor->effectiveDatabasePermission($connection)['access_mode'] === AccessMode::None) {
+                        throw ValidationException::withMessages([
+                            'database_connection_ids' => 'Your role is not allowed to access every selected database.',
+                        ]);
+                    }
+                }
             }
         }
 
@@ -133,7 +194,7 @@ class QueryRequestWorkflow
             ? (int) ($data['access_duration_minutes'] ?? 60)
             : null;
 
-        return DB::transaction(function () use ($queryRequest, $actor, $databaseConnection, $data, $requestKind, $statements, $queryType, $scheduledAt, $accessDurationMinutes): QueryRequest {
+        return DB::transaction(function () use ($queryRequest, $actor, $databaseConnection, $databaseConnections, $data, $requestKind, $statements, $queryType, $scheduledAt, $accessDurationMinutes): QueryRequest {
             $lockedQueryRequest = QueryRequest::query()->lockForUpdate()->findOrFail($queryRequest->id);
 
             if (! $lockedQueryRequest->isEditable()) {
@@ -165,6 +226,11 @@ class QueryRequestWorkflow
             ])->save();
 
             $this->replaceStatements($lockedQueryRequest, $statements);
+            $lockedQueryRequest->accessConnections()->sync(
+                $requestKind === QueryRequestKind::QueryAccess
+                    ? $databaseConnections->pluck('id')->all()
+                    : [],
+            );
 
             $this->auditLogger->log('query_request.updated', $actor, $lockedQueryRequest, [
                 'previous_status' => $previousStatus->value,
@@ -172,7 +238,7 @@ class QueryRequestWorkflow
                 'status' => $lockedQueryRequest->status->value,
                 'query_type' => $lockedQueryRequest->query_type->value,
                 'request_kind' => $lockedQueryRequest->request_kind->value,
-                'database_connection_id' => $databaseConnection->id,
+                'database_connection_ids' => $databaseConnections->pluck('id')->values()->all(),
                 'statement_count' => count($statements),
             ]);
 
@@ -251,8 +317,8 @@ class QueryRequestWorkflow
     }
 
     /**
-     * @param  array<int, array{sql:string}>  $statements
-     * @return array<int, array{position:int, sql:string, query_type:QueryType}>
+     * @param  array<int, array{sql?:string,database_connection_id?:int}>  $statements
+     * @return array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int}>
      *
      * @throws ValidationException
      */
@@ -267,6 +333,14 @@ class QueryRequestWorkflow
         $validated = [];
 
         foreach (array_values($statements) as $index => $statement) {
+            $databaseConnectionId = (int) ($statement['database_connection_id'] ?? 0);
+
+            if ($databaseConnectionId < 1) {
+                throw ValidationException::withMessages([
+                    "statements.{$index}.database_connection_id" => 'Select a connection for this statement.',
+                ]);
+            }
+
             try {
                 $sql = $this->queryGuard->validateExecutable((string) ($statement['sql'] ?? ''));
                 $queryType = $this->queryGuard->classify($sql);
@@ -280,6 +354,7 @@ class QueryRequestWorkflow
 
             $validated[] = [
                 'position' => $index + 1,
+                'database_connection_id' => $databaseConnectionId,
                 'sql' => $sql,
                 'query_type' => $queryType,
             ];
@@ -289,7 +364,7 @@ class QueryRequestWorkflow
     }
 
     /**
-     * @param  array<int, array{position:int, sql:string, query_type:QueryType}>  $statements
+     * @param  array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int}>  $statements
      */
     private function batchQueryType(array $statements): QueryType
     {
@@ -299,7 +374,7 @@ class QueryRequestWorkflow
     }
 
     /**
-     * @param  array<int, array{position:int, sql:string, query_type:QueryType}>  $statements
+     * @param  array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int}>  $statements
      */
     private function replaceStatements(QueryRequest $queryRequest, array $statements): void
     {
@@ -308,6 +383,7 @@ class QueryRequestWorkflow
         $queryRequest->statements()->createMany(array_map(
             fn (array $statement): array => [
                 'position' => $statement['position'],
+                'database_connection_id' => $statement['database_connection_id'],
                 'sql' => $statement['sql'],
                 'query_type' => $statement['query_type'],
             ],
@@ -316,17 +392,79 @@ class QueryRequestWorkflow
     }
 
     /**
-     * @param  array{sql?:string|null,statements?:array<int, array{sql:string}>}  $data
-     * @return array<int, array{sql:string}>
+     * @param  array{database_connection_id?:int,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id?:int}>}  $data
+     * @return array<int, array{sql:string,database_connection_id?:int}>
      */
     private function statementInput(array $data): array
     {
         if (array_key_exists('statements', $data)) {
-            return $data['statements'] ?? [];
+            return array_map(
+                fn (array $statement): array => [
+                    ...$statement,
+                    'database_connection_id' => $statement['database_connection_id'] ?? $data['database_connection_id'] ?? null,
+                ],
+                $data['statements'],
+            );
         }
 
         return filled($data['sql'] ?? null)
-            ? [['sql' => (string) $data['sql']]]
+            ? [[
+                'sql' => (string) $data['sql'],
+                'database_connection_id' => $data['database_connection_id'] ?? null,
+            ]]
             : [];
+    }
+
+    /**
+     * @param  array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int}>  $statements
+     * @return Collection<int, DatabaseConnection>
+     *
+     * @throws ValidationException
+     */
+    private function databaseConnectionsForStatements(array $statements): Collection
+    {
+        $connectionIds = collect($statements)
+            ->pluck('database_connection_id')
+            ->unique()
+            ->values();
+        $databaseConnections = DatabaseConnection::query()
+            ->whereKey($connectionIds)
+            ->get()
+            ->keyBy('id');
+
+        if ($databaseConnections->count() !== $connectionIds->count()) {
+            throw ValidationException::withMessages([
+                'statements' => 'One or more selected connections are no longer available.',
+            ]);
+        }
+
+        return $databaseConnections;
+    }
+
+    /**
+     * @param  array{database_connection_id?:int,database_connection_ids?:array<int, int>}  $data
+     * @return Collection<int, DatabaseConnection>
+     *
+     * @throws ValidationException
+     */
+    private function databaseConnectionsForAccess(array $data): Collection
+    {
+        $connectionIds = collect($data['database_connection_ids'] ?? [$data['database_connection_id'] ?? null])
+            ->filter(fn (mixed $connectionId): bool => (int) $connectionId > 0)
+            ->map(fn (mixed $connectionId): int => (int) $connectionId)
+            ->unique()
+            ->values();
+        $databaseConnections = DatabaseConnection::query()
+            ->whereKey($connectionIds)
+            ->get()
+            ->keyBy('id');
+
+        if ($connectionIds->isEmpty() || $databaseConnections->count() !== $connectionIds->count()) {
+            throw ValidationException::withMessages([
+                'database_connection_ids' => 'Select one or more valid database connections.',
+            ]);
+        }
+
+        return $databaseConnections;
     }
 }

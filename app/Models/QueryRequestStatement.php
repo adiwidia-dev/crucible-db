@@ -12,12 +12,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property int $id
  * @property int $query_request_id
+ * @property int|null $database_connection_id
  * @property int $position
  * @property string $sql
  * @property QueryType $query_type
  * @property-read QueryRequest $queryRequest
+ * @property-read DatabaseConnection|null $databaseConnection
  */
-#[Fillable(['query_request_id', 'position', 'sql', 'query_type'])]
+#[Fillable(['query_request_id', 'database_connection_id', 'position', 'sql', 'query_type'])]
 class QueryRequestStatement extends Model
 {
     /** @use HasFactory<QueryRequestStatementFactory> */
@@ -40,5 +42,13 @@ class QueryRequestStatement extends Model
     public function queryRequest(): BelongsTo
     {
         return $this->belongsTo(QueryRequest::class);
+    }
+
+    /**
+     * @return BelongsTo<DatabaseConnection, $this>
+     */
+    public function databaseConnection(): BelongsTo
+    {
+        return $this->belongsTo(DatabaseConnection::class);
     }
 }

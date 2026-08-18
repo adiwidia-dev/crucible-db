@@ -7,10 +7,10 @@ import { Pagination } from '@/components/crucible/pagination';
 import { QueryRequestFilters } from '@/components/crucible/query-request-filters';
 import { StatusBadge } from '@/components/crucible/status-badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     formatDate,
     formatRemaining,
+    queryRequestKindLabel,
     statusLabel,
     visibleQueryRequestStatus,
 } from '@/lib/crucible';
@@ -53,30 +53,26 @@ export default function QueryRequestsIndex({
             <div className="crucible-page">
                 <PageHeader
                     icon={FileCode2}
-                    eyebrow="Execution Queue"
                     title="Query Requests"
-                    description={`${query_requests.total} requests in the current queue`}
+                    description={`${query_requests.total} request${query_requests.total === 1 ? '' : 's'} visible to you`}
                     actions={
                         <Button asChild>
                             <Link href={create()}>
                                 <Plus />
-                                New Request
+                                New request
                             </Link>
                         </Button>
                     }
                 />
 
-                <Card>
-                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                        <CardTitle>Requests</CardTitle>
-                    </CardHeader>
+                <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
                     <QueryRequestFilters
                         action={index.url()}
                         clearHref={index.url()}
                         filters={filters}
                         options={filter_options}
                     />
-                    <CardContent className="p-0">
+                    <div>
                         {query_requests.data.length === 0 ? (
                             <div className="p-6">
                                 <EmptyState
@@ -87,7 +83,7 @@ export default function QueryRequestsIndex({
                                         <Button asChild size="sm">
                                             <Link href={create()}>
                                                 <Plus />
-                                                New Request
+                                                New request
                                             </Link>
                                         </Button>
                                     }
@@ -97,7 +93,7 @@ export default function QueryRequestsIndex({
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
+                                        <tr className="border-b bg-muted/35 text-left text-xs text-muted-foreground">
                                             <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
                                                 Request
                                             </th>
@@ -122,7 +118,7 @@ export default function QueryRequestsIndex({
                                         {query_requests.data.map((request) => (
                                             <tr
                                                 key={request.id}
-                                                className="border-b transition-colors last:border-0 hover:bg-accent/40"
+                                                className="border-b transition-colors last:border-0 hover:bg-accent/55"
                                             >
                                                 <td className="py-3.5 pr-4 pl-4 sm:pl-6">
                                                     <Link
@@ -144,12 +140,9 @@ export default function QueryRequestsIndex({
                                                             value={
                                                                 request.request_kind
                                                             }
-                                                            label={
-                                                                request.request_kind ===
-                                                                'query_access'
-                                                                    ? 'Query Access'
-                                                                    : 'Single Execution'
-                                                            }
+                                                            label={queryRequestKindLabel(
+                                                                request.request_kind,
+                                                            )}
                                                         />
                                                         <StatusBadge
                                                             value={
@@ -208,8 +201,8 @@ export default function QueryRequestsIndex({
                             </div>
                         )}
                         <Pagination pagination={query_requests} />
-                    </CardContent>
-                </Card>
+                    </div>
+                </section>
             </div>
         </>
     );

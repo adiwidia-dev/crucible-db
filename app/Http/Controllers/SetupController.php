@@ -56,6 +56,7 @@ class SetupController extends Controller
             $user->roles()->attach($adminRole, ['priority' => 100]);
             $settings->put([
                 ApplicationSettings::AppName => $request->string('app_name')->toString(),
+                ApplicationSettings::DefaultTimezone => (string) config('app.timezone'),
                 ApplicationSettings::PasswordLoginEnabled => true,
                 ApplicationSettings::PasskeyLoginEnabled => true,
             ]);

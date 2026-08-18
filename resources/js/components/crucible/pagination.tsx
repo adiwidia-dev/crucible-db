@@ -12,17 +12,25 @@ export function Pagination({ pagination }: Props) {
     }
 
     return (
-        <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <div className="text-muted-foreground">
-                Showing {pagination.from ?? 0}-{pagination.to ?? 0} of{' '}
-                {pagination.total}
+        <div className="flex flex-col gap-3 border-t bg-card px-4 py-2.5 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-xs text-muted-foreground tabular-nums">
+                Showing {pagination.from ?? 0}–{pagination.to ?? 0} of{' '}
+                {pagination.total} results
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <nav
+                aria-label="Pagination"
+                className="flex flex-wrap items-center gap-1"
+            >
                 {pagination.links.map((link) => (
                     <Button
                         key={`${link.label}-${link.url ?? 'disabled'}`}
-                        variant={link.active ? 'default' : 'outline'}
+                        variant={link.active ? 'secondary' : 'ghost'}
                         size="sm"
+                        className={
+                            link.active
+                                ? 'border border-border bg-secondary text-foreground hover:bg-secondary'
+                                : 'text-muted-foreground'
+                        }
                         disabled={link.url === null}
                         asChild={link.url !== null}
                     >
@@ -30,6 +38,10 @@ export function Pagination({ pagination }: Props) {
                             <Link
                                 href={link.url}
                                 preserveScroll
+                                aria-label={link.label.replace(
+                                    /&laquo;|&raquo;/g,
+                                    '',
+                                )}
                                 dangerouslySetInnerHTML={{
                                     __html: link.label,
                                 }}
@@ -43,7 +55,7 @@ export function Pagination({ pagination }: Props) {
                         )}
                     </Button>
                 ))}
-            </div>
+            </nav>
         </div>
     );
 }

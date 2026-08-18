@@ -1,5 +1,5 @@
 import type { EditorView } from '@codemirror/view';
-import { Form, Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Form, Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
     Clock3,
@@ -17,6 +17,7 @@ import { format } from 'sql-formatter';
 import QuerySessionController from '@/actions/App/Http/Controllers/QuerySessionController';
 import QuerySessionQueryController from '@/actions/App/Http/Controllers/QuerySessionQueryController';
 import QuerySessionQueryExportController from '@/actions/App/Http/Controllers/QuerySessionQueryExportController';
+import { ConnectionCombobox } from '@/components/crucible/connection-combobox';
 import { SqlEditor } from '@/components/crucible/sql-editor';
 import type { SchemaTable } from '@/components/crucible/sql-editor';
 import { StatusBadge } from '@/components/crucible/status-badge';
@@ -24,8 +25,13 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { driverLabel, formatDate, statusLabel } from '@/lib/crucible';
-import type { ExecutionStatus, QueryType } from '@/lib/crucible';
+import type {
+    DatabaseDriver,
+    ExecutionStatus,
+    QueryType,
+} from '@/lib/crucible';
 import { show as queryRequestShow } from '@/routes/query-requests';
+import { show as querySessionShow } from '@/routes/query-sessions';
 import type { Auth } from '@/types';
 
 type SessionQuery = {
@@ -39,6 +45,11 @@ type SessionQuery = {
     sample_rows?: Array<Record<string, unknown>> | null;
     error_message: string | null;
     created_at: string | null;
+    connection: {
+        id: number;
+        name: string;
+        driver: DatabaseDriver;
+    } | null;
 };
 
 type QuerySession = {
@@ -55,8 +66,13 @@ type QuerySession = {
     connection: {
         id: number;
         name: string;
-        driver: string;
+        driver: DatabaseDriver;
     };
+    connections: Array<{
+        id: number;
+        name: string;
+        driver: DatabaseDriver;
+    }>;
     latest_query: SessionQuery | null;
     queries: SessionQuery[];
 };
@@ -149,6 +165,7 @@ export default function QuerySessionShow({ session, tables }: Props) {
         [session.latest_query?.sql],
     );
     const { data, setData, post, processing, errors } = useForm({
+        database_connection_id: String(session.connection.id),
         sql: defaultSql,
     });
     const isSessionActive = session.is_active && secondsRemaining > 0;
@@ -228,6 +245,24 @@ export default function QuerySessionShow({ session, tables }: Props) {
         });
     }
 
+    function switchConnection(databaseConnectionId: string): void {
+        if (databaseConnectionId === String(session.connection.id)) {
+            return;
+        }
+
+        router.get(
+            querySessionShow.url(session.id, {
+                query: { connection_id: Number(databaseConnectionId) },
+            }),
+            {},
+            {
+                preserveScroll: true,
+                preserveState: true,
+                replace: true,
+            },
+        );
+    }
+
     useEffect(() => {
         const initialTick = window.setTimeout(() => {
             setSecondsRemaining(remainingSeconds(session.expires_at));
@@ -242,6 +277,10 @@ export default function QuerySessionShow({ session, tables }: Props) {
             window.clearInterval(interval);
         };
     }, [session.expires_at]);
+
+    useEffect(() => {
+        setData('database_connection_id', String(session.connection.id));
+    }, [session.connection.id, setData]);
 
     return (
         <>
@@ -262,6 +301,16 @@ export default function QuerySessionShow({ session, tables }: Props) {
                             <h1 className="text-2xl font-semibold tracking-normal">
                                 {session.request.title}
                             </h1>
+                            <div className="mt-3 max-w-md">
+                                <ConnectionCombobox
+                                    connections={session.connections}
+                                    name={null}
+                                    label="Active connection"
+                                    description="Schema and queries use this approved connection."
+                                    value={String(session.connection.id)}
+                                    onValueChange={switchConnection}
+                                />
+                            </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                             <Button variant="outline" asChild>
@@ -323,7 +372,14 @@ export default function QuerySessionShow({ session, tables }: Props) {
                                     />
                                 </div>
                                 <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3">
-                                    <InputError message={errors.sql} />
+                                    <div>
+                                        <InputError
+                                            message={
+                                                errors.database_connection_id
+                                            }
+                                        />
+                                        <InputError message={errors.sql} />
+                                    </div>
                                     <div className="flex items-center gap-2">
                                         <Button
                                             type="button"
@@ -366,6 +422,15 @@ export default function QuerySessionShow({ session, tables }: Props) {
                                                     session.latest_query.status
                                                 }
                                             />
+                                            {session.latest_query
+                                                .connection && (
+                                                <span className="text-xs text-muted-foreground">
+                                                    {
+                                                        session.latest_query
+                                                            .connection.name
+                                                    }
+                                                </span>
+                                            )}
                                             <span className="text-sm text-muted-foreground">
                                                 {session.latest_query
                                                     .row_count ?? 0}
@@ -513,6 +578,11 @@ export default function QuerySessionShow({ session, tables }: Props) {
                                                     query.query_type,
                                                 )}
                                             />
+                                            {query.connection && (
+                                                <span className="text-xs text-muted-foreground">
+                                                    {query.connection.name}
+                                                </span>
+                                            )}
                                         </div>
                                         <code className="line-clamp-3 font-mono text-xs text-muted-foreground">
                                             {query.sql}

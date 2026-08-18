@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DatabaseConnection;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Services\DatabaseSchemaBrowser;
@@ -27,12 +28,28 @@ class QuerySessionController extends Controller
     {
         Gate::authorize('view', $querySession);
 
-        $querySession->load(['queryRequest.requester', 'databaseConnection']);
-        $queries = $querySession->queries()->latest()->limit(20)->get();
+        $querySession->load(['databaseConnection', 'databaseConnections', 'queryRequest.requester']);
+        $activeConnection = $querySession->databaseConnections
+            ->firstWhere('id', request()->integer('connection_id'));
+
+        if (request()->filled('connection_id') && $activeConnection === null) {
+            abort(404);
+        }
+
+        $activeConnection ??= $querySession->databaseConnections->first() ?? $querySession->databaseConnection;
+        $queries = $querySession->queries()
+            ->with('databaseConnection')
+            ->latest()
+            ->limit(20)
+            ->get();
         $latestQuery = $queries->first();
 
+        if ($latestQuery?->database_connection_id !== $activeConnection->id) {
+            $latestQuery = null;
+        }
+
         try {
-            $tables = $schemaBrowser->tables($querySession->databaseConnection);
+            $tables = $schemaBrowser->tables($activeConnection);
         } catch (Throwable) {
             $tables = [];
         }
@@ -49,11 +66,10 @@ class QuerySessionController extends Controller
                     'title' => $querySession->queryRequest->title,
                     'requester' => $querySession->queryRequest->requester->name,
                 ],
-                'connection' => [
-                    'id' => $querySession->databaseConnection->id,
-                    'name' => $querySession->databaseConnection->name,
-                    'driver' => $querySession->databaseConnection->driver->value,
-                ],
+                'connection' => $this->connectionSummary($activeConnection),
+                'connections' => $querySession->databaseConnections
+                    ->map(fn ($connection): array => $this->connectionSummary($connection))
+                    ->values(),
                 'latest_query' => $latestQuery ? [
                     'id' => $latestQuery->id,
                     'sql' => $latestQuery->sql,
@@ -76,6 +92,9 @@ class QuerySessionController extends Controller
                     'duration_ms' => $query->duration_ms,
                     'error_message' => $query->error_message,
                     'created_at' => $query->created_at?->toIso8601String(),
+                    'connection' => $query->databaseConnection
+                        ? $this->connectionSummary($query->databaseConnection)
+                        : null,
                 ])->values(),
             ],
             'tables' => $tables,
@@ -89,5 +108,17 @@ class QuerySessionController extends Controller
         $workflow->end($querySession, request()->user());
 
         return redirect()->route('query-requests.show', $querySession->query_request_id);
+    }
+
+    /**
+     * @return array{id:int, name:string, driver:string}
+     */
+    private function connectionSummary(DatabaseConnection $connection): array
+    {
+        return [
+            'id' => $connection->id,
+            'name' => $connection->name,
+            'driver' => $connection->driver->value,
+        ];
     }
 }

@@ -1,16 +1,10 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
 import { Download, Filter, Fingerprint, RotateCcw, Search } from 'lucide-react';
+import { DataRegistry } from '@/components/crucible/data-registry';
 import { EmptyState } from '@/components/crucible/empty-state';
+import { PageHeader } from '@/components/crucible/page-header';
 import { Pagination } from '@/components/crucible/pagination';
-import Heading from '@/components/heading';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { formatDate } from '@/lib/crucible';
 import type { Paginated } from '@/lib/crucible';
@@ -57,37 +51,33 @@ export default function AuditLogsIndex({
         <>
             <Head title="Audit logs" />
 
-            <div className="space-y-6">
-                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                    <Heading
-                        variant="small"
-                        title="Audit logs"
-                        description={`${audit_logs.total} recorded events`}
-                    />
-                    <Button variant="outline" asChild>
-                        <a
-                            href={exportAuditLogs.url({
-                                query: filters,
-                            })}
-                        >
-                            <Download />
-                            Export CSV
-                        </a>
-                    </Button>
-                </div>
+            <div className="crucible-page">
+                <PageHeader
+                    title="Audit logs"
+                    description={`${audit_logs.total} recorded events`}
+                    actions={
+                        <Button variant="outline" asChild>
+                            <a
+                                href={exportAuditLogs.url({
+                                    query: filters,
+                                })}
+                            >
+                                <Download />
+                                Export CSV
+                            </a>
+                        </Button>
+                    }
+                />
 
-                <Card>
-                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                        <CardTitle>Event Stream</CardTitle>
-                        <CardDescription>
-                            Actor, subject, source, metadata, and timestamp.
-                        </CardDescription>
-                    </CardHeader>
+                <DataRegistry
+                    title="Event stream"
+                    description="Actor, subject, source, metadata, and timestamp."
+                >
                     <Form
                         action={index.url()}
                         method="get"
                         options={{ preserveScroll: true, preserveState: true }}
-                        className="grid gap-3 border-b bg-muted/20 p-4 sm:px-6"
+                        className="grid gap-3 border-b bg-muted/15 p-3 sm:px-4"
                     >
                         {({ processing }) => (
                             <>
@@ -103,11 +93,13 @@ export default function AuditLogsIndex({
                                             defaultValue={filters.search}
                                             placeholder="Action, subject, actor, metadata"
                                             className="pl-9"
+                                            aria-label="Search audit events"
                                         />
                                     </div>
                                     <select
                                         name="action"
                                         defaultValue={filters.action}
+                                        aria-label="Filter by event action"
                                         className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                                     >
                                         <option value="">All actions</option>
@@ -126,11 +118,13 @@ export default function AuditLogsIndex({
                                         name="actor"
                                         defaultValue={filters.actor}
                                         placeholder="Actor"
+                                        aria-label="Filter by actor"
                                     />
                                     <Input
                                         name="ip_address"
                                         defaultValue={filters.ip_address}
                                         placeholder="IP address"
+                                        aria-label="Filter by IP address"
                                     />
                                 </div>
                                 <div className="flex flex-wrap gap-2">
@@ -148,7 +142,7 @@ export default function AuditLogsIndex({
                             </>
                         )}
                     </Form>
-                    <CardContent className="p-0">
+                    <div>
                         {audit_logs.data.length === 0 ? (
                             <div className="p-6">
                                 <EmptyState
@@ -161,23 +155,23 @@ export default function AuditLogsIndex({
                             <div className="overflow-x-auto">
                                 <table className="w-full min-w-[76rem] text-sm">
                                     <thead>
-                                        <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                                            <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
+                                        <tr className="border-b bg-muted/45 text-left text-xs text-muted-foreground">
+                                            <th className="py-2.5 pr-4 pl-3 font-medium sm:pl-4">
                                                 Action
                                             </th>
-                                            <th className="py-3 pr-4 font-medium">
+                                            <th className="py-2.5 pr-4 font-medium">
                                                 Actor
                                             </th>
-                                            <th className="py-3 pr-4 font-medium">
+                                            <th className="py-2.5 pr-4 font-medium">
                                                 Subject
                                             </th>
-                                            <th className="py-3 pr-4 font-medium">
+                                            <th className="py-2.5 pr-4 font-medium">
                                                 IP
                                             </th>
-                                            <th className="py-3 pr-4 font-medium">
+                                            <th className="py-2.5 pr-4 font-medium">
                                                 Metadata
                                             </th>
-                                            <th className="py-3 pr-4 font-medium">
+                                            <th className="py-2.5 pr-3 font-medium sm:pr-4">
                                                 Time
                                             </th>
                                         </tr>
@@ -188,23 +182,23 @@ export default function AuditLogsIndex({
                                                 key={log.id}
                                                 className="border-b align-top transition-colors last:border-0 hover:bg-accent/40"
                                             >
-                                                <td className="py-3.5 pr-4 pl-4 sm:pl-6">
+                                                <td className="py-3 pr-4 pl-3 sm:pl-4">
                                                     <span className="inline-flex items-center rounded-full border bg-background px-2.5 py-1 font-mono text-xs font-medium shadow-xs">
                                                         {log.action}
                                                     </span>
                                                 </td>
-                                                <td className="py-3.5 pr-4 font-medium">
+                                                <td className="py-3 pr-4 font-medium">
                                                     {log.actor}
                                                 </td>
-                                                <td className="py-3.5 pr-4 text-muted-foreground">
+                                                <td className="py-3 pr-4 text-muted-foreground">
                                                     {log.auditable_type
                                                         ? `${log.auditable_type} #${log.auditable_id}`
                                                         : 'None'}
                                                 </td>
-                                                <td className="py-3.5 pr-4 font-mono text-xs">
+                                                <td className="py-3 pr-4 font-mono text-xs">
                                                     {log.ip_address ?? 'n/a'}
                                                 </td>
-                                                <td className="max-w-[28rem] py-3.5 pr-4">
+                                                <td className="max-w-[28rem] py-3 pr-4">
                                                     <pre className="max-h-28 overflow-auto rounded-md border bg-muted/50 p-3 text-xs leading-5">
                                                         {JSON.stringify(
                                                             log.metadata ?? {},
@@ -213,7 +207,7 @@ export default function AuditLogsIndex({
                                                         )}
                                                     </pre>
                                                 </td>
-                                                <td className="py-3.5 pr-4 text-muted-foreground">
+                                                <td className="py-3 pr-3 text-muted-foreground sm:pr-4">
                                                     {formatDate(
                                                         log.created_at,
                                                         userTimezone,
@@ -225,9 +219,9 @@ export default function AuditLogsIndex({
                                 </table>
                             </div>
                         )}
-                    </CardContent>
+                    </div>
                     <Pagination pagination={audit_logs} />
-                </Card>
+                </DataRegistry>
             </div>
         </>
     );

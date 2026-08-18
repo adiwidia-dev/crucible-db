@@ -13,6 +13,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property int $query_session_id
+ * @property int|null $database_connection_id
  * @property int $user_id
  * @property string $sql
  * @property QueryType $query_type
@@ -28,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read QuerySession $querySession
  * @property-read User $user
+ * @property-read DatabaseConnection|null $databaseConnection
  */
 class QuerySessionQuery extends Model
 {
@@ -36,6 +38,7 @@ class QuerySessionQuery extends Model
 
     protected $fillable = [
         'query_session_id',
+        'database_connection_id',
         'user_id',
         'sql',
         'query_type',
@@ -72,6 +75,14 @@ class QuerySessionQuery extends Model
     public function querySession(): BelongsTo
     {
         return $this->belongsTo(QuerySession::class);
+    }
+
+    /**
+     * @return BelongsTo<DatabaseConnection, $this>
+     */
+    public function databaseConnection(): BelongsTo
+    {
+        return $this->belongsTo(DatabaseConnection::class);
     }
 
     /**

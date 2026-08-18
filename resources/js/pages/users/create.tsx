@@ -35,15 +35,15 @@ export default function UsersCreate() {
                 >
                     {({ processing, errors }) => (
                         <>
-                            <Card>
-                                <CardHeader className="border-b px-4 pb-4 sm:px-6">
+                            <Card className="max-w-3xl gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                                <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle>Invitation</CardTitle>
                                     <CardDescription>
                                         New users start without roles. Assign
                                         roles after the invitation is accepted.
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="grid max-w-2xl gap-5 pt-6">
+                                <CardContent className="grid max-w-2xl gap-5 px-4 py-5 sm:px-5">
                                     <div className="grid gap-5 sm:grid-cols-2">
                                         <div className="grid gap-2">
                                             <Label htmlFor="first_name">

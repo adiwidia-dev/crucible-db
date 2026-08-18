@@ -11,14 +11,25 @@ type ConnectionOption = Pick<
 
 type Props = {
     connections: ConnectionOption[];
+    description?: string;
     error?: string;
+    label?: string;
+    name?: string | null;
     onValueChange: (value: string) => void;
     value: string;
 };
 
+type MultiProps = Omit<Props, 'onValueChange' | 'value'> & {
+    onValueChange: (values: string[]) => void;
+    values: string[];
+};
+
 export function ConnectionCombobox({
     connections,
+    description,
     error,
+    label,
+    name = 'database_connection_id',
     onValueChange,
     value,
 }: Props) {
@@ -35,31 +46,129 @@ export function ConnectionCombobox({
 
     return (
         <>
-            <input type="hidden" name="database_connection_id" value={value} />
+            {name && <input type="hidden" name={name} value={value} />}
             <Combobox
                 items={connections}
                 value={selectedConnection ?? null}
                 onValueChange={(connection) =>
                     onValueChange(connection ? String(connection.id) : '')
                 }
-                itemToStringValue={(connection) =>
-                    `${connection.name} (${driverLabel(connection.driver)})`
-                }
                 filter={filter}
-                label="Connection"
-                description="Search by connection name or database type."
+                label={label ?? 'Connection'}
+                description={
+                    description ?? 'Search by connection name or database type.'
+                }
                 error={error}
                 required
             >
                 <Combobox.TriggerValue
                     placeholder="Select a connection"
                     className="w-full"
-                />
+                >
+                    {(connection: ConnectionOption | null) =>
+                        connection?.name ?? 'Select a connection'
+                    }
+                </Combobox.TriggerValue>
                 <Combobox.Content className="max-h-72">
                     <Combobox.Input
                         placeholder="Search connections..."
                         aria-label="Search connections"
                     />
+                    <Combobox.List>
+                        {(connection: ConnectionOption) => (
+                            <Combobox.Item
+                                key={connection.id}
+                                value={connection}
+                                className="py-2 text-sm"
+                            >
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-kumo-tint text-kumo-default ring-1 ring-kumo-line">
+                                        <Database className="size-4" />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="block truncate font-medium">
+                                            {connection.name}
+                                        </span>
+                                        <span className="block text-xs text-kumo-subtle">
+                                            {driverLabel(connection.driver)}
+                                        </span>
+                                    </span>
+                                </div>
+                            </Combobox.Item>
+                        )}
+                    </Combobox.List>
+                    <Combobox.Empty>
+                        <div className="flex items-center gap-2 py-1">
+                            <SearchX className="size-4" />
+                            <span>No matching connections</span>
+                        </div>
+                    </Combobox.Empty>
+                </Combobox.Content>
+            </Combobox>
+        </>
+    );
+}
+
+export function ConnectionMultiCombobox({
+    connections,
+    description,
+    error,
+    label,
+    name = 'database_connection_ids[]',
+    onValueChange,
+    values,
+}: MultiProps) {
+    const { contains } = Combobox.useFilter();
+    const selectedConnections = connections.filter((connection) =>
+        values.includes(String(connection.id)),
+    );
+    const filter = useCallback(
+        (connection: ConnectionOption, query: string): boolean =>
+            contains(connection.name, query) ||
+            contains(driverLabel(connection.driver), query),
+        [contains],
+    );
+
+    return (
+        <>
+            {name &&
+                values.map((value) => (
+                    <input
+                        key={value}
+                        type="hidden"
+                        name={name}
+                        value={value}
+                    />
+                ))}
+            <Combobox
+                multiple
+                items={connections}
+                value={selectedConnections}
+                onValueChange={(selected) =>
+                    onValueChange(
+                        (selected as ConnectionOption[]).map((connection) =>
+                            String(connection.id),
+                        ),
+                    )
+                }
+                filter={filter}
+                label={label ?? 'Connections'}
+                description={
+                    description ??
+                    'Select every database that should be available in this session.'
+                }
+                error={error}
+                required
+            >
+                <Combobox.TriggerMultipleWithInput
+                    placeholder="Search and select connections..."
+                    className="w-full"
+                    value={selectedConnections}
+                    renderItem={(connection: ConnectionOption) => (
+                        <Combobox.Chip>{connection.name}</Combobox.Chip>
+                    )}
+                />
+                <Combobox.Content className="max-h-72">
                     <Combobox.List>
                         {(connection: ConnectionOption) => (
                             <Combobox.Item

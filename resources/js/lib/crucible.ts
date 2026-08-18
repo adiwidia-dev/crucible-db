@@ -141,6 +141,10 @@ export function statusLabel(value: string): string {
         .join(' ');
 }
 
+export function queryRequestKindLabel(value: QueryRequestKind): string {
+    return value === 'single_execution' ? 'Deployment Batch' : 'Query Access';
+}
+
 export function driverLabel(value: DatabaseDriver | string): string {
     return value === 'pgsql' ? 'PostgreSQL' : 'MySQL';
 }

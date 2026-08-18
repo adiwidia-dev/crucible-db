@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ExecutionStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
@@ -10,6 +11,7 @@ use App\Http\Requests\UpdateQueryRequestRequest;
 use App\Models\DatabaseConnection;
 use App\Models\QueryExecution;
 use App\Models\QueryRequest;
+use App\Models\QueryRequestStatement;
 use App\Models\QuerySession;
 use App\Models\QuerySessionQuery;
 use App\Models\User;
@@ -103,12 +105,9 @@ class QueryRequestController extends Controller
 
     public function store(StoreQueryRequestRequest $request, QueryRequestWorkflow $workflow): RedirectResponse
     {
-        $databaseConnection = DatabaseConnection::query()->findOrFail($request->integer('database_connection_id'));
-
-        Gate::authorize('view', $databaseConnection);
-
         $data = [
             'database_connection_id' => $request->integer('database_connection_id'),
+            'database_connection_ids' => $request->validated('database_connection_ids', []),
             'request_kind' => $request->string('request_kind')->toString(),
             'title' => $request->string('title')->toString(),
             'description' => $request->filled('description') ? $request->string('description')->toString() : null,
@@ -117,7 +116,9 @@ class QueryRequestController extends Controller
             'access_duration_minutes' => $request->filled('access_duration_minutes') ? $request->integer('access_duration_minutes') : null,
         ];
 
-        $queryRequest = $workflow->create($request->user(), $databaseConnection, $data);
+        $this->authorizeRequestedConnections($request->user(), $data);
+
+        $queryRequest = $workflow->create($request->user(), $data);
 
         return redirect()->route('query-requests.show', $queryRequest);
     }
@@ -130,8 +131,9 @@ class QueryRequestController extends Controller
             'requester',
             'approvedBy',
             'databaseConnection',
+            'accessConnections',
             'reviews.reviewer',
-            'statements',
+            'statements.databaseConnection',
         ]);
 
         $sessions = $queryRequest->sessions()
@@ -139,14 +141,33 @@ class QueryRequestController extends Controller
             ->limit(20)
             ->get();
 
+        $statementExecutions = $queryRequest->executions()
+            ->whereNotNull('query_request_statement_id')
+            ->latest('started_at')
+            ->get()
+            ->unique('query_request_statement_id')
+            ->keyBy('query_request_statement_id');
+        $failedExecution = $statementExecutions->first(
+            fn (QueryExecution $execution): bool => $execution->status === ExecutionStatus::Failed,
+        );
+        $failedStatementPosition = $queryRequest->status === QueryRequestStatus::Failed
+            && $failedExecution?->query_request_statement_id
+            ? $queryRequest->statements
+                ->firstWhere('id', $failedExecution->query_request_statement_id)
+                ?->position
+            : null;
+
         $executions = $queryRequest->executions()
-            ->with(['executor', 'statement'])
+            ->with(['databaseConnection', 'executor', 'statement.databaseConnection'])
             ->latest('started_at')
             ->paginate(10, ['*'], 'executions_page')
             ->withQueryString()
             ->through(fn (QueryExecution $execution): array => [
                 'id' => $execution->id,
                 'statement_position' => $execution->statement?->position,
+                'connection' => $execution->databaseConnection
+                    ? $this->connectionSummary($execution->databaseConnection)
+                    : $this->statementConnection($execution->statement, $queryRequest),
                 'status' => $execution->status->value,
                 // query_type is nullable for executions created before SQL metadata was introduced.
                 /** @phpstan-ignore-next-line nullsafe.neverNull */
@@ -175,12 +196,31 @@ class QueryRequestController extends Controller
                 'title' => $queryRequest->title,
                 'description' => $queryRequest->description,
                 'sql' => $queryRequest->sql,
-                'statements' => $queryRequest->statements->map(fn ($statement): array => [
-                    'id' => $statement->id,
-                    'position' => $statement->position,
-                    'sql' => $statement->sql,
-                    'query_type' => $statement->query_type->value,
-                ])->values(),
+                'statements' => $queryRequest->statements->map(function (QueryRequestStatement $statement) use ($failedStatementPosition, $queryRequest, $statementExecutions): array {
+                    $execution = $statementExecutions->get($statement->id);
+                    $executionState = $execution?->status->value;
+
+                    if (
+                        $executionState === null
+                        && $failedStatementPosition !== null
+                        && $statement->position > $failedStatementPosition
+                    ) {
+                        $executionState = 'skipped';
+                    }
+
+                    return [
+                        'id' => $statement->id,
+                        'position' => $statement->position,
+                        'sql' => $statement->sql,
+                        'query_type' => $statement->query_type->value,
+                        'connection' => $this->statementConnection($statement, $queryRequest),
+                        'execution' => $execution ? [
+                            'status' => $execution->status->value,
+                            'error_message' => $execution->error_message,
+                        ] : null,
+                        'execution_state' => $executionState,
+                    ];
+                })->values(),
                 'status' => $queryRequest->status->value,
                 'query_type' => $queryRequest->query_type->value,
                 'request_kind' => $queryRequest->request_kind->value,
@@ -200,6 +240,11 @@ class QueryRequestController extends Controller
                     'name' => $queryRequest->databaseConnection->name,
                     'driver' => $queryRequest->databaseConnection->driver->value,
                 ],
+                'access_connections' => $queryRequest->accessConnections->map(fn (DatabaseConnection $connection): array => [
+                    'id' => $connection->id,
+                    'name' => $connection->name,
+                    'driver' => $connection->driver->value,
+                ])->values(),
                 'reviews' => $queryRequest->reviews->map(fn ($review): array => [
                     'id' => $review->id,
                     'decision' => $review->decision,
@@ -359,18 +404,23 @@ class QueryRequestController extends Controller
     {
         Gate::authorize('update', $queryRequest);
 
-        $queryRequest->load('statements');
+        $queryRequest->load(['statements', 'accessConnections']);
 
         return Inertia::render('query-requests/create', [
             'connections' => $this->connectionOptions(request()->user()),
             'query_request' => [
                 'id' => $queryRequest->id,
                 'database_connection_id' => $queryRequest->database_connection_id,
+                'database_connection_ids' => $queryRequest->accessConnections
+                    ->pluck('id')
+                    ->whenEmpty(fn () => collect([$queryRequest->database_connection_id]))
+                    ->values(),
                 'request_kind' => $queryRequest->request_kind->value,
                 'title' => $queryRequest->title,
                 'description' => $queryRequest->description,
                 'statements' => $queryRequest->statements->map(fn ($statement): array => [
                     'sql' => $statement->sql,
+                    'database_connection_id' => $statement->database_connection_id ?? $queryRequest->database_connection_id,
                 ])->values(),
                 'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
                 'access_duration_minutes' => $queryRequest->access_duration_minutes,
@@ -381,12 +431,9 @@ class QueryRequestController extends Controller
 
     public function update(UpdateQueryRequestRequest $request, QueryRequest $queryRequest, QueryRequestWorkflow $workflow): RedirectResponse
     {
-        $databaseConnection = DatabaseConnection::query()->findOrFail($request->integer('database_connection_id'));
-
-        Gate::authorize('view', $databaseConnection);
-
         $data = [
             'database_connection_id' => $request->integer('database_connection_id'),
+            'database_connection_ids' => $request->validated('database_connection_ids', []),
             'request_kind' => $request->string('request_kind')->toString(),
             'title' => $request->string('title')->toString(),
             'description' => $request->filled('description') ? $request->string('description')->toString() : null,
@@ -395,7 +442,9 @@ class QueryRequestController extends Controller
             'access_duration_minutes' => $request->filled('access_duration_minutes') ? $request->integer('access_duration_minutes') : null,
         ];
 
-        $queryRequest = $workflow->update($queryRequest, $request->user(), $databaseConnection, $data);
+        $this->authorizeRequestedConnections($request->user(), $data);
+
+        $queryRequest = $workflow->update($queryRequest, $request->user(), $data);
 
         Inertia::flash('toast', [
             'type' => 'success',
@@ -406,7 +455,7 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return Collection<int, array{id:int, name:string, driver:string}>
+     * @return Collection<int, array{id:int, name:string, driver:'mysql'|'pgsql'}>
      */
     private function connectionOptions(User $user): Collection
     {
@@ -420,5 +469,44 @@ class QueryRequestController extends Controller
                 'name' => $connection->name,
                 'driver' => $connection->driver->value,
             ]);
+    }
+
+    /**
+     * @param  array{database_connection_id:int,database_connection_ids:array<int, int>,request_kind:string,statements:array<int, array{database_connection_id:int}>}  $data
+     */
+    private function authorizeRequestedConnections(User $user, array $data): void
+    {
+        $connectionIds = $data['request_kind'] === QueryRequestKind::SingleExecution->value
+            ? collect($data['statements'])->pluck('database_connection_id')->unique()
+            : collect($data['database_connection_ids']);
+
+        DatabaseConnection::query()
+            ->whereKey($connectionIds)
+            ->get()
+            ->each(fn (DatabaseConnection $connection) => Gate::authorize('view', $connection));
+    }
+
+    /**
+     * @return array{id:int, name:string, driver:string}
+     */
+    private function statementConnection(?QueryRequestStatement $statement, QueryRequest $queryRequest): array
+    {
+        $connection = $statement instanceof QueryRequestStatement
+            ? $statement->databaseConnection
+            : $queryRequest->databaseConnection;
+
+        return $this->connectionSummary($connection);
+    }
+
+    /**
+     * @return array{id:int, name:string, driver:string}
+     */
+    private function connectionSummary(DatabaseConnection $connection): array
+    {
+        return [
+            'id' => $connection->id,
+            'name' => $connection->name,
+            'driver' => $connection->driver->value,
+        ];
     }
 }
