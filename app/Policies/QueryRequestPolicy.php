@@ -31,7 +31,8 @@ class QueryRequestPolicy
 
     public function update(User $user, QueryRequest $queryRequest): bool
     {
-        return false;
+        return ($user->isAdmin() || $queryRequest->requester_id === $user->id)
+            && $queryRequest->isEditable();
     }
 
     public function delete(User $user, QueryRequest $queryRequest): bool

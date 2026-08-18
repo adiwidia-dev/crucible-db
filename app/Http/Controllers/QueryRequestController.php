@@ -6,15 +6,18 @@ use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
 use App\Http\Requests\StoreQueryRequestRequest;
+use App\Http\Requests\UpdateQueryRequestRequest;
 use App\Models\DatabaseConnection;
 use App\Models\QueryExecution;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\QuerySessionQuery;
+use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\QueryRequestWorkflow;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -91,18 +94,10 @@ class QueryRequestController extends Controller
         Gate::authorize('create', QueryRequest::class);
 
         $user = request()->user();
-        $connections = DatabaseConnection::query()
-            ->where('is_active', true)
-            ->when(! $user->isAdmin(), fn ($query) => $query->whereIn('id', $user->accessibleDatabaseConnectionIds()))
-            ->orderBy('name')
-            ->get();
 
         return Inertia::render('query-requests/create', [
-            'connections' => $connections->map(fn (DatabaseConnection $connection): array => [
-                'id' => $connection->id,
-                'name' => $connection->name,
-                'driver' => $connection->driver->value,
-            ]),
+            'connections' => $this->connectionOptions($user),
+            'query_request' => null,
         ]);
     }
 
@@ -117,7 +112,7 @@ class QueryRequestController extends Controller
             'request_kind' => $request->string('request_kind')->toString(),
             'title' => $request->string('title')->toString(),
             'description' => $request->filled('description') ? $request->string('description')->toString() : null,
-            'sql' => $request->filled('sql') ? $request->string('sql')->toString() : null,
+            'statements' => $request->validated('statements', []),
             'scheduled_at' => $request->filled('scheduled_at') ? $request->string('scheduled_at')->toString() : null,
             'access_duration_minutes' => $request->filled('access_duration_minutes') ? $request->integer('access_duration_minutes') : null,
         ];
@@ -136,6 +131,7 @@ class QueryRequestController extends Controller
             'approvedBy',
             'databaseConnection',
             'reviews.reviewer',
+            'statements',
         ]);
 
         $sessions = $queryRequest->sessions()
@@ -144,12 +140,13 @@ class QueryRequestController extends Controller
             ->get();
 
         $executions = $queryRequest->executions()
-            ->with('executor')
+            ->with(['executor', 'statement'])
             ->latest('started_at')
             ->paginate(10, ['*'], 'executions_page')
             ->withQueryString()
             ->through(fn (QueryExecution $execution): array => [
                 'id' => $execution->id,
+                'statement_position' => $execution->statement?->position,
                 'status' => $execution->status->value,
                 // query_type is nullable for executions created before SQL metadata was introduced.
                 /** @phpstan-ignore-next-line nullsafe.neverNull */
@@ -178,6 +175,12 @@ class QueryRequestController extends Controller
                 'title' => $queryRequest->title,
                 'description' => $queryRequest->description,
                 'sql' => $queryRequest->sql,
+                'statements' => $queryRequest->statements->map(fn ($statement): array => [
+                    'id' => $statement->id,
+                    'position' => $statement->position,
+                    'sql' => $statement->sql,
+                    'query_type' => $statement->query_type->value,
+                ])->values(),
                 'status' => $queryRequest->status->value,
                 'query_type' => $queryRequest->query_type->value,
                 'request_kind' => $queryRequest->request_kind->value,
@@ -217,6 +220,7 @@ class QueryRequestController extends Controller
                 ] : null,
             ],
             'can_review' => request()->user()->can('review', $queryRequest),
+            'can_update' => request()->user()->can('update', $queryRequest),
             'can_dispatch' => request()->user()->can('dispatch', $queryRequest),
             'can_start_session' => $activeSession === null && request()->user()->can('startSession', $queryRequest),
             'can_delete' => request()->user()->can('delete', $queryRequest),
@@ -267,6 +271,7 @@ class QueryRequestController extends Controller
             'session_query_count' => $sessionQueryCount,
             'execution_count' => $queryRequest->executions()->count(),
             'review_count' => $queryRequest->reviews()->count(),
+            'statement_count' => $queryRequest->statements()->count(),
         ]);
 
         $queryRequest->delete();
@@ -350,13 +355,70 @@ class QueryRequestController extends Controller
             ?? $queryRequest->query_type->value;
     }
 
-    public function edit(QueryRequest $queryRequest): RedirectResponse
+    public function edit(QueryRequest $queryRequest): Response
     {
+        Gate::authorize('update', $queryRequest);
+
+        $queryRequest->load('statements');
+
+        return Inertia::render('query-requests/create', [
+            'connections' => $this->connectionOptions(request()->user()),
+            'query_request' => [
+                'id' => $queryRequest->id,
+                'database_connection_id' => $queryRequest->database_connection_id,
+                'request_kind' => $queryRequest->request_kind->value,
+                'title' => $queryRequest->title,
+                'description' => $queryRequest->description,
+                'statements' => $queryRequest->statements->map(fn ($statement): array => [
+                    'sql' => $statement->sql,
+                ])->values(),
+                'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
+                'access_duration_minutes' => $queryRequest->access_duration_minutes,
+                'was_approved' => in_array($queryRequest->status, [QueryRequestStatus::Approved, QueryRequestStatus::Scheduled], true),
+            ],
+        ]);
+    }
+
+    public function update(UpdateQueryRequestRequest $request, QueryRequest $queryRequest, QueryRequestWorkflow $workflow): RedirectResponse
+    {
+        $databaseConnection = DatabaseConnection::query()->findOrFail($request->integer('database_connection_id'));
+
+        Gate::authorize('view', $databaseConnection);
+
+        $data = [
+            'database_connection_id' => $request->integer('database_connection_id'),
+            'request_kind' => $request->string('request_kind')->toString(),
+            'title' => $request->string('title')->toString(),
+            'description' => $request->filled('description') ? $request->string('description')->toString() : null,
+            'statements' => $request->validated('statements', []),
+            'scheduled_at' => $request->filled('scheduled_at') ? $request->string('scheduled_at')->toString() : null,
+            'access_duration_minutes' => $request->filled('access_duration_minutes') ? $request->integer('access_duration_minutes') : null,
+        ];
+
+        $queryRequest = $workflow->update($queryRequest, $request->user(), $databaseConnection, $data);
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => 'Query request updated and returned for approval.',
+        ]);
+
         return redirect()->route('query-requests.show', $queryRequest);
     }
 
-    public function update(StoreQueryRequestRequest $request, QueryRequest $queryRequest): RedirectResponse
+    /**
+     * @return Collection<int, array{id:int, name:string, driver:string}>
+     */
+    private function connectionOptions(User $user): Collection
     {
-        return redirect()->route('query-requests.show', $queryRequest);
+        return DatabaseConnection::query()
+            ->where('is_active', true)
+            ->when(! $user->isAdmin(), fn ($query) => $query->whereIn('id', $user->accessibleDatabaseConnectionIds()))
+            ->orderBy('name')
+            ->get()
+            ->map(fn (DatabaseConnection $connection): array => [
+                'id' => $connection->id,
+                'name' => $connection->name,
+                'driver' => $connection->driver->value,
+            ]);
     }
 }

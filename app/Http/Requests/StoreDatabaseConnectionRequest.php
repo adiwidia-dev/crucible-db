@@ -30,6 +30,7 @@ class StoreDatabaseConnectionRequest extends FormRequest
             'password' => ['required', 'string', 'max:4096'],
             'ssl_mode' => ['nullable', 'string', 'max:50'],
             'is_active' => ['sometimes', 'boolean'],
+            'create_another' => ['sometimes', 'boolean'],
         ];
     }
 }

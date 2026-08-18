@@ -7,6 +7,7 @@ use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
 use Database\Factories\QueryRequestFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -40,6 +41,7 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $dispatchedBy
  * @property-read DatabaseConnection $databaseConnection
  * @property-read QueryExecution|null $latestExecution
+ * @property-read Collection<int, QueryRequestStatement> $statements
  * @property-read QuerySession|null $latestSession
  */
 #[Fillable(['requester_id', 'database_connection_id', 'approved_by_id', 'dispatched_by_id', 'title', 'description', 'sql', 'query_type', 'request_kind', 'status', 'requires_approval', 'scheduled_at', 'access_duration_minutes', 'approved_at', 'dispatched_at', 'completed_at', 'result_summary', 'last_error'])]
@@ -116,6 +118,14 @@ class QueryRequest extends Model
     }
 
     /**
+     * @return HasMany<QueryRequestStatement, $this>
+     */
+    public function statements(): HasMany
+    {
+        return $this->hasMany(QueryRequestStatement::class)->orderBy('position');
+    }
+
+    /**
      * @return HasOne<QueryExecution, $this>
      */
     public function latestExecution(): HasOne
@@ -147,5 +157,16 @@ class QueryRequest extends Model
             QueryRequestStatus::Rejected,
             QueryRequestStatus::Cancelled,
         ], true);
+    }
+
+    public function isEditable(): bool
+    {
+        return $this->dispatched_at === null
+            && in_array($this->status, [
+                QueryRequestStatus::PendingReview,
+                QueryRequestStatus::Approved,
+                QueryRequestStatus::Rejected,
+                QueryRequestStatus::Scheduled,
+            ], true);
     }
 }

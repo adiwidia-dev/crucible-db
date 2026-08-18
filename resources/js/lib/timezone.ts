@@ -75,3 +75,13 @@ export function zonedDateTimeLocalToIso(
 
     return new Date(utcTimestamp).toISOString();
 }
+
+export function isoToZonedDateTimeLocal(
+    value: string,
+    timezone: string,
+): string {
+    const parts = partsForTimezone(new Date(value), timezone);
+    const pad = (part: number): string => String(part).padStart(2, '0');
+
+    return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T${pad(parts.hour)}:${pad(parts.minute)}`;
+}

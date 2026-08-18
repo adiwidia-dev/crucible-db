@@ -176,8 +176,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('connections.test');
 
     Route::resource('query-requests', QueryRequestController::class)
-        ->parameters(['query-requests' => 'query_request'])
-        ->except(['edit', 'update']);
+        ->parameters(['query-requests' => 'query_request']);
     Route::post('query-requests/{query_request}/reviews', [QueryReviewController::class, 'store'])
         ->name('query-requests.reviews.store');
     Route::post('query-requests/{query_request}/dispatch', [QueryRequestController::class, 'dispatch'])

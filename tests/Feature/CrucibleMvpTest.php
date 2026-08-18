@@ -66,6 +66,122 @@ class CrucibleMvpTest extends TestCase
         ]);
     }
 
+    public function test_connections_index_returns_paginated_connections(): void
+    {
+        $admin = $this->adminUser();
+        DatabaseConnection::factory()->count(16)->create();
+
+        $this->actingAs($admin)
+            ->get(route('connections.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('connections/index')
+                ->has('connections.data', 15)
+                ->where('connections.current_page', 1)
+                ->where('connections.last_page', 2)
+                ->where('connections.total', 16)
+                ->where('connection_count', 16)
+                ->has('connections.links', 4));
+
+        $this->actingAs($admin)
+            ->get(route('connections.index', ['page' => 2]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('connections/index')
+                ->has('connections.data', 1)
+                ->where('connections.current_page', 2)
+                ->where('connections.from', 16)
+                ->where('connections.to', 16));
+    }
+
+    public function test_connections_index_filters_connections_and_preserves_filters_across_pages(): void
+    {
+        $admin = $this->adminUser();
+        DatabaseConnection::factory()->mysql()->count(16)->create([
+            'host' => 'shared-batch.internal',
+            'is_active' => true,
+        ]);
+        DatabaseConnection::factory()->postgresql()->create([
+            'host' => 'shared-batch.internal',
+            'is_active' => true,
+        ]);
+        DatabaseConnection::factory()->mysql()->create([
+            'host' => 'shared-batch.internal',
+            'is_active' => false,
+        ]);
+
+        $filters = [
+            'search' => 'shared-batch',
+            'driver' => DatabaseDriver::MySql->value,
+            'status' => 'active',
+        ];
+
+        $this->actingAs($admin)
+            ->get(route('connections.index', $filters))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('connections/index')
+                ->where('filters', $filters)
+                ->has('connections.data', 15)
+                ->where('connections.total', 16)
+                ->where('connection_count', 18)
+                ->where('connections.last_page', 2)
+                ->where('connections.links.3.url', fn (?string $url): bool => $url !== null
+                    && str_contains($url, 'search=shared-batch')
+                    && str_contains($url, 'driver=mysql')
+                    && str_contains($url, 'status=active')));
+
+        $this->actingAs($admin)
+            ->get(route('connections.index', [...$filters, 'page' => 2]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('connections.data', 1)
+                ->where('connections.current_page', 2));
+    }
+
+    public function test_admin_can_save_a_connection_and_continue_with_shared_server_defaults(): void
+    {
+        $admin = $this->adminUser();
+
+        $response = $this->actingAs($admin)->post(route('connections.store'), [
+            'name' => 'Production Orders',
+            'driver' => DatabaseDriver::PostgreSql->value,
+            'host' => 'orders.internal',
+            'port' => 5432,
+            'database' => 'orders',
+            'username' => 'orders_user',
+            'password' => 'secret-password',
+            'ssl_mode' => 'require',
+            'is_active' => '1',
+            'create_another' => '1',
+        ]);
+
+        $createAnotherUrl = route('connections.create', [
+            'driver' => DatabaseDriver::PostgreSql->value,
+            'host' => 'orders.internal',
+            'port' => 5432,
+            'ssl_mode' => 'require',
+        ]);
+
+        $response->assertRedirect($createAnotherUrl);
+        $connection = DatabaseConnection::query()->where('name', 'Production Orders')->firstOrFail();
+        $this->assertModelExists($connection);
+        $this->assertSame('orders.internal', $connection->host);
+
+        $this->actingAs($admin)
+            ->get($createAnotherUrl)
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('connections/form')
+                ->where('connection', null)
+                ->where('defaults', [
+                    'driver' => DatabaseDriver::PostgreSql->value,
+                    'host' => 'orders.internal',
+                    'port' => 5432,
+                    'ssl_mode' => 'require',
+                ]));
+    }
+
     public function test_admin_sees_success_toast_when_connection_test_succeeds(): void
     {
         $admin = $this->adminUser();

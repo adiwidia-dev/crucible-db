@@ -19,14 +19,14 @@ class ExecuteQueryRequest implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 45;
+    public int $timeout = 240;
 
     public function __construct(public int $queryRequestId) {}
 
     public function handle(DatabaseQueryExecutor $executor, AuditLogger $auditLogger): void
     {
         $queryRequest = QueryRequest::query()
-            ->with('databaseConnection', 'requester', 'dispatchedBy')
+            ->with('databaseConnection', 'requester', 'dispatchedBy', 'statements')
             ->findOrFail($this->queryRequestId);
 
         if ($queryRequest->request_kind !== QueryRequestKind::SingleExecution) {
@@ -37,7 +37,6 @@ class ExecuteQueryRequest implements ShouldQueue
             return;
         }
 
-        $startedAt = now();
         $executorUser = $queryRequest->dispatchedBy ?? $queryRequest->requester;
 
         $queryRequest->forceFill([
@@ -45,66 +44,122 @@ class ExecuteQueryRequest implements ShouldQueue
             'last_error' => null,
         ])->save();
 
-        $execution = QueryExecution::query()->create([
-            'query_request_id' => $queryRequest->id,
-            'executed_by_id' => $executorUser->id,
-            'sql' => $queryRequest->sql,
-            'query_type' => $queryRequest->query_type,
-            'status' => ExecutionStatus::Running,
-            'started_at' => $startedAt,
+        $statements = $queryRequest->statements->map(fn ($statement): array => [
+            'id' => $statement->id,
+            'position' => $statement->position,
+            'sql' => $statement->sql,
+            'query_type' => $statement->query_type,
         ]);
 
-        try {
-            $result = $executor->execute($queryRequest->databaseConnection, $queryRequest->sql, $queryRequest->query_type);
-            $finishedAt = now();
+        if ($statements->isEmpty()) {
+            $statements->push([
+                'id' => null,
+                'position' => 1,
+                'sql' => $queryRequest->sql,
+                'query_type' => $queryRequest->query_type,
+            ]);
+        }
 
-            $execution->forceFill([
-                'status' => ExecutionStatus::Succeeded,
-                'finished_at' => $finishedAt,
-                'duration_ms' => (int) $startedAt->diffInMilliseconds($finishedAt),
-                'row_count' => $result['row_count'],
-                'result_truncated' => $result['result_truncated'] ?? false,
-                'sample_rows' => $result['sample_rows'],
-            ])->save();
+        $executionIds = [];
+        $statementResults = [];
+        $totalRowCount = 0;
+        $resultTruncated = false;
 
-            $queryRequest->forceFill([
-                'status' => QueryRequestStatus::Completed,
-                'completed_at' => $finishedAt,
-                'result_summary' => [
+        foreach ($statements as $statement) {
+            $startedAt = now();
+            $execution = QueryExecution::query()->create([
+                'query_request_id' => $queryRequest->id,
+                'query_request_statement_id' => $statement['id'],
+                'executed_by_id' => $executorUser->id,
+                'sql' => $statement['sql'],
+                'query_type' => $statement['query_type'],
+                'status' => ExecutionStatus::Running,
+                'started_at' => $startedAt,
+            ]);
+            $executionIds[] = $execution->id;
+
+            try {
+                $result = $executor->execute($queryRequest->databaseConnection, $statement['sql'], $statement['query_type']);
+                $finishedAt = now();
+
+                $execution->forceFill([
+                    'status' => ExecutionStatus::Succeeded,
+                    'finished_at' => $finishedAt,
+                    'duration_ms' => (int) $startedAt->diffInMilliseconds($finishedAt),
                     'row_count' => $result['row_count'],
                     'result_truncated' => $result['result_truncated'] ?? false,
                     'sample_rows' => $result['sample_rows'],
-                ],
-            ])->save();
+                ])->save();
 
-            $auditLogger->log('query_request.executed', $executorUser, $queryRequest, [
-                'execution_id' => $execution->id,
-                'row_count' => $result['row_count'],
-                'result_truncated' => $result['result_truncated'] ?? false,
-            ]);
-        } catch (Throwable $exception) {
-            $finishedAt = now();
+                $totalRowCount += $result['row_count'];
+                $resultTruncated = $resultTruncated || ($result['result_truncated'] ?? false);
+                $statementResults[] = [
+                    'position' => $statement['position'],
+                    'execution_id' => $execution->id,
+                    'row_count' => $result['row_count'],
+                    'result_truncated' => $result['result_truncated'] ?? false,
+                ];
 
-            $execution->forceFill([
-                'status' => ExecutionStatus::Failed,
-                'finished_at' => $finishedAt,
-                'duration_ms' => (int) $startedAt->diffInMilliseconds($finishedAt),
-                'error_message' => $exception->getMessage(),
-            ])->save();
+                $auditLogger->log('query_request.statement_executed', $executorUser, $queryRequest, [
+                    'statement_position' => $statement['position'],
+                    'execution_id' => $execution->id,
+                    'row_count' => $result['row_count'],
+                    'result_truncated' => $result['result_truncated'] ?? false,
+                ]);
+            } catch (Throwable $exception) {
+                $finishedAt = now();
 
-            $queryRequest->forceFill([
-                'status' => QueryRequestStatus::Failed,
-                'completed_at' => $finishedAt,
-                'last_error' => $exception->getMessage(),
-            ])->save();
+                $execution->forceFill([
+                    'status' => ExecutionStatus::Failed,
+                    'finished_at' => $finishedAt,
+                    'duration_ms' => (int) $startedAt->diffInMilliseconds($finishedAt),
+                    'error_message' => $exception->getMessage(),
+                ])->save();
 
-            $auditLogger->log('query_request.execution_failed', $executorUser, $queryRequest, [
-                'execution_id' => $execution->id,
-                'error' => $exception->getMessage(),
-            ]);
+                $queryRequest->forceFill([
+                    'status' => QueryRequestStatus::Failed,
+                    'completed_at' => $finishedAt,
+                    'last_error' => $exception->getMessage(),
+                    'result_summary' => [
+                        'statement_count' => $statements->count(),
+                        'completed_statement_count' => count($statementResults),
+                        'failed_statement_position' => $statement['position'],
+                        'row_count' => $totalRowCount,
+                        'result_truncated' => $resultTruncated,
+                        'statements' => $statementResults,
+                    ],
+                ])->save();
 
-            throw $exception;
+                $auditLogger->log('query_request.execution_failed', $executorUser, $queryRequest, [
+                    'statement_position' => $statement['position'],
+                    'execution_id' => $execution->id,
+                    'error' => $exception->getMessage(),
+                ]);
+
+                throw $exception;
+            }
         }
+
+        $finishedAt = now();
+
+        $queryRequest->forceFill([
+            'status' => QueryRequestStatus::Completed,
+            'completed_at' => $finishedAt,
+            'result_summary' => [
+                'statement_count' => $statements->count(),
+                'completed_statement_count' => count($statementResults),
+                'row_count' => $totalRowCount,
+                'result_truncated' => $resultTruncated,
+                'statements' => $statementResults,
+            ],
+        ])->save();
+
+        $auditLogger->log('query_request.executed', $executorUser, $queryRequest, [
+            'execution_ids' => $executionIds,
+            'statement_count' => $statements->count(),
+            'row_count' => $totalRowCount,
+            'result_truncated' => $resultTruncated,
+        ]);
     }
 
     public function failed(?Throwable $exception): void

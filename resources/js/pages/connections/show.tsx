@@ -1,5 +1,12 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Database, Pencil, PlugZap, ShieldCheck, Trash2 } from 'lucide-react';
+import {
+    Database,
+    Pencil,
+    PlugZap,
+    Plus,
+    ShieldCheck,
+    Trash2,
+} from 'lucide-react';
 import DatabaseConnectionController from '@/actions/App/Http/Controllers/DatabaseConnectionController';
 import { PageHeader } from '@/components/crucible/page-header';
 import { StatusBadge } from '@/components/crucible/status-badge';
@@ -23,7 +30,7 @@ import {
 } from '@/components/ui/dialog';
 import { showFlashToast } from '@/hooks/use-flash-toast';
 import { driverLabel, statusLabel } from '@/lib/crucible';
-import { edit, index } from '@/routes/connections';
+import { create, edit, index } from '@/routes/connections';
 
 type Connection = {
     id: number;
@@ -47,9 +54,14 @@ type Connection = {
 type Props = {
     connection: Connection;
     can_update: boolean;
+    can_create: boolean;
 };
 
-export default function ConnectionShow({ connection, can_update }: Props) {
+export default function ConnectionShow({
+    connection,
+    can_update,
+    can_create,
+}: Props) {
     return (
         <>
             <Head title={connection.name} />
@@ -61,92 +73,119 @@ export default function ConnectionShow({ connection, can_update }: Props) {
                     title={connection.name}
                     description={`${connection.host}:${connection.port} / ${connection.database}`}
                     actions={
-                        can_update && (
+                        (can_create || can_update) && (
                             <>
-                                <Form
-                                    {...DatabaseConnectionController.test.form(
-                                        connection.id,
-                                    )}
-                                    options={{ preserveScroll: true }}
-                                    onSuccess={() =>
-                                        showFlashToast({
-                                            type: 'success',
-                                            message:
-                                                'Connection test succeeded.',
-                                        })
-                                    }
-                                    onError={() =>
-                                        showFlashToast({
-                                            type: 'error',
-                                            message:
-                                                'Connection test failed. Check the connection settings and audit log.',
-                                        })
-                                    }
-                                >
-                                    {({ processing }) => (
-                                        <Button
-                                            variant="outline"
-                                            disabled={processing}
+                                {can_create && (
+                                    <Button variant="outline" asChild>
+                                        <Link
+                                            href={create({
+                                                query: {
+                                                    driver: connection.driver,
+                                                    host: connection.host,
+                                                    port: connection.port,
+                                                    ssl_mode:
+                                                        connection.ssl_mode,
+                                                },
+                                            })}
                                         >
-                                            <PlugZap />
-                                            Test
-                                        </Button>
-                                    )}
-                                </Form>
-                                <Button asChild>
-                                    <Link href={edit(connection.id)}>
-                                        <Pencil />
-                                        Edit
-                                    </Link>
-                                </Button>
-                                <Dialog>
-                                    <DialogTrigger asChild>
-                                        <Button variant="destructive">
-                                            <Trash2 />
-                                            Delete
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent>
-                                        <DialogHeader>
-                                            <DialogTitle>
-                                                Delete database connection?
-                                            </DialogTitle>
-                                            <DialogDescription>
-                                                This removes {connection.name}{' '}
-                                                from Crucible DB. Existing audit
-                                                history remains, but users will
-                                                no longer be able to request or
-                                                run queries against this
-                                                connection.
-                                            </DialogDescription>
-                                        </DialogHeader>
-                                        <DialogFooter>
-                                            <DialogClose asChild>
-                                                <Button variant="outline">
-                                                    Cancel
+                                            <Plus />
+                                            Add similar
+                                        </Link>
+                                    </Button>
+                                )}
+                                {can_update && (
+                                    <>
+                                        <Form
+                                            {...DatabaseConnectionController.test.form(
+                                                connection.id,
+                                            )}
+                                            options={{ preserveScroll: true }}
+                                            onSuccess={() =>
+                                                showFlashToast({
+                                                    type: 'success',
+                                                    message:
+                                                        'Connection test succeeded.',
+                                                })
+                                            }
+                                            onError={() =>
+                                                showFlashToast({
+                                                    type: 'error',
+                                                    message:
+                                                        'Connection test failed. Check the connection settings and audit log.',
+                                                })
+                                            }
+                                        >
+                                            {({ processing }) => (
+                                                <Button
+                                                    variant="outline"
+                                                    disabled={processing}
+                                                >
+                                                    <PlugZap />
+                                                    Test
                                                 </Button>
-                                            </DialogClose>
-                                            <Form
-                                                {...DatabaseConnectionController.destroy.form(
-                                                    connection.id,
-                                                )}
-                                                options={{
-                                                    preserveScroll: true,
-                                                }}
-                                            >
-                                                {({ processing }) => (
-                                                    <Button
-                                                        variant="destructive"
-                                                        disabled={processing}
+                                            )}
+                                        </Form>
+                                        <Button asChild>
+                                            <Link href={edit(connection.id)}>
+                                                <Pencil />
+                                                Edit
+                                            </Link>
+                                        </Button>
+                                        <Dialog>
+                                            <DialogTrigger asChild>
+                                                <Button variant="destructive">
+                                                    <Trash2 />
+                                                    Delete
+                                                </Button>
+                                            </DialogTrigger>
+                                            <DialogContent>
+                                                <DialogHeader>
+                                                    <DialogTitle>
+                                                        Delete database
+                                                        connection?
+                                                    </DialogTitle>
+                                                    <DialogDescription>
+                                                        This removes{' '}
+                                                        {connection.name} from
+                                                        Crucible DB. Existing
+                                                        audit history remains,
+                                                        but users will no longer
+                                                        be able to request or
+                                                        run queries against this
+                                                        connection.
+                                                    </DialogDescription>
+                                                </DialogHeader>
+                                                <DialogFooter>
+                                                    <DialogClose asChild>
+                                                        <Button variant="outline">
+                                                            Cancel
+                                                        </Button>
+                                                    </DialogClose>
+                                                    <Form
+                                                        {...DatabaseConnectionController.destroy.form(
+                                                            connection.id,
+                                                        )}
+                                                        options={{
+                                                            preserveScroll: true,
+                                                        }}
                                                     >
-                                                        <Trash2 />
-                                                        Yes, delete
-                                                    </Button>
-                                                )}
-                                            </Form>
-                                        </DialogFooter>
-                                    </DialogContent>
-                                </Dialog>
+                                                        {({ processing }) => (
+                                                            <Button
+                                                                variant="destructive"
+                                                                disabled={
+                                                                    processing
+                                                                }
+                                                            >
+                                                                <Trash2 />
+                                                                Yes, delete
+                                                            </Button>
+                                                        )}
+                                                    </Form>
+                                                </DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
+                                    </>
+                                )}
                             </>
                         )
                     }

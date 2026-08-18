@@ -9,7 +9,9 @@ use App\Http\Requests\UpdateDatabaseConnectionRequest;
 use App\Models\DatabaseConnection;
 use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -17,52 +19,80 @@ use Throwable;
 
 class DatabaseConnectionController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
         Gate::authorize('viewAny', DatabaseConnection::class);
 
         $user = request()->user();
+        $filters = $this->filters($request);
         $query = DatabaseConnection::query()->withCount('queryRequests')->latest();
 
         if (! $user->isAdmin()) {
             $query->whereIn('id', $user->accessibleDatabaseConnectionIds());
         }
 
+        $connectionCount = (clone $query)->count();
+        $this->applyFilters($query, $filters);
+
         return Inertia::render('connections/index', [
-            'connections' => $query->paginate(15)->through(fn (DatabaseConnection $connection): array => [
-                'id' => $connection->id,
-                'name' => $connection->name,
-                'driver' => $connection->driver->value,
-                'host' => $connection->host,
-                'port' => $connection->port,
-                'database' => $connection->database,
-                'username' => $connection->username,
-                'is_active' => $connection->is_active,
-                'query_requests_count' => $connection->query_requests_count,
-            ]),
+            'connections' => $query
+                ->paginate(15)
+                ->withQueryString()
+                ->through(fn (DatabaseConnection $connection): array => [
+                    'id' => $connection->id,
+                    'name' => $connection->name,
+                    'driver' => $connection->driver->value,
+                    'host' => $connection->host,
+                    'port' => $connection->port,
+                    'database' => $connection->database,
+                    'username' => $connection->username,
+                    'is_active' => $connection->is_active,
+                    'query_requests_count' => $connection->query_requests_count,
+                ]),
+            'filters' => $filters,
+            'driver_options' => $this->drivers(),
+            'connection_count' => $connectionCount,
             'can_create' => $user->can('create', DatabaseConnection::class),
         ]);
     }
 
-    public function create(): Response
+    public function create(Request $request): Response
     {
         Gate::authorize('create', DatabaseConnection::class);
 
         return Inertia::render('connections/form', [
             'connection' => null,
             'drivers' => $this->drivers(),
+            'defaults' => $this->createDefaults($request),
         ]);
     }
 
     public function store(StoreDatabaseConnectionRequest $request, AuditLogger $auditLogger): RedirectResponse
     {
+        $data = $request->validated();
+        unset($data['create_another']);
+
         $connection = DatabaseConnection::query()->create([
-            ...$request->validated(),
+            ...$data,
             'created_by_id' => $request->user()->id,
             'is_active' => $request->boolean('is_active', true),
         ]);
 
         $auditLogger->log('database_connection.created', $request->user(), $connection);
+
+        if ($request->boolean('create_another')) {
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => 'Connection saved. Shared target settings are ready for the next connection.',
+            ]);
+
+            return redirect()->route('connections.create', [
+                'driver' => $connection->driver->value,
+                'host' => $connection->host,
+                'port' => $connection->port,
+                'ssl_mode' => $connection->ssl_mode,
+            ]);
+        }
 
         return redirect()->route('connections.show', $connection);
     }
@@ -93,6 +123,7 @@ class DatabaseConnectionController extends Controller
                 ])->values(),
             ],
             'can_update' => request()->user()->can('update', $databaseConnection),
+            'can_create' => request()->user()->can('create', DatabaseConnection::class),
         ]);
     }
 
@@ -175,5 +206,62 @@ class DatabaseConnectionController extends Controller
             },
             'default_port' => $driver->defaultPort(),
         ], DatabaseDriver::cases());
+    }
+
+    /**
+     * @return array{search: string, driver: string, status: string}
+     */
+    private function filters(Request $request): array
+    {
+        $driver = DatabaseDriver::tryFrom($request->string('driver')->toString());
+        $status = $request->string('status')->toString();
+
+        return [
+            'search' => $request->string('search')->trim()->toString(),
+            'driver' => $driver?->value ?? '',
+            'status' => in_array($status, ['active', 'disabled'], true) ? $status : '',
+        ];
+    }
+
+    /**
+     * @param  Builder<DatabaseConnection>  $query
+     * @param  array{search: string, driver: string, status: string}  $filters
+     */
+    private function applyFilters(Builder $query, array $filters): void
+    {
+        $query
+            ->when($filters['search'] !== '', function (Builder $query) use ($filters): void {
+                $search = $filters['search'];
+
+                $query->where(function (Builder $query) use ($search): void {
+                    $query
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('host', 'like', "%{$search}%")
+                        ->orWhere('database', 'like', "%{$search}%")
+                        ->orWhere('username', 'like', "%{$search}%");
+                });
+            })
+            ->when($filters['driver'] !== '', function (Builder $query) use ($filters): void {
+                $query->where('driver', $filters['driver']);
+            })
+            ->when($filters['status'] !== '', function (Builder $query) use ($filters): void {
+                $query->where('is_active', $filters['status'] === 'active');
+            });
+    }
+
+    /**
+     * @return array{driver: string, host: string, port: int, ssl_mode: string|null}
+     */
+    private function createDefaults(Request $request): array
+    {
+        $driver = DatabaseDriver::tryFrom($request->string('driver')->toString()) ?? DatabaseDriver::MySql;
+        $port = $request->integer('port');
+
+        return [
+            'driver' => $driver->value,
+            'host' => $request->string('host')->trim()->substr(0, 255)->toString(),
+            'port' => $port >= 1 && $port <= 65535 ? $port : $driver->defaultPort(),
+            'ssl_mode' => $request->string('ssl_mode')->trim()->substr(0, 50)->toString() ?: null,
+        ];
     }
 }

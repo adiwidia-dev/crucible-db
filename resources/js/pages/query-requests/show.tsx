@@ -5,6 +5,7 @@ import {
     Download,
     FileCode2,
     KeyRound,
+    Pencil,
     Play,
     RotateCcw,
     Rows3,
@@ -57,6 +58,7 @@ import type { Auth } from '@/types';
 
 type Execution = {
     id: number;
+    statement_position: number | null;
     status: ExecutionStatus;
     query_type: QueryType;
     sql: string | null;
@@ -75,6 +77,12 @@ type QueryRequest = {
     title: string;
     description: string | null;
     sql: string | null;
+    statements: Array<{
+        id: number;
+        position: number;
+        sql: string;
+        query_type: QueryType;
+    }>;
     status: QueryRequestStatus;
     query_type: QueryType;
     request_kind: QueryRequestKind;
@@ -117,6 +125,7 @@ type QueryRequest = {
 type Props = {
     query_request: QueryRequest;
     can_review: boolean;
+    can_update: boolean;
     can_dispatch: boolean;
     can_start_session: boolean;
     can_delete: boolean;
@@ -211,6 +220,7 @@ function ExecutionResult({ execution }: { execution: Execution }) {
 export default function QueryRequestShow({
     query_request,
     can_review,
+    can_update,
     can_dispatch,
     can_start_session,
     can_delete,
@@ -242,23 +252,41 @@ export default function QueryRequestShow({
             mode: 'rest',
         },
     );
-    const formattedSql = useMemo(() => {
-        if (!query_request.sql) {
-            return '';
-        }
-
-        try {
-            return format(query_request.sql, {
-                language:
-                    query_request.connection.driver === 'mysql'
-                        ? 'mysql'
-                        : 'postgresql',
-                keywordCase: 'upper',
-            });
-        } catch {
-            return query_request.sql;
-        }
-    }, [query_request.connection.driver, query_request.sql]);
+    const formattedStatements = useMemo(
+        () =>
+            (query_request.statements.length > 0
+                ? query_request.statements
+                : [
+                      {
+                          id: 0,
+                          position: 1,
+                          sql: query_request.sql ?? '',
+                          query_type: query_request.query_type,
+                      },
+                  ]
+            ).map((statement) => {
+                try {
+                    return {
+                        ...statement,
+                        sql: format(statement.sql, {
+                            language:
+                                query_request.connection.driver === 'mysql'
+                                    ? 'mysql'
+                                    : 'postgresql',
+                            keywordCase: 'upper',
+                        }),
+                    };
+                } catch {
+                    return statement;
+                }
+            }),
+        [
+            query_request.connection.driver,
+            query_request.query_type,
+            query_request.sql,
+            query_request.statements,
+        ],
+    );
 
     function toggleExecutionSql(executionId: number): void {
         setExpandedExecutionIds((current) =>
@@ -322,6 +350,18 @@ export default function QueryRequestShow({
                     description={`${query_request.connection.name} / ${driverLabel(query_request.connection.driver)} / ${query_request.requester}`}
                     actions={
                         <div className="flex flex-wrap items-center gap-2">
+                            {can_update && (
+                                <Button variant="outline" asChild>
+                                    <Link
+                                        href={QueryRequestController.edit(
+                                            query_request.id,
+                                        )}
+                                    >
+                                        <Pencil />
+                                        Edit request
+                                    </Link>
+                                </Button>
+                            )}
                             {query_request.active_session ? (
                                 <Button asChild>
                                     <Link
@@ -536,26 +576,49 @@ export default function QueryRequestShow({
                         <CardHeader className="border-b px-4 pb-4 sm:px-6">
                             <div className="flex items-center gap-2">
                                 <FileCode2 className="size-4 text-muted-foreground" />
-                                <CardTitle>SQL</CardTitle>
+                                <CardTitle>
+                                    SQL Batch ({formattedStatements.length}{' '}
+                                    {formattedStatements.length === 1
+                                        ? 'statement'
+                                        : 'statements'})
+                                </CardTitle>
                             </div>
+                            <CardDescription>
+                                Statements execute in this order and stop at
+                                the first failure.
+                            </CardDescription>
                         </CardHeader>
-                        <CardContent className="p-0">
-                            <div className="flex h-9 items-center gap-2 border-b bg-muted/40 px-3 text-xs text-muted-foreground">
-                                <FileCode2 className="size-3.5" />
-                                <span>query.sql</span>
-                            </div>
-                            <SqlEditor
-                                value={formattedSql}
-                                onChange={() => undefined}
-                                driver={query_request.connection.driver}
-                                readOnly
-                                minHeight="10rem"
-                            />
+                        <CardContent className="grid gap-4 p-4 sm:p-6">
+                            {formattedStatements.map((statement) => (
+                                <div
+                                    key={statement.id || statement.position}
+                                    className="overflow-hidden rounded-lg border bg-background"
+                                >
+                                    <div className="flex h-10 items-center justify-between gap-2 border-b bg-muted/40 px-3 text-xs text-muted-foreground">
+                                        <span className="flex items-center gap-2">
+                                            <FileCode2 className="size-3.5" />
+                                            Statement {statement.position}
+                                        </span>
+                                        <StatusBadge
+                                            value={statement.query_type}
+                                        />
+                                    </div>
+                                    <SqlEditor
+                                        value={statement.sql}
+                                        onChange={() => undefined}
+                                        driver={
+                                            query_request.connection.driver
+                                        }
+                                        readOnly
+                                        minHeight="8rem"
+                                    />
+                                </div>
+                            ))}
                             {can_dispatch && (
-                                <div className="flex flex-col gap-3 border-t px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                                <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="text-sm text-muted-foreground">
-                                        This approved request is ready for a
-                                        one-time execution.
+                                        This approved batch is ready for one
+                                        ordered execution.
                                     </div>
                                     <Form
                                         {...QueryRequestController.dispatch.form(
@@ -586,7 +649,7 @@ export default function QueryRequestShow({
                                                     ? 'Dispatching...'
                                                     : recentlySuccessful
                                                       ? 'Dispatched'
-                                                      : 'Execute Query'}
+                                                      : 'Execute batch'}
                                             </Button>
                                         )}
                                     </Form>
@@ -757,7 +820,7 @@ export default function QueryRequestShow({
                                             Type
                                         </th>
                                         <th className="py-3 pr-4 font-medium">
-                                            SQL
+                                            Statement / SQL
                                         </th>
                                         <th className="py-3 pr-4 font-medium">
                                             Started
@@ -819,6 +882,11 @@ export default function QueryRequestShow({
                                                                     }`}
                                                                 />
                                                                 <code className="line-clamp-2 font-mono text-xs text-muted-foreground group-hover:text-foreground">
+                                                                    {execution.statement_position && (
+                                                                        <span className="mr-2 font-sans font-medium text-foreground">
+                                                                            #{execution.statement_position}
+                                                                        </span>
+                                                                    )}
                                                                     {execution.sql ??
                                                                         'SQL not recorded'}
                                                                 </code>

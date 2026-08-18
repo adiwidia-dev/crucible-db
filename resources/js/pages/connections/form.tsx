@@ -1,5 +1,6 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Check, Database, KeyRound, Server, X } from 'lucide-react';
+import { Check, Database, KeyRound, Plus, Server, X } from 'lucide-react';
+import { useState } from 'react';
 import DatabaseConnectionController from '@/actions/App/Http/Controllers/DatabaseConnectionController';
 import { PageHeader } from '@/components/crucible/page-header';
 import InputError from '@/components/input-error';
@@ -8,6 +9,7 @@ import {
     Card,
     CardContent,
     CardDescription,
+    CardFooter,
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
@@ -36,13 +38,45 @@ type ConnectionFormData = {
 type Props = {
     connection: ConnectionFormData;
     drivers: Driver[];
+    defaults?: {
+        driver: string;
+        host: string;
+        port: number;
+        ssl_mode: string | null;
+    };
 };
 
-export default function ConnectionForm({ connection, drivers }: Props) {
+export default function ConnectionForm({
+    connection,
+    drivers,
+    defaults,
+}: Props) {
     const isEditing = Boolean(connection);
     const action = connection
         ? DatabaseConnectionController.update.form(connection.id)
         : DatabaseConnectionController.store.form();
+    const initialDriver =
+        connection?.driver ?? defaults?.driver ?? drivers[0]?.value ?? '';
+    const initialPort =
+        connection?.port ??
+        defaults?.port ??
+        drivers.find((driver) => driver.value === initialDriver)
+            ?.default_port ??
+        5432;
+    const [driver, setDriver] = useState(initialDriver);
+    const [port, setPort] = useState(initialPort);
+
+    function changeDriver(value: string) {
+        setDriver(value);
+
+        const selectedDriver = drivers.find(
+            (driverOption) => driverOption.value === value,
+        );
+
+        if (selectedDriver) {
+            setPort(selectedDriver.default_port);
+        }
+    }
 
     return (
         <>
@@ -60,204 +94,322 @@ export default function ConnectionForm({ connection, drivers }: Props) {
                     }
                 />
 
-                <Card>
+                <Card className="gap-0">
                     <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                        <CardTitle>Connection Profile</CardTitle>
+                        <CardTitle>Connection Setup</CardTitle>
                         <CardDescription>
-                            Endpoint, credentials, and availability.
+                            Define the target, server, and credentials in three
+                            short steps.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="pt-6">
+                    <CardContent className="p-0">
                         <Form
                             {...action}
-                            options={{ preserveScroll: true }}
-                            className="grid gap-6"
+                            options={{
+                                preserveScroll: true,
+                                preserveState: 'errors',
+                            }}
                         >
                             {({ processing, errors }) => (
                                 <>
-                                    <section className="grid gap-4 rounded-lg border bg-muted/25 p-4 lg:grid-cols-2">
-                                        <div className="flex items-center gap-2 lg:col-span-2">
-                                            <Server className="size-4 text-muted-foreground" />
-                                            <h2 className="text-sm font-medium">
-                                                Target
-                                            </h2>
+                                    {!isEditing && defaults?.host && (
+                                        <div className="mx-4 mt-4 flex gap-3 rounded-md border bg-accent/40 p-3 text-sm sm:mx-6">
+                                            <Server className="mt-0.5 size-4 shrink-0 text-primary" />
+                                            <div>
+                                                <p className="font-medium">
+                                                    Shared server settings are
+                                                    ready
+                                                </p>
+                                                <p className="mt-1 text-muted-foreground">
+                                                    {defaults.host}:
+                                                    {defaults.port} is carried
+                                                    over. Add the next database
+                                                    identity and credentials.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <section className="grid gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(11rem,0.55fr)_minmax(0,2fr)] lg:gap-8">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <Database className="size-4 text-muted-foreground" />
+                                                <h2 className="text-sm font-semibold">
+                                                    Identity
+                                                </h2>
+                                            </div>
+                                            <p className="mt-2 max-w-xs text-sm text-muted-foreground">
+                                                Give this connection a clear
+                                                name and choose the database it
+                                                opens.
+                                            </p>
                                         </div>
 
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="name">Name</Label>
-                                            <Input
-                                                id="name"
-                                                name="name"
-                                                defaultValue={
-                                                    connection?.name ?? ''
-                                                }
-                                                required
-                                            />
-                                            <InputError message={errors.name} />
-                                        </div>
-
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="driver">
-                                                Driver
-                                            </Label>
-                                            <select
-                                                id="driver"
-                                                name="driver"
-                                                defaultValue={
-                                                    connection?.driver ??
-                                                    drivers[0]?.value
-                                                }
-                                                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                                required
-                                            >
-                                                {drivers.map((driver) => (
-                                                    <option
-                                                        key={driver.value}
-                                                        value={driver.value}
-                                                    >
-                                                        {driver.label}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <InputError
-                                                message={errors.driver}
-                                            />
-                                        </div>
-
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="host">Host</Label>
-                                            <Input
-                                                id="host"
-                                                name="host"
-                                                defaultValue={
-                                                    connection?.host ?? ''
-                                                }
-                                                required
-                                            />
-                                            <InputError message={errors.host} />
-                                        </div>
-
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="port">Port</Label>
-                                            <Input
-                                                id="port"
-                                                name="port"
-                                                type="number"
-                                                defaultValue={
-                                                    connection?.port ??
-                                                    drivers[0]?.default_port ??
-                                                    5432
-                                                }
-                                                required
-                                            />
-                                            <InputError message={errors.port} />
-                                        </div>
-
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="database">
-                                                Database
-                                            </Label>
-                                            <Input
-                                                id="database"
-                                                name="database"
-                                                defaultValue={
-                                                    connection?.database ?? ''
-                                                }
-                                                required
-                                            />
-                                            <InputError
-                                                message={errors.database}
-                                            />
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="name">
+                                                    Connection name
+                                                </Label>
+                                                <Input
+                                                    id="name"
+                                                    name="name"
+                                                    defaultValue={
+                                                        connection?.name ?? ''
+                                                    }
+                                                    placeholder="Production reporting"
+                                                    autoFocus={!isEditing}
+                                                    required
+                                                />
+                                                <InputError
+                                                    message={errors.name}
+                                                />
+                                            </div>
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="database">
+                                                    Database
+                                                </Label>
+                                                <Input
+                                                    id="database"
+                                                    name="database"
+                                                    defaultValue={
+                                                        connection?.database ??
+                                                        ''
+                                                    }
+                                                    placeholder="app_production"
+                                                    required
+                                                />
+                                                <InputError
+                                                    message={errors.database}
+                                                />
+                                            </div>
                                         </div>
                                     </section>
 
-                                    <section className="grid gap-4 rounded-lg border bg-muted/25 p-4 lg:grid-cols-2">
-                                        <div className="flex items-center gap-2 lg:col-span-2">
-                                            <KeyRound className="size-4 text-muted-foreground" />
-                                            <h2 className="text-sm font-medium">
-                                                Credentials and Transport
-                                            </h2>
+                                    <section className="grid gap-5 border-t px-4 py-6 sm:px-6 lg:grid-cols-[minmax(11rem,0.55fr)_minmax(0,2fr)] lg:gap-8">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <Server className="size-4 text-muted-foreground" />
+                                                <h2 className="text-sm font-semibold">
+                                                    Server
+                                                </h2>
+                                            </div>
+                                            <p className="mt-2 max-w-xs text-sm text-muted-foreground">
+                                                The port follows the selected
+                                                driver automatically. You can
+                                                still override it.
+                                            </p>
                                         </div>
 
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="username">
-                                                Username
-                                            </Label>
-                                            <Input
-                                                id="username"
-                                                name="username"
-                                                defaultValue={
-                                                    connection?.username ?? ''
-                                                }
-                                                required
-                                            />
-                                            <InputError
-                                                message={errors.username}
-                                            />
-                                        </div>
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="driver">
+                                                    Driver
+                                                </Label>
+                                                <select
+                                                    id="driver"
+                                                    name="driver"
+                                                    value={driver}
+                                                    onChange={(event) =>
+                                                        changeDriver(
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                                    required
+                                                >
+                                                    {drivers.map(
+                                                        (driverOption) => (
+                                                            <option
+                                                                key={
+                                                                    driverOption.value
+                                                                }
+                                                                value={
+                                                                    driverOption.value
+                                                                }
+                                                            >
+                                                                {
+                                                                    driverOption.label
+                                                                }
+                                                            </option>
+                                                        ),
+                                                    )}
+                                                </select>
+                                                <InputError
+                                                    message={errors.driver}
+                                                />
+                                            </div>
 
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="password">
-                                                Password
-                                            </Label>
-                                            <Input
-                                                id="password"
-                                                name="password"
-                                                type="password"
-                                                required={!isEditing}
-                                                autoComplete="new-password"
-                                            />
-                                            <InputError
-                                                message={errors.password}
-                                            />
-                                        </div>
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="port">
+                                                    Port
+                                                </Label>
+                                                <Input
+                                                    id="port"
+                                                    name="port"
+                                                    type="number"
+                                                    min={1}
+                                                    max={65535}
+                                                    value={port}
+                                                    onChange={(event) =>
+                                                        setPort(
+                                                            Number(
+                                                                event.target
+                                                                    .value,
+                                                            ),
+                                                        )
+                                                    }
+                                                    required
+                                                />
+                                                <InputError
+                                                    message={errors.port}
+                                                />
+                                            </div>
 
-                                        <div className="grid gap-2">
-                                            <Label htmlFor="ssl_mode">
-                                                SSL Mode
-                                            </Label>
-                                            <Input
-                                                id="ssl_mode"
-                                                name="ssl_mode"
-                                                defaultValue={
-                                                    connection?.ssl_mode ?? ''
-                                                }
-                                                placeholder="prefer"
-                                            />
-                                            <InputError
-                                                message={errors.ssl_mode}
-                                            />
-                                        </div>
+                                            <div className="grid gap-2 md:col-span-2">
+                                                <Label htmlFor="host">
+                                                    Host
+                                                </Label>
+                                                <Input
+                                                    id="host"
+                                                    name="host"
+                                                    defaultValue={
+                                                        connection?.host ??
+                                                        defaults?.host ??
+                                                        ''
+                                                    }
+                                                    placeholder="db.internal.example.com"
+                                                    required
+                                                />
+                                                <InputError
+                                                    message={errors.host}
+                                                />
+                                            </div>
 
-                                        <label className="flex h-9 items-center gap-3 self-end rounded-md border bg-background px-3 text-sm shadow-xs">
-                                            <input
-                                                type="hidden"
-                                                name="is_active"
-                                                value="0"
-                                            />
-                                            <input
-                                                id="is_active"
-                                                name="is_active"
-                                                type="checkbox"
-                                                value="1"
-                                                defaultChecked={
-                                                    connection?.is_active ??
-                                                    true
-                                                }
-                                                className="size-4 rounded border-input"
-                                            />
-                                            <span>Active</span>
-                                        </label>
+                                            <div className="grid gap-2 md:col-span-2">
+                                                <Label htmlFor="ssl_mode">
+                                                    SSL mode
+                                                </Label>
+                                                <Input
+                                                    id="ssl_mode"
+                                                    name="ssl_mode"
+                                                    defaultValue={
+                                                        connection?.ssl_mode ??
+                                                        defaults?.ssl_mode ??
+                                                        ''
+                                                    }
+                                                    placeholder="prefer"
+                                                />
+                                                <InputError
+                                                    message={errors.ssl_mode}
+                                                />
+                                            </div>
+                                        </div>
                                     </section>
 
-                                    <div className="flex items-center gap-3">
+                                    <section className="grid gap-5 border-t px-4 py-6 sm:px-6 lg:grid-cols-[minmax(11rem,0.55fr)_minmax(0,2fr)] lg:gap-8">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <KeyRound className="size-4 text-muted-foreground" />
+                                                <h2 className="text-sm font-semibold">
+                                                    Credentials
+                                                </h2>
+                                            </div>
+                                            <p className="mt-2 max-w-xs text-sm text-muted-foreground">
+                                                Credentials are stored securely
+                                                and are never carried into the
+                                                next connection.
+                                            </p>
+                                        </div>
+
+                                        <div className="grid gap-4 md:grid-cols-2">
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="username">
+                                                    Username
+                                                </Label>
+                                                <Input
+                                                    id="username"
+                                                    name="username"
+                                                    defaultValue={
+                                                        connection?.username ??
+                                                        ''
+                                                    }
+                                                    autoComplete="off"
+                                                    required
+                                                />
+                                                <InputError
+                                                    message={errors.username}
+                                                />
+                                            </div>
+
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="password">
+                                                    Password
+                                                </Label>
+                                                <Input
+                                                    id="password"
+                                                    name="password"
+                                                    type="password"
+                                                    required={!isEditing}
+                                                    autoComplete="new-password"
+                                                />
+                                                <InputError
+                                                    message={errors.password}
+                                                />
+                                            </div>
+
+                                            <label className="flex min-h-12 items-center gap-3 rounded-md border bg-background px-3 text-sm shadow-xs md:col-span-2">
+                                                <input
+                                                    type="hidden"
+                                                    name="is_active"
+                                                    value="0"
+                                                />
+                                                <input
+                                                    id="is_active"
+                                                    name="is_active"
+                                                    type="checkbox"
+                                                    value="1"
+                                                    defaultChecked={
+                                                        connection?.is_active ??
+                                                        true
+                                                    }
+                                                    className="size-4 rounded border-input"
+                                                />
+                                                <span>
+                                                    <span className="font-medium">
+                                                        Active
+                                                    </span>
+                                                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                                                        Allow this connection to
+                                                        receive query requests
+                                                        immediately.
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        </div>
+                                    </section>
+
+                                    <CardFooter className="flex flex-wrap gap-2 border-t bg-muted/10 px-4 py-4 sm:px-6">
                                         <Button disabled={processing}>
                                             <Check />
-                                            Save
+                                            {processing
+                                                ? 'Saving...'
+                                                : 'Save connection'}
                                         </Button>
+                                        {!isEditing && (
+                                            <Button
+                                                name="create_another"
+                                                value="1"
+                                                variant="outline"
+                                                disabled={processing}
+                                            >
+                                                <Plus />
+                                                Save & add another
+                                            </Button>
+                                        )}
                                         <Button
                                             type="button"
                                             variant="outline"
+                                            className="sm:ml-auto"
                                             asChild
                                         >
                                             <Link
@@ -271,7 +423,7 @@ export default function ConnectionForm({ connection, drivers }: Props) {
                                                 Cancel
                                             </Link>
                                         </Button>
-                                    </div>
+                                    </CardFooter>
                                 </>
                             )}
                         </Form>

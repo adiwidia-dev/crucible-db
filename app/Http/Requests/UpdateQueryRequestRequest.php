@@ -3,12 +3,11 @@
 namespace App\Http\Requests;
 
 use App\Enums\QueryRequestKind;
-use App\Models\QueryRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class StoreQueryRequestRequest extends FormRequest
+class UpdateQueryRequestRequest extends FormRequest
 {
     protected function prepareForValidation(): void
     {
@@ -23,10 +22,12 @@ class StoreQueryRequestRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return $this->user()?->can('create', QueryRequest::class) ?? false;
+        return $this->user()?->can('update', $this->route('query_request')) ?? false;
     }
 
     /**
+     * Get the validation rules that apply to the request.
+     *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
