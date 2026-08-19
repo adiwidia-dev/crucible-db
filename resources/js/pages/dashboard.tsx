@@ -288,7 +288,7 @@ export default function Dashboard({
 
                 <section
                     aria-label="Operational summary"
-                    className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+                    className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4"
                 >
                     {summaryItems.map((item) => {
                         const content = (
@@ -311,7 +311,7 @@ export default function Dashboard({
                             <a
                                 key={item.label}
                                 href={item.href}
-                                className="group flex min-h-22 items-center gap-3 border-y bg-card px-4 py-4 transition-colors duration-150 ease-out hover:border-primary/30 hover:bg-accent/35 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden motion-reduce:transition-none sm:rounded-lg sm:border"
+                                className="group flex min-h-20 items-center gap-3 border bg-card px-3 py-3 transition-colors duration-150 ease-out hover:border-primary/30 hover:bg-accent/35 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden motion-reduce:transition-none sm:min-h-22 sm:rounded-lg sm:px-4 sm:py-4"
                             >
                                 {content}
                             </a>
@@ -320,7 +320,7 @@ export default function Dashboard({
                                 key={item.label}
                                 href={item.href}
                                 prefetch
-                                className="group flex min-h-22 items-center gap-3 border-y bg-card px-4 py-4 transition-colors duration-150 ease-out hover:border-primary/30 hover:bg-accent/35 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden motion-reduce:transition-none sm:rounded-lg sm:border"
+                                className="group flex min-h-20 items-center gap-3 border bg-card px-3 py-3 transition-colors duration-150 ease-out hover:border-primary/30 hover:bg-accent/35 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden motion-reduce:transition-none sm:min-h-22 sm:rounded-lg sm:px-4 sm:py-4"
                             >
                                 {content}
                             </Link>

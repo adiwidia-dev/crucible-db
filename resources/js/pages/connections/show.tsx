@@ -1,23 +1,17 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import {
     Database,
+    MoreHorizontal,
     Pencil,
     PlugZap,
     Plus,
     ShieldCheck,
     Trash2,
 } from 'lucide-react';
+import { useState } from 'react';
 import DatabaseConnectionController from '@/actions/App/Http/Controllers/DatabaseConnectionController';
-import { PageHeader } from '@/components/crucible/page-header';
 import { StatusBadge } from '@/components/crucible/status-badge';
 import { Button } from '@/components/ui/button';
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
 import {
     Dialog,
     DialogClose,
@@ -26,8 +20,14 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { showFlashToast } from '@/hooks/use-flash-toast';
 import { driverLabel, statusLabel } from '@/lib/crucible';
 import { create, edit, index } from '@/routes/connections';
@@ -62,221 +62,225 @@ export default function ConnectionShow({
     can_update,
     can_create,
 }: Props) {
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const requiresApproval = connection.permissions.some(
+        (permission) => permission.requires_approval,
+    );
+    const policySummary =
+        connection.permissions.length === 0
+            ? 'No roles have access to this connection.'
+            : `${connection.permissions.length} ${
+                  connection.permissions.length === 1 ? 'role' : 'roles'
+              } configured${requiresApproval ? ' · approval required' : ''}.`;
+
     return (
         <>
             <Head title={connection.name} />
 
             <div className="crucible-page">
-                <PageHeader
-                    icon={Database}
-                    eyebrow="Connection"
-                    title={connection.name}
-                    description={`${connection.host}:${connection.port} / ${connection.database}`}
-                    actions={
-                        (can_create || can_update) && (
-                            <>
-                                {can_create && (
-                                    <Button variant="outline" asChild>
-                                        <Link
-                                            href={create({
-                                                query: {
-                                                    driver: connection.driver,
-                                                    host: connection.host,
-                                                    port: connection.port,
-                                                    ssl_mode:
-                                                        connection.ssl_mode,
-                                                },
-                                            })}
+                <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Database className="size-5 text-muted-foreground" />
+                            <h1 className="text-2xl leading-tight font-semibold tracking-[-0.025em] text-foreground">
+                                {connection.name}
+                            </h1>
+                            <StatusBadge
+                                value={connection.driver}
+                                label={driverLabel(connection.driver)}
+                            />
+                            <StatusBadge
+                                value={
+                                    connection.is_active ? 'active' : 'disabled'
+                                }
+                            />
+                        </div>
+                        <p className="mt-2 font-mono text-xs text-muted-foreground">
+                            {connection.host}:{connection.port}
+                            <span className="px-2 text-border">·</span>
+                            {connection.database}
+                        </p>
+                    </div>
+
+                    {(can_create || can_update) && (
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">
+                            {can_update && (
+                                <Form
+                                    {...DatabaseConnectionController.test.form(
+                                        connection.id,
+                                    )}
+                                    options={{ preserveScroll: true }}
+                                    onSuccess={() =>
+                                        showFlashToast({
+                                            type: 'success',
+                                            message:
+                                                'Connection test succeeded.',
+                                        })
+                                    }
+                                    onError={() =>
+                                        showFlashToast({
+                                            type: 'error',
+                                            message:
+                                                'Connection test failed. Check the connection settings and audit log.',
+                                        })
+                                    }
+                                >
+                                    {({ processing }) => (
+                                        <Button
+                                            variant="outline"
+                                            disabled={processing}
                                         >
-                                            <Plus />
-                                            Add similar
-                                        </Link>
-                                    </Button>
-                                )}
-                                {can_update && (
-                                    <>
-                                        <Form
-                                            {...DatabaseConnectionController.test.form(
-                                                connection.id,
-                                            )}
-                                            options={{ preserveScroll: true }}
-                                            onSuccess={() =>
-                                                showFlashToast({
-                                                    type: 'success',
-                                                    message:
-                                                        'Connection test succeeded.',
-                                                })
-                                            }
-                                            onError={() =>
-                                                showFlashToast({
-                                                    type: 'error',
-                                                    message:
-                                                        'Connection test failed. Check the connection settings and audit log.',
-                                                })
-                                            }
-                                        >
-                                            {({ processing }) => (
-                                                <Button
-                                                    variant="outline"
-                                                    disabled={processing}
-                                                >
-                                                    <PlugZap />
-                                                    Test
-                                                </Button>
-                                            )}
-                                        </Form>
-                                        <Button asChild>
-                                            <Link href={edit(connection.id)}>
-                                                <Pencil />
-                                                Edit
-                                            </Link>
+                                            <PlugZap />
+                                            Test connection
                                         </Button>
-                                        <Dialog>
-                                            <DialogTrigger asChild>
-                                                <Button variant="destructive">
-                                                    <Trash2 />
-                                                    Delete
-                                                </Button>
-                                            </DialogTrigger>
-                                            <DialogContent>
-                                                <DialogHeader>
-                                                    <DialogTitle>
-                                                        Delete database
-                                                        connection?
-                                                    </DialogTitle>
-                                                    <DialogDescription>
-                                                        This removes{' '}
-                                                        {connection.name} from
-                                                        Crucible DB. Existing
-                                                        audit history remains,
-                                                        but users will no longer
-                                                        be able to request or
-                                                        run queries against this
-                                                        connection.
-                                                    </DialogDescription>
-                                                </DialogHeader>
-                                                <DialogFooter>
-                                                    <DialogClose asChild>
-                                                        <Button variant="outline">
-                                                            Cancel
-                                                        </Button>
-                                                    </DialogClose>
-                                                    <Form
-                                                        {...DatabaseConnectionController.destroy.form(
-                                                            connection.id,
-                                                        )}
-                                                        options={{
-                                                            preserveScroll: true,
-                                                        }}
-                                                    >
-                                                        {({ processing }) => (
-                                                            <Button
-                                                                variant="destructive"
-                                                                disabled={
-                                                                    processing
-                                                                }
-                                                            >
-                                                                <Trash2 />
-                                                                Yes, delete
-                                                            </Button>
-                                                        )}
-                                                    </Form>
-                                                </DialogFooter>
-                                            </DialogContent>
-                                        </Dialog>
-                                    </>
-                                )}
-                            </>
-                        )
-                    }
-                />
+                                    )}
+                                </Form>
+                            )}
+                            {can_update && (
+                                <Button asChild>
+                                    <Link href={edit(connection.id)}>
+                                        <Pencil />
+                                        Edit
+                                    </Link>
+                                </Button>
+                            )}
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline">
+                                        <MoreHorizontal />
+                                        More
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    {can_create && (
+                                        <DropdownMenuItem asChild>
+                                            <Link
+                                                href={create({
+                                                    query: {
+                                                        driver: connection.driver,
+                                                        host: connection.host,
+                                                        port: connection.port,
+                                                        ssl_mode:
+                                                            connection.ssl_mode,
+                                                    },
+                                                })}
+                                            >
+                                                <Plus />
+                                                Add similar connection
+                                            </Link>
+                                        </DropdownMenuItem>
+                                    )}
+                                    {can_create && can_update && (
+                                        <DropdownMenuSeparator />
+                                    )}
+                                    {can_update && (
+                                        <DropdownMenuItem
+                                            variant="destructive"
+                                            onSelect={() =>
+                                                setDeleteDialogOpen(true)
+                                            }
+                                        >
+                                            <Trash2 />
+                                            Delete connection
+                                        </DropdownMenuItem>
+                                    )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                    )}
+                </header>
 
-                <Card>
-                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
-                        <CardTitle>Connection Details</CardTitle>
-                        <CardDescription>
-                            Runtime target and transport configuration.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-6">
-                        <dl className="grid gap-3 text-sm md:grid-cols-3">
-                            <div className="rounded-lg border bg-muted/25 p-4">
-                                <dt className="text-muted-foreground">
-                                    Driver
-                                </dt>
-                                <dd className="mt-2">
-                                    <StatusBadge
-                                        value={connection.driver}
-                                        label={driverLabel(connection.driver)}
-                                    />
-                                </dd>
-                            </div>
-                            <div className="rounded-lg border bg-muted/25 p-4">
-                                <dt className="text-muted-foreground">
-                                    Endpoint
-                                </dt>
-                                <dd className="mt-2 font-mono text-xs font-medium">
-                                    {connection.host}:{connection.port}
-                                </dd>
-                            </div>
-                            <div className="rounded-lg border bg-muted/25 p-4">
-                                <dt className="text-muted-foreground">
-                                    Database
-                                </dt>
-                                <dd className="mt-2 font-medium">
-                                    {connection.database}
-                                </dd>
-                            </div>
-                            <div className="rounded-lg border bg-muted/25 p-4">
-                                <dt className="text-muted-foreground">
-                                    Username
-                                </dt>
-                                <dd className="mt-2 font-medium">
-                                    {connection.username}
-                                </dd>
-                            </div>
-                            <div className="rounded-lg border bg-muted/25 p-4">
-                                <dt className="text-muted-foreground">
-                                    SSL Mode
-                                </dt>
-                                <dd className="mt-2 font-medium">
-                                    {connection.ssl_mode || 'Not set'}
-                                </dd>
-                            </div>
-                            <div className="rounded-lg border bg-muted/25 p-4">
-                                <dt className="text-muted-foreground">
-                                    Status
-                                </dt>
-                                <dd className="mt-2">
-                                    <StatusBadge
-                                        value={
-                                            connection.is_active
-                                                ? 'active'
-                                                : 'disabled'
-                                        }
-                                    />
-                                </dd>
-                            </div>
-                        </dl>
-                    </CardContent>
-                </Card>
+                <section className="max-w-6xl overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                    <div className="border-b px-4 py-3 sm:px-5">
+                        <h2 className="text-base font-semibold">
+                            Connection configuration
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Target endpoint, database, and transport settings.
+                        </p>
+                    </div>
+                    <div className="grid gap-8 px-4 py-5 sm:px-5 lg:grid-cols-2">
+                        <div>
+                            <h3 className="text-xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+                                Target
+                            </h3>
+                            <dl className="mt-3 divide-y border-y text-sm">
+                                <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-3">
+                                    <dt className="text-muted-foreground">
+                                        Endpoint
+                                    </dt>
+                                    <dd className="min-w-0 font-mono text-xs font-medium break-all">
+                                        {connection.host}:{connection.port}
+                                    </dd>
+                                </div>
+                                <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-3">
+                                    <dt className="text-muted-foreground">
+                                        Database
+                                    </dt>
+                                    <dd className="min-w-0 font-mono text-xs font-medium break-all">
+                                        {connection.database}
+                                    </dd>
+                                </div>
+                                <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-3">
+                                    <dt className="text-muted-foreground">
+                                        Driver
+                                    </dt>
+                                    <dd>
+                                        <StatusBadge
+                                            value={connection.driver}
+                                            label={driverLabel(
+                                                connection.driver,
+                                            )}
+                                        />
+                                    </dd>
+                                </div>
+                            </dl>
+                        </div>
 
-                <Card>
-                    <CardHeader className="border-b px-4 pb-4 sm:px-6">
+                        <div>
+                            <h3 className="text-xs font-semibold tracking-[0.04em] text-muted-foreground uppercase">
+                                Credentials and transport
+                            </h3>
+                            <dl className="mt-3 divide-y border-y text-sm">
+                                <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-3">
+                                    <dt className="text-muted-foreground">
+                                        Username
+                                    </dt>
+                                    <dd className="min-w-0 font-mono text-xs font-medium break-all">
+                                        {connection.username}
+                                    </dd>
+                                </div>
+                                <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-3">
+                                    <dt className="text-muted-foreground">
+                                        SSL mode
+                                    </dt>
+                                    <dd className="font-medium">
+                                        {connection.ssl_mode || 'Not set'}
+                                    </dd>
+                                </div>
+                            </dl>
+                        </div>
+                    </div>
+                </section>
+
+                <section className="max-w-6xl overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                    <div className="border-b px-4 py-3 sm:px-5">
                         <div className="flex items-center gap-2">
                             <ShieldCheck className="size-4 text-muted-foreground" />
-                            <CardTitle>Role Access</CardTitle>
+                            <h2 className="text-base font-semibold">
+                                Access policy
+                            </h2>
                         </div>
-                        <CardDescription>
-                            Effective access policy by role.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-0">
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            {policySummary}
+                        </p>
+                    </div>
+                    <div>
                         <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
+                            <table className="w-full min-w-[620px] text-sm">
                                 <thead>
-                                    <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                                        <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
+                                    <tr className="border-b bg-muted/45 text-left text-xs text-muted-foreground">
+                                        <th className="py-2.5 pr-4 pl-4 font-medium sm:pl-5">
                                             Role
                                         </th>
                                         <th className="py-3 pr-4 font-medium">
@@ -297,7 +301,7 @@ export default function ConnectionShow({
                                                 key={permission.id}
                                                 className="border-b transition-colors last:border-0 hover:bg-accent/40"
                                             >
-                                                <td className="py-3.5 pr-4 pl-4 font-medium sm:pl-6">
+                                                <td className="py-3 pr-4 pl-4 font-medium sm:pl-5">
                                                     {permission.role}
                                                 </td>
                                                 <td className="py-3.5 pr-4">
@@ -354,9 +358,44 @@ export default function ConnectionShow({
                                 </tbody>
                             </table>
                         </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </section>
             </div>
+
+            <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete database connection?</DialogTitle>
+                        <DialogDescription>
+                            This removes {connection.name} from Crucible DB.
+                            Existing audit history remains, but users will no
+                            longer be able to request or run queries against
+                            this connection.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button variant="outline">Cancel</Button>
+                        </DialogClose>
+                        <Form
+                            {...DatabaseConnectionController.destroy.form(
+                                connection.id,
+                            )}
+                            options={{ preserveScroll: true }}
+                        >
+                            {({ processing }) => (
+                                <Button
+                                    variant="destructive"
+                                    disabled={processing}
+                                >
+                                    <Trash2 />
+                                    Yes, delete
+                                </Button>
+                            )}
+                        </Form>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }
