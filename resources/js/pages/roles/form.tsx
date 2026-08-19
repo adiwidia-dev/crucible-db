@@ -1,15 +1,8 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import {
-    Check,
-    ChevronDown,
-    Database,
-    Plus,
-    Shield,
-    Trash2,
-    X,
-} from 'lucide-react';
+import { Check, Database, Shield, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import RoleController from '@/actions/App/Http/Controllers/RoleController';
+import { ConnectionAddCombobox } from '@/components/crucible/connection-combobox';
 import { PageHeader } from '@/components/crucible/page-header';
 import { StatusBadge } from '@/components/crucible/status-badge';
 import InputError from '@/components/input-error';
@@ -21,12 +14,6 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { driverLabel, statusLabel } from '@/lib/crucible';
@@ -92,14 +79,6 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
         () => new Set(policies.map((policy) => policy.database_connection_id)),
         [policies],
     );
-    const availableConnections = useMemo(() => {
-        return connections.filter(
-            (connection) => !selectedConnectionIds.has(connection.id),
-        );
-    }, [connections, selectedConnectionIds]);
-    const allConnectionsAdded =
-        connections.length > 0 && availableConnections.length === 0;
-
     const addPolicy = (connectionId: number) => {
         if (selectedConnectionIds.has(connectionId)) {
             return;
@@ -492,102 +471,22 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
                                             )}
 
                                             <div className="max-w-xl">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger
-                                                        asChild
-                                                    >
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            className="h-10 w-full justify-between px-3 sm:w-96"
-                                                        >
-                                                            <span className="flex min-w-0 items-center gap-2">
-                                                                <Database className="size-4 text-muted-foreground" />
-                                                                <span className="truncate">
-                                                                    {allConnectionsAdded
-                                                                        ? 'All connections added'
-                                                                        : 'Choose connection'}
-                                                                </span>
-                                                            </span>
-                                                            <ChevronDown className="size-4 text-muted-foreground" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent
-                                                        align="start"
-                                                        className="w-[min(28rem,calc(100vw-2rem))] p-1"
-                                                    >
-                                                        {connections.map(
-                                                            (connection) => {
-                                                                const isSelected =
-                                                                    selectedConnectionIds.has(
-                                                                        connection.id,
-                                                                    );
-
-                                                                return (
-                                                                    <DropdownMenuItem
-                                                                        key={
-                                                                            connection.id
-                                                                        }
-                                                                        disabled={
-                                                                            isSelected
-                                                                        }
-                                                                        onSelect={() =>
-                                                                            addPolicy(
-                                                                                connection.id,
-                                                                            )
-                                                                        }
-                                                                        className="grid cursor-pointer grid-cols-[1fr_auto] items-center gap-3 p-2"
-                                                                    >
-                                                                        <div className="min-w-0">
-                                                                            <div className="truncate font-medium">
-                                                                                {
-                                                                                    connection.name
-                                                                                }
-                                                                            </div>
-                                                                            <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-                                                                                {
-                                                                                    connection.host
-                                                                                }
-
-                                                                                :
-                                                                                {
-                                                                                    connection.port
-                                                                                }{' '}
-                                                                                /{' '}
-                                                                                {
-                                                                                    connection.database
-                                                                                }
-                                                                            </div>
-                                                                            <div className="mt-2">
-                                                                                <StatusBadge
-                                                                                    value={
-                                                                                        connection.driver
-                                                                                    }
-                                                                                    label={driverLabel(
-                                                                                        connection.driver,
-                                                                                    )}
-                                                                                />
-                                                                            </div>
-                                                                        </div>
-                                                                        <span className="inline-flex h-7 items-center gap-1.5 rounded-md border bg-background px-2 text-xs font-medium text-muted-foreground">
-                                                                            {isSelected ? (
-                                                                                <>
-                                                                                    <Check className="size-3.5" />
-                                                                                    Added
-                                                                                </>
-                                                                            ) : (
-                                                                                <>
-                                                                                    <Plus className="size-3.5" />
-                                                                                    Add
-                                                                                </>
-                                                                            )}
-                                                                        </span>
-                                                                    </DropdownMenuItem>
-                                                                );
-                                                            },
-                                                        )}
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
+                                                <ConnectionAddCombobox
+                                                    connections={connections}
+                                                    disabledValues={policies.map(
+                                                        (policy) =>
+                                                            String(
+                                                                policy.database_connection_id,
+                                                            ),
+                                                    )}
+                                                    onAdd={(connectionId) =>
+                                                        addPolicy(
+                                                            Number(
+                                                                connectionId,
+                                                            ),
+                                                        )
+                                                    }
+                                                />
                                             </div>
                                         </div>
                                     )}

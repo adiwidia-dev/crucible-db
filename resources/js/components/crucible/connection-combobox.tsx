@@ -1,12 +1,12 @@
 import { Combobox } from '@cloudflare/kumo/components/combobox';
-import { Database, SearchX } from 'lucide-react';
-import { useCallback } from 'react';
+import { Check, Database, Plus, SearchX } from 'lucide-react';
+import { useCallback, useState } from 'react';
 import { driverLabel } from '@/lib/crucible';
 import type { DatabaseConnectionSummary } from '@/lib/crucible';
 
 type ConnectionOption = Pick<
     DatabaseConnectionSummary,
-    'id' | 'name' | 'driver'
+    'id' | 'name' | 'driver' | 'host' | 'port' | 'database'
 >;
 
 type Props = {
@@ -22,6 +22,14 @@ type Props = {
 type MultiProps = Omit<Props, 'onValueChange' | 'value'> & {
     onValueChange: (values: string[]) => void;
     values: string[];
+};
+
+type AddProps = {
+    connections: ConnectionOption[];
+    description?: string;
+    disabledValues: string[];
+    label?: string;
+    onAdd: (value: string) => void;
 };
 
 export function ConnectionCombobox({
@@ -201,5 +209,109 @@ export function ConnectionMultiCombobox({
                 </Combobox.Content>
             </Combobox>
         </>
+    );
+}
+
+export function ConnectionAddCombobox({
+    connections,
+    description = 'Search by connection name, host, database, or driver.',
+    disabledValues,
+    label = 'Add connection policy',
+    onAdd,
+}: AddProps) {
+    const { contains } = Combobox.useFilter();
+    const [value, setValue] = useState<ConnectionOption | null>(null);
+    const disabledConnectionIds = new Set(disabledValues);
+    const filter = useCallback(
+        (connection: ConnectionOption, query: string): boolean =>
+            contains(connection.name, query) ||
+            contains(driverLabel(connection.driver), query) ||
+            contains(connection.host ?? '', query) ||
+            contains(connection.database ?? '', query),
+        [contains],
+    );
+
+    return (
+        <Combobox
+            items={connections}
+            value={value}
+            onValueChange={(connection) => {
+                if (!connection) {
+                    setValue(null);
+
+                    return;
+                }
+
+                const connectionId = String(
+                    (connection as ConnectionOption).id,
+                );
+
+                if (!disabledConnectionIds.has(connectionId)) {
+                    onAdd(connectionId);
+                }
+
+                setValue(null);
+            }}
+            filter={filter}
+            label={label}
+            description={description}
+        >
+            <Combobox.TriggerInput
+                placeholder="Search and add a connection..."
+                className="max-w-none"
+            />
+            <Combobox.Content className="max-h-80">
+                <Combobox.List>
+                    {(connection: ConnectionOption) => {
+                        const isAdded = disabledConnectionIds.has(
+                            String(connection.id),
+                        );
+
+                        return (
+                            <Combobox.Item
+                                key={connection.id}
+                                value={connection}
+                                disabled={isAdded}
+                                className="py-2 text-sm"
+                            >
+                                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                                    <div className="min-w-0">
+                                        <div className="truncate font-medium">
+                                            {connection.name}
+                                        </div>
+                                        <div className="mt-0.5 truncate font-mono text-xs text-kumo-subtle">
+                                            {connection.host}:{connection.port}{' '}
+                                            / {connection.database}
+                                        </div>
+                                        <div className="mt-1 text-xs text-kumo-subtle">
+                                            {driverLabel(connection.driver)}
+                                        </div>
+                                    </div>
+                                    <span className="inline-flex h-7 items-center gap-1.5 rounded-md border bg-background px-2 text-xs font-medium text-muted-foreground">
+                                        {isAdded ? (
+                                            <>
+                                                <Check className="size-3.5" />
+                                                Added
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Plus className="size-3.5" />
+                                                Add
+                                            </>
+                                        )}
+                                    </span>
+                                </div>
+                            </Combobox.Item>
+                        );
+                    }}
+                </Combobox.List>
+                <Combobox.Empty>
+                    <div className="flex items-center gap-2 py-1">
+                        <SearchX className="size-4" />
+                        <span>No matching connections</span>
+                    </div>
+                </Combobox.Empty>
+            </Combobox.Content>
+        </Combobox>
     );
 }
