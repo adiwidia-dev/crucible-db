@@ -372,82 +372,81 @@ export default function Dashboard({
 
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
                         <div className="grid content-start gap-4 sm:gap-5">
+                            <QueueSection
+                                id="pending-review-title"
+                                title="Pending review"
+                                detail="Requests waiting for an authorized decision."
+                                action={
+                                    <Link
+                                        href={queryRequestsIndex({
+                                            query: { status: 'pending_review' },
+                                        })}
+                                        className="text-xs font-medium text-primary hover:underline"
+                                    >
+                                        View all
+                                    </Link>
+                                }
+                            >
+                                <RequestQueue
+                                    requests={pending_reviews}
+                                    queue="review"
+                                    timezone={userTimezone}
+                                />
+                            </QueueSection>
 
-                        <QueueSection
-                            id="pending-review-title"
-                            title="Pending review"
-                            detail="Requests waiting for an authorized decision."
-                            action={
-                                <Link
-                                    href={queryRequestsIndex({
-                                        query: { status: 'pending_review' },
-                                    })}
-                                    className="text-xs font-medium text-primary hover:underline"
-                                >
-                                    View all
-                                </Link>
-                            }
-                        >
-                            <RequestQueue
-                                requests={pending_reviews}
-                                queue="review"
-                                timezone={userTimezone}
-                            />
-                        </QueueSection>
-
-                        <QueueSection
-                            id="failed-execution-title"
-                            title="Failed execution"
-                            detail="Deployments that stopped and need investigation."
-                            action={
-                                <Link
-                                    href={queryRequestsIndex({
-                                        query: { status: 'failed' },
-                                    })}
-                                    className="text-xs font-medium text-primary hover:underline"
-                                >
-                                    View all
-                                </Link>
-                            }
-                        >
-                            <RequestQueue
-                                requests={failed_requests}
-                                queue="failed"
-                                timezone={userTimezone}
-                            />
-                        </QueueSection>
-                    </div>
+                            <QueueSection
+                                id="failed-execution-title"
+                                title="Failed execution"
+                                detail="Deployments that stopped and need investigation."
+                                action={
+                                    <Link
+                                        href={queryRequestsIndex({
+                                            query: { status: 'failed' },
+                                        })}
+                                        className="text-xs font-medium text-primary hover:underline"
+                                    >
+                                        View all
+                                    </Link>
+                                }
+                            >
+                                <RequestQueue
+                                    requests={failed_requests}
+                                    queue="failed"
+                                    timezone={userTimezone}
+                                />
+                            </QueueSection>
+                        </div>
 
                         <div className="grid content-start gap-6">
-                        <QueueSection
-                            id="scheduled-title"
-                            title="Scheduled work"
-                            detail="Approved executions waiting for their scheduled time."
-                            action={
-                                <Link
-                                    href={queryRequestsIndex({
-                                        query: { status: 'scheduled' },
-                                    })}
-                                    className="text-xs font-medium text-primary hover:underline"
-                                >
-                                    View all
-                                </Link>
-                            }
-                        >
-                            <RequestQueue
-                                requests={scheduled_requests}
-                                queue="scheduled"
-                                timezone={userTimezone}
-                            />
-                        </QueueSection>
+                            <QueueSection
+                                id="scheduled-title"
+                                title="Scheduled work"
+                                detail="Approved executions waiting for their scheduled time."
+                                action={
+                                    <Link
+                                        href={queryRequestsIndex({
+                                            query: { status: 'scheduled' },
+                                        })}
+                                        className="text-xs font-medium text-primary hover:underline"
+                                    >
+                                        View all
+                                    </Link>
+                                }
+                            >
+                                <RequestQueue
+                                    requests={scheduled_requests}
+                                    queue="scheduled"
+                                    timezone={userTimezone}
+                                />
+                            </QueueSection>
 
-                        <QueueSection
-                            id="sessions-title"
-                            title="Active sessions"
-                            detail="Open query-access sessions ordered by expiry."
-                        >
-                            <SessionQueue sessions={expiring_sessions} />
-                        </QueueSection>
+                            <QueueSection
+                                id="sessions-title"
+                                title="Active sessions"
+                                detail="Open query-access sessions ordered by expiry."
+                            >
+                                <SessionQueue sessions={expiring_sessions} />
+                            </QueueSection>
                         </div>
                     </div>
                 </div>

@@ -268,6 +268,8 @@ class User extends Authenticatable implements PasskeyUser
         return $this->effectiveRoleDatabasePermissions()
             ->filter(fn (RoleDatabasePermission $permission): bool => $permission->can_review)
             ->keys()
+            ->map(fn (int|string $connectionId): int => (int) $connectionId)
+            ->values()
             ->all();
     }
 
@@ -284,7 +286,7 @@ class User extends Authenticatable implements PasskeyUser
     }
 
     /**
-     * @return Collection<int, RoleDatabasePermission>
+     * @return Collection<int|string, RoleDatabasePermission>
      */
     private function effectiveRoleDatabasePermissions(): Collection
     {
@@ -302,6 +304,9 @@ class User extends Authenticatable implements PasskeyUser
             ->keyBy('database_connection_id');
     }
 
+    /**
+     * @return Builder<RoleDatabasePermission>
+     */
     private function roleDatabasePermissionsQuery(): Builder
     {
         $permissionTable = (new RoleDatabasePermission)->getTable();

@@ -421,6 +421,7 @@ class NotificationDispatcher
     }
 
     /**
+     * @param  'info'|'success'|'warning'|'critical'  $severity
      * @param  array{statement_position?:int|null,session_id?:int}  $extra
      * @return array{event:string,severity:'info'|'success'|'warning'|'critical',title:string,message:string,action_label:string,url:string,request_id:int,connection_count:int,statement_position?:int|null,session_id?:int}
      */

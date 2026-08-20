@@ -193,7 +193,8 @@ export default function QueryRequestCreate({
                 ) {
                     messages.push({
                         level: 'blocked',
-                        message: 'This SQL is outside the supported governed statement set.',
+                        message:
+                            'This SQL is outside the supported governed statement set.',
                     });
                 } else {
                     if (
@@ -202,7 +203,8 @@ export default function QueryRequestCreate({
                     ) {
                         messages.push({
                             level: 'warning',
-                            message: 'This UPDATE or DELETE has no WHERE clause.',
+                            message:
+                                'This UPDATE or DELETE has no WHERE clause.',
                         });
                     }
 
@@ -483,16 +485,19 @@ export default function QueryRequestCreate({
                                                 connections={connections}
                                                 values={selectedConnectionIds}
                                                 onValueChange={(values) => {
-                                                    setSelectedConnectionIds(values);
-
-                                                    const selected = connections.filter(
-                                                        (connection) =>
-                                                            values.includes(
-                                                                String(
-                                                                    connection.id,
-                                                                ),
-                                                            ),
+                                                    setSelectedConnectionIds(
+                                                        values,
                                                     );
+
+                                                    const selected =
+                                                        connections.filter(
+                                                            (connection) =>
+                                                                values.includes(
+                                                                    String(
+                                                                        connection.id,
+                                                                    ),
+                                                                ),
+                                                        );
 
                                                     if (
                                                         requestedAccessMode ===
@@ -519,7 +524,9 @@ export default function QueryRequestCreate({
                                                         Session access level
                                                     </Label>
                                                     <p className="mt-1 text-xs text-muted-foreground">
-                                                        This limit is enforced on every SQL query for the full session.
+                                                        This limit is enforced
+                                                        on every SQL query for
+                                                        the full session.
                                                     </p>
                                                 </div>
                                                 <div className="grid gap-3 sm:grid-cols-2">
@@ -546,7 +553,10 @@ export default function QueryRequestCreate({
                                                                 Read-only
                                                             </span>
                                                             <span className="text-sm text-muted-foreground">
-                                                                SELECT queries only. Best for routine investigation.
+                                                                SELECT queries
+                                                                only. Best for
+                                                                routine
+                                                                investigation.
                                                             </span>
                                                         </span>
                                                     </label>
@@ -576,7 +586,10 @@ export default function QueryRequestCreate({
                                                                 Read + write
                                                             </span>
                                                             <span className="text-sm text-muted-foreground">
-                                                                Allows DML and DDL, subject to approval and the session timer.
+                                                                Allows DML and
+                                                                DDL, subject to
+                                                                approval and the
+                                                                session timer.
                                                             </span>
                                                         </span>
                                                     </label>
@@ -585,10 +598,16 @@ export default function QueryRequestCreate({
                                                     selectedConnectionIds.length >
                                                         0 && (
                                                         <p className="text-xs text-muted-foreground">
-                                                            Read + write is unavailable because at least one selected connection does not grant write access.
+                                                            Read + write is
+                                                            unavailable because
+                                                            at least one
+                                                            selected connection
+                                                            does not grant write
+                                                            access.
                                                         </p>
                                                     )}
-                                                {selectedConnectionIds.length > 0 && (
+                                                {selectedConnectionIds.length >
+                                                    0 && (
                                                     <p className="text-xs text-muted-foreground">
                                                         {sessionRequiresApproval
                                                             ? 'This selection needs approval before the session can start.'
@@ -633,7 +652,12 @@ export default function QueryRequestCreate({
                                                         Preflight preview
                                                     </h3>
                                                     <p className="mt-0.5 text-xs text-muted-foreground">
-                                                        SQL and common-risk checks update as you prepare the batch. Policy and target checks run again when you submit and execute.
+                                                        SQL and common-risk
+                                                        checks update as you
+                                                        prepare the batch.
+                                                        Policy and target checks
+                                                        run again when you
+                                                        submit and execute.
                                                     </p>
                                                 </div>
                                             </div>
@@ -653,11 +677,16 @@ export default function QueryRequestCreate({
                                                                         statement.position
                                                                     }
                                                                 </span>
-                                                                {statement.messages.length ===
+                                                                {statement
+                                                                    .messages
+                                                                    .length ===
                                                                 0 ? (
                                                                     <span className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
                                                                         <CircleCheck className="size-3.5" />
-                                                                        Ready for server checks
+                                                                        Ready
+                                                                        for
+                                                                        server
+                                                                        checks
                                                                     </span>
                                                                 ) : (
                                                                     <ul className="grid gap-1 sm:max-w-xl">

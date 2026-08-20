@@ -92,9 +92,7 @@ export function AppSidebarHeader({
                                     variant="ghost"
                                     size="sm"
                                     className="h-7 px-1.5 text-xs font-medium text-primary hover:text-primary"
-                                    disabled={
-                                        processing || unreadCount === 0
-                                    }
+                                    disabled={processing || unreadCount === 0}
                                 >
                                     <CheckCheck className="size-3.5" />
                                     Mark all read

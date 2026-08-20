@@ -78,8 +78,8 @@ function RoleAssignmentForm({
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
-    const [orderedRoleIds, setOrderedRoleIds] = useState<number[]>(
-        () => user.roles.map((role) => role.id),
+    const [orderedRoleIds, setOrderedRoleIds] = useState<number[]>(() =>
+        user.roles.map((role) => role.id),
     );
 
     const resetDialog = () => {
@@ -121,7 +121,8 @@ function RoleAssignmentForm({
 
     const moveRole = (roleIndex: number, direction: 'up' | 'down') => {
         setOrderedRoleIds((current) => {
-            const nextIndex = direction === 'up' ? roleIndex - 1 : roleIndex + 1;
+            const nextIndex =
+                direction === 'up' ? roleIndex - 1 : roleIndex + 1;
 
             if (nextIndex < 0 || nextIndex >= current.length) {
                 return current;
@@ -183,8 +184,8 @@ function RoleAssignmentForm({
                         Assign roles
                     </DialogTitle>
                     <DialogDescription>
-                        Define policy precedence for {user.name}. The first
-                        role wins when policies overlap.
+                        Define policy precedence for {user.name}. The first role
+                        wins when policies overlap.
                     </DialogDescription>
                 </DialogHeader>
                 <Form
@@ -234,7 +235,9 @@ function RoleAssignmentForm({
                                                         <input
                                                             type="hidden"
                                                             name={`role_assignments[${index}][priority]`}
-                                                            value={(index + 1) * 10}
+                                                            value={
+                                                                (index + 1) * 10
+                                                            }
                                                         />
                                                         <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted font-mono text-xs font-semibold text-muted-foreground">
                                                             {index + 1}
@@ -254,7 +257,9 @@ function RoleAssignmentForm({
                                                                 type="button"
                                                                 variant="ghost"
                                                                 size="icon"
-                                                                disabled={index === 0}
+                                                                disabled={
+                                                                    index === 0
+                                                                }
                                                                 onClick={() =>
                                                                     moveRole(
                                                                         index,
@@ -312,7 +317,9 @@ function RoleAssignmentForm({
 
                                 <section className="mt-4 overflow-hidden rounded-lg border bg-card">
                                     <div className="border-b bg-muted/25 px-4 py-3">
-                                        <h3 className="font-semibold">Add roles</h3>
+                                        <h3 className="font-semibold">
+                                            Add roles
+                                        </h3>
                                         <p className="mt-1 text-sm text-muted-foreground">
                                             New roles are added at the bottom of
                                             the precedence list.
@@ -327,7 +334,7 @@ function RoleAssignmentForm({
                                                     )
                                                 }
                                                 placeholder="Search roles by name or slug"
-                                                className="h-9 w-full rounded-md border border-input bg-background py-1 pr-3 pl-9 text-sm shadow-xs outline-none transition-[color,border-color,box-shadow] duration-150 ease-out placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30 motion-reduce:transition-none"
+                                                className="h-9 w-full rounded-md border border-input bg-background py-1 pr-3 pl-9 text-sm shadow-xs transition-[color,border-color,box-shadow] duration-150 ease-out outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30 motion-reduce:transition-none"
                                                 aria-label="Search roles to add"
                                             />
                                         </div>
@@ -551,24 +558,29 @@ function UserTable({
                                     <td className="py-3 pr-4">
                                         {user.roles.length > 0 ? (
                                             <div className="grid max-w-80 gap-2">
-                                                {user.roles.map((role, index) => (
-                                                    <div
-                                                        key={role.id}
-                                                        className="flex items-center gap-2"
-                                                    >
-                                                        <StatusBadge
-                                                            value={
-                                                                role.is_admin
-                                                                    ? 'active'
-                                                                    : 'none'
-                                                            }
-                                                            label={role.name}
-                                                        />
-                                                        <span className="font-mono text-xs text-muted-foreground">
-                                                            Policy {index + 1}
-                                                        </span>
-                                                    </div>
-                                                ))}
+                                                {user.roles.map(
+                                                    (role, index) => (
+                                                        <div
+                                                            key={role.id}
+                                                            className="flex items-center gap-2"
+                                                        >
+                                                            <StatusBadge
+                                                                value={
+                                                                    role.is_admin
+                                                                        ? 'active'
+                                                                        : 'none'
+                                                                }
+                                                                label={
+                                                                    role.name
+                                                                }
+                                                            />
+                                                            <span className="font-mono text-xs text-muted-foreground">
+                                                                Policy{' '}
+                                                                {index + 1}
+                                                            </span>
+                                                        </div>
+                                                    ),
+                                                )}
                                             </div>
                                         ) : (
                                             <StatusBadge

@@ -67,7 +67,7 @@ class QuerySessionController extends Controller
                     'id' => $querySession->queryRequest->id,
                     'title' => $querySession->queryRequest->title,
                     'requester' => $querySession->queryRequest->requester->name,
-                    'access_mode' => $querySession->queryRequest->requested_access_mode?->value ?? 'read',
+                    'access_mode' => $querySession->queryRequest->requested_access_mode->value,
                 ],
                 'connection' => $this->connectionSummary($activeConnection),
                 'connections' => $querySession->databaseConnections

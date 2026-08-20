@@ -23,8 +23,7 @@ export function TimezoneCombobox({
 }: Props) {
     const { contains } = Combobox.useFilter();
     const filter = useCallback(
-        (timezone: string, query: string): boolean =>
-            contains(timezone, query),
+        (timezone: string, query: string): boolean => contains(timezone, query),
         [contains],
     );
 

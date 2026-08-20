@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\DatabaseDriver;
 use App\Enums\ExecutionStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
@@ -21,7 +22,6 @@ use App\Services\AuditLogger;
 use App\Services\QueryRequestWorkflow;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -272,7 +272,10 @@ class QueryRequestController extends Controller
                 'access_connections' => $queryRequest->accessConnections->map(fn (DatabaseConnection $connection): array => [
                     'id' => $connection->id,
                     'name' => $connection->name,
-                    'driver' => $connection->driver->value,
+                    'driver' => match ($connection->driver) {
+                        DatabaseDriver::MySql => 'mysql',
+                        DatabaseDriver::PostgreSql => 'pgsql',
+                    },
                 ])->values(),
                 'reviews' => $queryRequest->reviews->map(fn ($review): array => [
                     'id' => $review->id,
@@ -551,9 +554,9 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return Collection<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
+     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
      */
-    private function connectionOptions(User $user): Collection
+    private function connectionOptions(User $user): array
     {
         return DatabaseConnection::query()
             ->where('is_active', true)
@@ -573,7 +576,9 @@ class QueryRequestController extends Controller
                     'write_requires_approval' => $writePermission['write_requires_approval'],
                     'max_write_session_minutes' => $writePermission['max_write_session_minutes'],
                 ];
-            });
+            })
+            ->values()
+            ->all();
     }
 
     /**

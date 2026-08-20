@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Builder;
  *     status: 'approved'|'cancelled'|'completed'|'failed'|'pending_review'|'rejected'|'running'|'scheduled',
  *     request_kind: 'query_access'|'single_execution',
  *     query_type: 'read'|'write',
- *     requested_access_mode: 'read'|'write'|null,
+ *     requested_access_mode: 'none'|'read'|'write'|null,
  *     connection: string,
  *     requester: string,
  *     scheduled_at: string|null,

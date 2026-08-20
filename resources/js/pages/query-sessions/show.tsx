@@ -356,10 +356,10 @@ export default function QuerySessionShow({ session, tables }: Props) {
                                                 End this access session?
                                             </DialogTitle>
                                             <DialogDescription>
-                                                This ends every active session for
-                                                this request now. The request
-                                                remains in audit history as
-                                                cancelled.
+                                                This ends every active session
+                                                for this request now. The
+                                                request remains in audit history
+                                                as cancelled.
                                             </DialogDescription>
                                         </DialogHeader>
                                         <Form
@@ -392,7 +392,9 @@ export default function QuerySessionShow({ session, tables }: Props) {
                                                         </DialogClose>
                                                         <Button
                                                             variant="destructive"
-                                                            disabled={processing}
+                                                            disabled={
+                                                                processing
+                                                            }
                                                         >
                                                             <CircleStop />
                                                             {processing

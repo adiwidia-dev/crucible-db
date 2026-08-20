@@ -125,11 +125,7 @@ type QueryRequest = {
     result_summary: Record<string, unknown> | null;
     preflight: {
         status:
-            | 'not_run'
-            | 'passed'
-            | 'passed_with_warnings'
-            | 'blocked'
-            | 'stale';
+            'not_run' | 'passed' | 'passed_with_warnings' | 'blocked' | 'stale';
         checked_at: string | null;
         blocker_count: number;
         warning_count: number;
@@ -665,8 +661,8 @@ export default function QueryRequestShow({
                                                     : 'Expired'
                                                 : latestSessionEndedAt
                                                   ? latestSessionExpired
-                                                    ? 'Expired'
-                                                    : 'Ended'
+                                                      ? 'Expired'
+                                                      : 'Ended'
                                                   : 'Not started'}
                                         </dd>
                                     </div>
@@ -1290,7 +1286,7 @@ export default function QueryRequestShow({
                                         )}
                                     </div>
                                 ) : (
-                                    <div className="flex items-center gap-2 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300 sm:px-5">
+                                    <div className="flex items-center gap-2 px-4 py-3 text-sm text-emerald-700 sm:px-5 dark:text-emerald-300">
                                         <CircleCheck className="size-4 shrink-0" />
                                         All statements are ready to execute.
                                     </div>
@@ -1355,7 +1351,8 @@ export default function QueryRequestShow({
                                                             </div>
                                                             <span className="truncate text-muted-foreground">
                                                                 {
-                                                                    statement.connection
+                                                                    statement
+                                                                        .connection
                                                                         .name
                                                                 }
                                                             </span>

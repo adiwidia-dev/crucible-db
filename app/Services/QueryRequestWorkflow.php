@@ -547,7 +547,7 @@ class QueryRequestWorkflow
             ->latest('id')
             ->first();
 
-        return $failedExecution?->statement?->position ?? 1;
+        return $failedExecution?->statement->position ?? 1;
     }
 
     private function createRetryRequest(QueryRequest $sourceRequest, User $actor, ?int $retryFromPosition): QueryRequest
@@ -560,8 +560,17 @@ class QueryRequestWorkflow
         $usesLegacySql = $sourceRequest->request_kind === QueryRequestKind::SingleExecution
             && $statements->isEmpty()
             && filled($sourceRequest->sql);
+        $firstStatementConnection = null;
+        $firstStatementSql = null;
+
+        if ($sourceRequest->request_kind === QueryRequestKind::SingleExecution && $statements->isNotEmpty()) {
+            $firstStatement = $statements->first();
+            $firstStatementConnection = $firstStatement->databaseConnection;
+            $firstStatementSql = $firstStatement->sql;
+        }
+
         $databaseConnection = $sourceRequest->request_kind === QueryRequestKind::SingleExecution
-            ? $statements->first()?->databaseConnection ?? $sourceRequest->databaseConnection
+            ? $firstStatementConnection ?? $sourceRequest->databaseConnection
             : $sourceRequest->accessConnections->first() ?? $sourceRequest->databaseConnection;
 
         if (! $databaseConnection instanceof DatabaseConnection) {
@@ -626,7 +635,7 @@ class QueryRequestWorkflow
             'retry_of_id' => $sourceRequest->id,
             'title' => Str::limit("{$retryLabel}: {$sourceRequest->title}", 255, ''),
             'description' => Str::limit($description, 5000, ''),
-            'sql' => $statements->first()?->sql ?? $sourceRequest->sql,
+            'sql' => $firstStatementSql ?? $sourceRequest->sql,
             'query_type' => $sourceRequest->query_type,
             'request_kind' => $sourceRequest->request_kind,
             'requested_access_mode' => $requestedAccessMode,

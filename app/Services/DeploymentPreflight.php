@@ -11,6 +11,10 @@ use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * @phpstan-type PreflightMessage array{level:'warning'|'blocked',code:string,message:string}
+ * @phpstan-type PreflightStatement array{position:int,connection_id:int|null,connection_name:string|null,query_type:string|null,status:'passed'|'warning'|'blocked',messages:array<int, PreflightMessage>}
+ */
 class DeploymentPreflight
 {
     public function __construct(private readonly QueryGuard $queryGuard) {}
@@ -18,7 +22,7 @@ class DeploymentPreflight
     /**
      * Evaluate the executable statements persisted on a deployment batch.
      *
-     * @return array{status:PreflightStatus,checked_at:string,summary:array{blocker_count:int,warning_count:int},statements:array<int, array{position:int,connection_id:int|null,connection_name:string|null,query_type:string|null,status:'passed'|'warning'|'blocked',messages:array<int, array{level:'warning'|'blocked',code:string,message:string}>}>}
+     * @return array{status:PreflightStatus::Passed|PreflightStatus::PassedWithWarnings|PreflightStatus::Blocked,checked_at:string,summary:array{blocker_count:int,warning_count:int},statements:array<int, PreflightStatement>}
      */
     public function evaluate(QueryRequest $queryRequest): array
     {
@@ -37,14 +41,15 @@ class DeploymentPreflight
             ]);
         }
 
-        $results = $statements
-            ->map(fn (QueryRequestStatement $statement): array => $this->evaluateStatement(
+        $results = array_values(array_map(
+            /** @return PreflightStatement */
+            fn (QueryRequestStatement $statement) => $this->evaluateStatement(
                 $queryRequest->requester,
                 $statement,
                 $statement->databaseConnection ?? $queryRequest->databaseConnection,
-            ))
-            ->values()
-            ->all();
+            ),
+            $statements->all(),
+        ));
 
         $blockerCount = collect($results)
             ->sum(fn (array $statement): int => count(array_filter(
@@ -73,7 +78,7 @@ class DeploymentPreflight
     /**
      * Persist the latest evaluation without affecting the request lifecycle.
      *
-     * @param  array{status:PreflightStatus,checked_at:string,summary:array{blocker_count:int,warning_count:int},statements:array<int, array{position:int,connection_id:int|null,connection_name:string|null,query_type:string|null,status:'passed'|'warning'|'blocked',messages:array<int, array{level:'warning'|'blocked',code:string,message:string}>}>}  $report
+     * @param  array{status:PreflightStatus::Passed|PreflightStatus::PassedWithWarnings|PreflightStatus::Blocked,checked_at:string,summary:array{blocker_count:int,warning_count:int},statements:array<int, PreflightStatement>}  $report
      */
     public function persist(QueryRequest $queryRequest, array $report): void
     {
@@ -89,10 +94,11 @@ class DeploymentPreflight
     }
 
     /**
-     * @return array{position:int,connection_id:int|null,connection_name:string|null,query_type:string|null,status:'passed'|'warning'|'blocked',messages:array<int, array{level:'warning'|'blocked',code:string,message:string}>}
+     * @return PreflightStatement
      */
     private function evaluateStatement(User $requester, QueryRequestStatement $statement, ?DatabaseConnection $connection): array
     {
+        /** @var list<PreflightMessage> $messages */
         $messages = [];
         $queryType = $statement->query_type;
 
@@ -120,7 +126,7 @@ class DeploymentPreflight
                 'inactive_target',
                 "{$connection->name} is inactive and cannot accept a deployment.",
             );
-        } elseif (! $requester->isAdmin() && $queryType instanceof QueryType) {
+        } elseif (! $requester->isAdmin()) {
             $permission = $requester->effectiveDatabasePermissionFor($connection, $queryType);
 
             if (! $permission['access_mode']->allows($queryType)) {
@@ -150,29 +156,51 @@ class DeploymentPreflight
             );
         }
 
-        $status = collect($messages)->contains(fn (array $message): bool => $message['level'] === 'blocked')
-            ? 'blocked'
-            : (count($messages) > 0 ? 'warning' : 'passed');
+        $status = 'passed';
 
-        return [
+        foreach ($messages as $message) {
+            if ($message['level'] === 'blocked') {
+                $status = 'blocked';
+
+                break;
+            }
+        }
+
+        if ($status === 'passed' && $messages !== []) {
+            $status = 'warning';
+        }
+
+        /** @var 'passed'|'warning'|'blocked' $status */
+        /** @var PreflightStatement $result */
+        $result = [
             'position' => $statement->position,
             'connection_id' => $connection?->id,
             'connection_name' => $connection?->name,
-            'query_type' => $queryType?->value,
+            'query_type' => $queryType->value,
             'status' => $status,
             'messages' => $messages,
         ];
+
+        return $result;
     }
 
     /**
-     * @return array{level:'warning'|'blocked',code:string,message:string}
+     * @param  'warning'|'blocked'  $level
+     * @return PreflightMessage
      */
     private function message(string $level, string $code, string $message): array
     {
-        return [
-            'level' => $level,
-            'code' => $code,
-            'message' => $message,
-        ];
+        return match ($level) {
+            'blocked' => [
+                'level' => 'blocked',
+                'code' => $code,
+                'message' => $message,
+            ],
+            'warning' => [
+                'level' => 'warning',
+                'code' => $code,
+                'message' => $message,
+            ],
+        };
     }
 }

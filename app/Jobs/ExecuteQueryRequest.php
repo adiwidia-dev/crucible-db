@@ -252,6 +252,9 @@ class ExecuteQueryRequest implements ShouldQueue
         }
     }
 
+    /**
+     * @phpstan-impure
+     */
     private function hasBeenCancelled(QueryRequest $queryRequest): bool
     {
         return $queryRequest->fresh()?->status === QueryRequestStatus::Cancelled;
