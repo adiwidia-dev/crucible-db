@@ -1,5 +1,16 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
-import { Ban, Plus, Save, Undo2, UserCog, UsersRound } from 'lucide-react';
+import {
+    ArrowDown,
+    ArrowUp,
+    Ban,
+    Plus,
+    Save,
+    Search,
+    Trash2,
+    Undo2,
+    UserCog,
+    UsersRound,
+} from 'lucide-react';
 import { useState } from 'react';
 import UserRoleController from '@/actions/App/Http/Controllers/UserRoleController';
 import { DataRegistry } from '@/components/crucible/data-registry';
@@ -34,9 +45,7 @@ type RoleOption = {
     is_admin: boolean;
 };
 
-type AssignedRole = RoleOption & {
-    priority: number;
-};
+type AssignedRole = RoleOption;
 
 type ManagedUser = {
     id: number;
@@ -49,7 +58,6 @@ type ManagedUser = {
     invitation_accepted_at: string | null;
     disabled_at: string | null;
     created_at: string | null;
-    role_ids: number[];
     roles: AssignedRole[];
     is_current_user: boolean;
 };
@@ -69,6 +77,65 @@ function RoleAssignmentForm({
     roles: RoleOption[];
 }) {
     const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const [orderedRoleIds, setOrderedRoleIds] = useState<number[]>(
+        () => user.roles.map((role) => role.id),
+    );
+
+    const resetDialog = () => {
+        setSearch('');
+        setOrderedRoleIds(user.roles.map((role) => role.id));
+    };
+
+    const handleOpenChange = (open: boolean) => {
+        setIsOpen(open);
+
+        if (!open) {
+            resetDialog();
+        }
+    };
+
+    const normalizedSearch = search.trim().toLocaleLowerCase();
+    const selectedRoles = orderedRoleIds
+        .map((roleId) => roles.find((role) => role.id === roleId))
+        .filter((role): role is RoleOption => role !== undefined);
+    const availableRoles = roles.filter((role) => {
+        const matchesSearch =
+            normalizedSearch === '' ||
+            `${role.name} ${role.slug}`
+                .toLocaleLowerCase()
+                .includes(normalizedSearch);
+
+        return matchesSearch && !orderedRoleIds.includes(role.id);
+    });
+
+    const addRole = (roleId: number) => {
+        setOrderedRoleIds((current) => [...current, roleId]);
+    };
+
+    const removeRole = (roleId: number) => {
+        setOrderedRoleIds((current) =>
+            current.filter((currentRoleId) => currentRoleId !== roleId),
+        );
+    };
+
+    const moveRole = (roleIndex: number, direction: 'up' | 'down') => {
+        setOrderedRoleIds((current) => {
+            const nextIndex = direction === 'up' ? roleIndex - 1 : roleIndex + 1;
+
+            if (nextIndex < 0 || nextIndex >= current.length) {
+                return current;
+            }
+
+            const next = [...current];
+            [next[roleIndex], next[nextIndex]] = [
+                next[nextIndex],
+                next[roleIndex],
+            ];
+
+            return next;
+        });
+    };
 
     if (user.is_current_user) {
         return (
@@ -93,7 +160,7 @@ function RoleAssignmentForm({
     }
 
     return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <Dialog open={isOpen} onOpenChange={handleOpenChange}>
             <Tooltip>
                 <TooltipTrigger asChild>
                     <span>
@@ -110,93 +177,218 @@ function RoleAssignmentForm({
                 </TooltipTrigger>
                 <TooltipContent>Assign roles</TooltipContent>
             </Tooltip>
-            <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>Assign roles</DialogTitle>
+            <DialogContent className="max-h-[calc(100dvh-2rem)] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+                <DialogHeader className="border-b px-5 pt-5 pr-12 pb-4">
+                    <DialogTitle className="text-xl tracking-[-0.02em]">
+                        Assign roles
+                    </DialogTitle>
                     <DialogDescription>
-                        Select the roles for {user.name} and set their policy
-                        evaluation priority.
+                        Define policy precedence for {user.name}. The first
+                        role wins when policies overlap.
                     </DialogDescription>
                 </DialogHeader>
                 <Form
                     {...UserRoleController.update.form(user.id)}
                     options={{ preserveScroll: true }}
-                    onSuccess={() => setIsOpen(false)}
-                    className="grid gap-4"
+                    onSuccess={() => handleOpenChange(false)}
+                    className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
                 >
                     {({ processing, errors }) => (
                         <>
-                            <div className="grid gap-2">
-                                {roles.map((role, index) => {
-                                    const assignedRole = user.roles.find(
-                                        (item) => item.id === role.id,
-                                    );
-
-                                    return (
-                                        <div
-                                            key={role.id}
-                                            className="grid grid-cols-[minmax(0,1fr)_6.5rem] items-center gap-3 rounded-md border px-3 py-2.5"
+                            <div className="min-h-0 overflow-y-auto px-5 py-4">
+                                <section
+                                    aria-labelledby="policy-precedence-heading"
+                                    className="overflow-hidden rounded-lg border bg-card"
+                                >
+                                    <div className="border-b bg-muted/25 px-4 py-3">
+                                        <h3
+                                            id="policy-precedence-heading"
+                                            className="font-semibold"
                                         >
-                                            <label className="flex items-center gap-2 text-sm">
-                                                <input
-                                                    type="hidden"
-                                                    name={`role_assignments[${index}][role_id]`}
-                                                    value={role.id}
-                                                />
-                                                <input
-                                                    type="hidden"
-                                                    name={`role_assignments[${index}][selected]`}
-                                                    value="0"
-                                                />
-                                                <input
-                                                    type="checkbox"
-                                                    name={`role_assignments[${index}][selected]`}
-                                                    value="1"
-                                                    defaultChecked={user.role_ids.includes(
-                                                        role.id,
-                                                    )}
-                                                    className="size-4 rounded border-input"
-                                                />
-                                                <span>
-                                                    {role.name}
-                                                    {role.is_admin
-                                                        ? ' (admin)'
-                                                        : ''}
-                                                </span>
-                                            </label>
-                                            <div className="grid gap-1">
-                                                <span className="text-xs text-muted-foreground">
-                                                    Priority
-                                                </span>
-                                                <input
-                                                    type="number"
-                                                    name={`role_assignments[${index}][priority]`}
-                                                    min="0"
-                                                    max="9999"
-                                                    defaultValue={
-                                                        assignedRole?.priority ??
-                                                        100
-                                                    }
-                                                    className="h-8 rounded-md border border-input bg-background px-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                                    aria-label={`${role.name} priority`}
-                                                />
-                                            </div>
+                                            Policy precedence
+                                        </h3>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            The first role wins when policies
+                                            overlap. Move roles to change the
+                                            evaluation order.
+                                        </p>
+                                    </div>
+                                    {selectedRoles.length > 0 ? (
+                                        <div className="divide-y">
+                                            {selectedRoles.map(
+                                                (role, index) => (
+                                                    <div
+                                                        key={role.id}
+                                                        className="flex items-center gap-3 px-4 py-3"
+                                                    >
+                                                        <input
+                                                            type="hidden"
+                                                            name={`role_assignments[${index}][role_id]`}
+                                                            value={role.id}
+                                                        />
+                                                        <input
+                                                            type="hidden"
+                                                            name={`role_assignments[${index}][selected]`}
+                                                            value="1"
+                                                        />
+                                                        <input
+                                                            type="hidden"
+                                                            name={`role_assignments[${index}][priority]`}
+                                                            value={(index + 1) * 10}
+                                                        />
+                                                        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted font-mono text-xs font-semibold text-muted-foreground">
+                                                            {index + 1}
+                                                        </span>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="truncate font-medium">
+                                                                {role.name}
+                                                            </div>
+                                                            <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                                                                {role.slug}
+                                                                {role.is_admin &&
+                                                                    ' · administrator'}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex shrink-0 items-center gap-1">
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                disabled={index === 0}
+                                                                onClick={() =>
+                                                                    moveRole(
+                                                                        index,
+                                                                        'up',
+                                                                    )
+                                                                }
+                                                                aria-label={`Move ${role.name} up`}
+                                                            >
+                                                                <ArrowUp />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                disabled={
+                                                                    index ===
+                                                                    selectedRoles.length -
+                                                                        1
+                                                                }
+                                                                onClick={() =>
+                                                                    moveRole(
+                                                                        index,
+                                                                        'down',
+                                                                    )
+                                                                }
+                                                                aria-label={`Move ${role.name} down`}
+                                                            >
+                                                                <ArrowDown />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() =>
+                                                                    removeRole(
+                                                                        role.id,
+                                                                    )
+                                                                }
+                                                                aria-label={`Remove ${role.name}`}
+                                                            >
+                                                                <Trash2 />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ),
+                                            )}
                                         </div>
-                                    );
-                                })}
+                                    ) : (
+                                        <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                                            No roles assigned. Add a role below
+                                            to define this user’s policy.
+                                        </p>
+                                    )}
+                                </section>
+
+                                <section className="mt-4 overflow-hidden rounded-lg border bg-card">
+                                    <div className="border-b bg-muted/25 px-4 py-3">
+                                        <h3 className="font-semibold">Add roles</h3>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            New roles are added at the bottom of
+                                            the precedence list.
+                                        </p>
+                                        <div className="relative mt-3">
+                                            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                                            <input
+                                                value={search}
+                                                onChange={(event) =>
+                                                    setSearch(
+                                                        event.target.value,
+                                                    )
+                                                }
+                                                placeholder="Search roles by name or slug"
+                                                className="h-9 w-full rounded-md border border-input bg-background py-1 pr-3 pl-9 text-sm shadow-xs outline-none transition-[color,border-color,box-shadow] duration-150 ease-out placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30 motion-reduce:transition-none"
+                                                aria-label="Search roles to add"
+                                            />
+                                        </div>
+                                    </div>
+                                    {availableRoles.length > 0 ? (
+                                        <div className="max-h-52 divide-y overflow-y-auto">
+                                            {availableRoles.map((role) => (
+                                                <div
+                                                    key={role.id}
+                                                    className="flex items-center gap-3 px-4 py-3"
+                                                >
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="truncate font-medium">
+                                                            {role.name}
+                                                        </div>
+                                                        <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                                                            {role.slug}
+                                                            {role.is_admin &&
+                                                                ' · administrator'}
+                                                        </div>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() =>
+                                                            addRole(role.id)
+                                                        }
+                                                    >
+                                                        <Plus />
+                                                        Add
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                                            {normalizedSearch === ''
+                                                ? 'All available roles are already assigned.'
+                                                : `No unassigned roles match “${search}”.`}
+                                        </p>
+                                    )}
+                                </section>
                             </div>
-                            <InputError message={errors.role_assignments} />
-                            <DialogFooter>
-                                <DialogClose asChild>
-                                    <Button type="button" variant="outline">
-                                        Cancel
+                            <div className="border-t px-5 py-4">
+                                <InputError
+                                    message={errors.role_assignments}
+                                    className="mb-3"
+                                />
+                                <DialogFooter>
+                                    <DialogClose asChild>
+                                        <Button type="button" variant="outline">
+                                            Cancel
+                                        </Button>
+                                    </DialogClose>
+                                    <Button disabled={processing}>
+                                        <Save />
+                                        Save roles
                                     </Button>
-                                </DialogClose>
-                                <Button disabled={processing}>
-                                    <Save />
-                                    Save roles
-                                </Button>
-                            </DialogFooter>
+                                </DialogFooter>
+                            </div>
                         </>
                     )}
                 </Form>
@@ -359,7 +551,7 @@ function UserTable({
                                     <td className="py-3 pr-4">
                                         {user.roles.length > 0 ? (
                                             <div className="grid max-w-80 gap-2">
-                                                {user.roles.map((role) => (
+                                                {user.roles.map((role, index) => (
                                                     <div
                                                         key={role.id}
                                                         className="flex items-center gap-2"
@@ -373,7 +565,7 @@ function UserTable({
                                                             label={role.name}
                                                         />
                                                         <span className="font-mono text-xs text-muted-foreground">
-                                                            P{role.priority}
+                                                            Policy {index + 1}
                                                         </span>
                                                     </div>
                                                 ))}

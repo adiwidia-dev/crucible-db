@@ -53,6 +53,7 @@ export type QueryRequestSummary = {
     latest_query_type: QueryType | null;
     effective_query_type: QueryType;
     request_kind: QueryRequestKind;
+    requested_access_mode: 'read' | 'write' | null;
     requires_approval: boolean;
     scheduled_at: string | null;
     requester: string;

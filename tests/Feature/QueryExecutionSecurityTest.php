@@ -17,6 +17,21 @@ use Tests\TestCase;
 
 class QueryExecutionSecurityTest extends TestCase
 {
+    public function test_destructive_ddl_uses_the_current_safety_policy_copy(): void
+    {
+        $guard = app(QueryGuard::class);
+
+        try {
+            $guard->validateExecutable('DROP TABLE users');
+            $this->fail('Destructive DDL should be blocked.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['Administrative, file, and destructive DDL statements are blocked.'],
+                $exception->errors()['sql'],
+            );
+        }
+    }
+
     public function test_explain_analyze_is_rejected_before_classification(): void
     {
         $guard = app(QueryGuard::class);

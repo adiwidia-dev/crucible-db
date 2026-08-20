@@ -1,5 +1,7 @@
 # Initial Scaffold Implementation Plan
 
+> **Historical record.** This July 2026 implementation plan describes the original scaffold, not the current product or deployment. Use the README and current product and architecture documents for active guidance.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the first runnable Crucible DB Laravel 13 scaffold with React/Inertia auth, Laravel Boost, Docker Compose, FrankenPHP/Octane, Redis, and local SQLite-compatible metadata storage.

@@ -1,5 +1,7 @@
 # MVP Access Control Plane Implementation Plan
 
+> **Historical record.** This July 2026 implementation plan describes an earlier scope and may not reflect current behavior. Use the README and current product and architecture documents for active guidance.
+
 Date: 2026-07-31
 Status: Self-approved
 

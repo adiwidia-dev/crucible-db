@@ -1,11 +1,14 @@
 import { Head, Link, usePage } from '@inertiajs/react';
-import { ArrowRight, Clock3, FileCode2, Plus } from 'lucide-react';
+import { ArrowRight, Clock3, FileCode2, Plus, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { EmptyState } from '@/components/crucible/empty-state';
 import { PageHeader } from '@/components/crucible/page-header';
 import { Pagination } from '@/components/crucible/pagination';
 import { QueryRequestFilters } from '@/components/crucible/query-request-filters';
-import { StatusBadge } from '@/components/crucible/status-badge';
+import {
+    SessionAccessBadge,
+    StatusBadge,
+} from '@/components/crucible/status-badge';
 import { Button } from '@/components/ui/button';
 import {
     formatDate,
@@ -37,6 +40,9 @@ export default function QueryRequestsIndex({
     const { auth } = usePage<{ auth: Auth }>().props;
     const userTimezone = auth.user.timezone ?? 'UTC';
     const [, setTimerTick] = useState(0);
+    const hasActiveFilters = Object.values(filters).some(
+        (filter) => filter !== '',
+    );
 
     useEffect(() => {
         const interval = window.setInterval(() => {
@@ -77,21 +83,42 @@ export default function QueryRequestsIndex({
                             <div className="p-6">
                                 <EmptyState
                                     icon={FileCode2}
-                                    title="No query requests found"
-                                    detail="Submit a request to create a reviewable SQL execution."
+                                    title={
+                                        hasActiveFilters
+                                            ? 'No requests match these filters'
+                                            : 'No query requests yet'
+                                    }
+                                    detail={
+                                        hasActiveFilters
+                                            ? 'Clear a filter or broaden your search.'
+                                            : 'Submit a deployment batch or query-access request to begin governed database work.'
+                                    }
                                     action={
-                                        <Button asChild size="sm">
-                                            <Link href={create()}>
-                                                <Plus />
-                                                New request
-                                            </Link>
-                                        </Button>
+                                        hasActiveFilters ? (
+                                            <Button
+                                                asChild
+                                                size="sm"
+                                                variant="outline"
+                                            >
+                                                <Link href={index()}>
+                                                    <RotateCcw />
+                                                    Reset filters
+                                                </Link>
+                                            </Button>
+                                        ) : (
+                                            <Button asChild size="sm">
+                                                <Link href={create()}>
+                                                    <Plus />
+                                                    New request
+                                                </Link>
+                                            </Button>
+                                        )
                                     }
                                 />
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm">
+                                <table className="w-full min-w-[760px] text-sm">
                                     <thead>
                                         <tr className="border-b bg-muted/35 text-left text-xs text-muted-foreground">
                                             <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
@@ -144,14 +171,23 @@ export default function QueryRequestsIndex({
                                                                 request.request_kind,
                                                             )}
                                                         />
-                                                        <StatusBadge
-                                                            value={
-                                                                request.effective_query_type
-                                                            }
-                                                            label={statusLabel(
-                                                                request.effective_query_type,
-                                                            )}
-                                                        />
+                                                        {request.request_kind ===
+                                                        'query_access' ? (
+                                                            <SessionAccessBadge
+                                                                mode={
+                                                                    request.requested_access_mode
+                                                                }
+                                                            />
+                                                        ) : (
+                                                            <StatusBadge
+                                                                value={
+                                                                    request.effective_query_type
+                                                                }
+                                                                label={statusLabel(
+                                                                    request.effective_query_type,
+                                                                )}
+                                                            />
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="py-3.5 pr-4">

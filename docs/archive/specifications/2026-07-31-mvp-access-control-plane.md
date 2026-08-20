@@ -1,5 +1,7 @@
 # Crucible DB MVP Access Control Plane
 
+> **Historical record.** This July 2026 specification describes an earlier MVP scope and may not reflect current behavior. Use the README and current product and architecture documents for active guidance.
+
 Date: 2026-07-31
 Status: Self-approved for implementation
 

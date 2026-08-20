@@ -1,6 +1,8 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import { PageHeader } from '@/components/crucible/page-header';
+import { TimezoneCombobox } from '@/components/crucible/timezone-combobox';
 import DeleteUser from '@/components/delete-user';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -24,6 +26,7 @@ export default function Profile({
     timezones: string[];
 }) {
     const { auth } = usePage<PageProps>().props;
+    const [timezone, setTimezone] = useState(auth.user.timezone ?? 'UTC');
 
     return (
         <>
@@ -96,35 +99,14 @@ export default function Profile({
                                 </div>
 
                                 <div className="grid gap-2">
-                                    <Label htmlFor="timezone">Timezone</Label>
-
-                                    <select
-                                        id="timezone"
+                                    <TimezoneCombobox
+                                        label="Timezone"
                                         name="timezone"
-                                        defaultValue={
-                                            auth.user.timezone ?? 'UTC'
-                                        }
-                                        className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                        required
-                                    >
-                                        {timezones.map((timezone) => (
-                                            <option
-                                                key={timezone}
-                                                value={timezone}
-                                            >
-                                                {timezone}
-                                            </option>
-                                        ))}
-                                    </select>
-
-                                    <p className="text-xs text-muted-foreground">
-                                        Scheduled query inputs and operational
-                                        timestamps use this timezone.
-                                    </p>
-
-                                    <InputError
-                                        className="mt-2"
-                                        message={errors.timezone}
+                                        timezones={timezones}
+                                        value={timezone}
+                                        onValueChange={setTimezone}
+                                        description="Scheduled query inputs and operational timestamps use this timezone."
+                                        error={errors.timezone}
                                     />
                                 </div>
 

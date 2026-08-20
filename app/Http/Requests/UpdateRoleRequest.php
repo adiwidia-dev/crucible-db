@@ -43,6 +43,9 @@ class UpdateRoleRequest extends FormRequest
             'policies.*.access_mode' => ['required', Rule::enum(AccessMode::class)],
             'policies.*.can_review' => ['sometimes', 'boolean'],
             'policies.*.requires_approval' => ['sometimes', 'boolean'],
+            'policies.*.read_requires_approval' => ['sometimes', 'boolean'],
+            'policies.*.write_requires_approval' => ['sometimes', 'boolean'],
+            'policies.*.max_write_session_minutes' => ['nullable', 'integer', 'min:5', 'max:1440'],
         ];
     }
 
@@ -61,7 +64,7 @@ class UpdateRoleRequest extends FormRequest
     }
 
     /**
-     * @return array<int, array{database_connection_id: int, access_mode: string, can_review: bool, requires_approval: bool}>
+     * @return array<int, array{database_connection_id: int, access_mode: string, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}>
      */
     public function policyAttributes(): array
     {
@@ -73,7 +76,11 @@ class UpdateRoleRequest extends FormRequest
                 'database_connection_id' => (int) $policy['database_connection_id'],
                 'access_mode' => $policy['access_mode'],
                 'can_review' => (bool) ($policy['can_review'] ?? false),
-                'requires_approval' => (bool) ($policy['requires_approval'] ?? true),
+                'read_requires_approval' => (bool) ($policy['read_requires_approval'] ?? $policy['requires_approval'] ?? true),
+                'write_requires_approval' => (bool) ($policy['write_requires_approval'] ?? $policy['requires_approval'] ?? true),
+                'max_write_session_minutes' => isset($policy['max_write_session_minutes'])
+                    ? (int) $policy['max_write_session_minutes']
+                    : null,
             ];
         }
 

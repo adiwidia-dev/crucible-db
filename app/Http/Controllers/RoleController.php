@@ -94,7 +94,9 @@ class RoleController extends Controller
                     (string) $permission->database_connection_id => [
                         'access_mode' => $permission->access_mode->value,
                         'can_review' => $permission->can_review,
-                        'requires_approval' => $permission->requires_approval,
+                        'read_requires_approval' => $permission->read_requires_approval,
+                        'write_requires_approval' => $permission->write_requires_approval,
+                        'max_write_session_minutes' => $permission->max_write_session_minutes,
                     ],
                 ]),
             ],
@@ -172,7 +174,7 @@ class RoleController extends Controller
     }
 
     /**
-     * @param  array<int, array{database_connection_id: int, access_mode: string, can_review: bool, requires_approval: bool}>  $policies
+     * @param  array<int, array{database_connection_id: int, access_mode: string, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}>  $policies
      */
     private function syncDatabasePolicies(Role $role, array $policies): void
     {
@@ -208,7 +210,11 @@ class RoleController extends Controller
                 [
                     'access_mode' => $policy['access_mode'],
                     'can_review' => $policy['can_review'],
-                    'requires_approval' => $policy['requires_approval'],
+                    'requires_approval' => $policy['read_requires_approval']
+                        && $policy['write_requires_approval'],
+                    'read_requires_approval' => $policy['read_requires_approval'],
+                    'write_requires_approval' => $policy['write_requires_approval'],
+                    'max_write_session_minutes' => $policy['max_write_session_minutes'],
                 ],
             );
         }

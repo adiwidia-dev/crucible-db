@@ -3,14 +3,19 @@
 namespace App\Jobs;
 
 use App\Enums\ExecutionStatus;
+use App\Enums\PreflightStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
 use App\Models\QueryExecution;
 use App\Models\QueryRequest;
+use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
+use App\Services\DeploymentPreflight;
+use App\Services\NotificationDispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Throwable;
 
 class ExecuteQueryRequest implements ShouldQueue
@@ -21,10 +26,29 @@ class ExecuteQueryRequest implements ShouldQueue
 
     public int $timeout = 240;
 
-    public function __construct(public int $queryRequestId) {}
+    public function __construct(
+        public int $queryRequestId,
+        public ?int $resumeFromPosition = null,
+    ) {}
 
-    public function handle(DatabaseQueryExecutor $executor, AuditLogger $auditLogger): void
+    /**
+     * @return array<int, object>
+     */
+    public function middleware(): array
     {
+        return [
+            (new WithoutOverlapping("query-request:{$this->queryRequestId}"))
+                ->expireAfter($this->timeout + 30)
+                ->dontRelease(),
+        ];
+    }
+
+    public function handle(
+        DatabaseQueryExecutor $executor,
+        AuditLogger $auditLogger,
+        DeploymentPreflight $deploymentPreflight,
+        NotificationDispatcher $notificationDispatcher,
+    ): void {
         $queryRequest = QueryRequest::query()
             ->with('databaseConnection', 'requester', 'dispatchedBy', 'statements.databaseConnection')
             ->findOrFail($this->queryRequestId);
@@ -38,19 +62,43 @@ class ExecuteQueryRequest implements ShouldQueue
         }
 
         $executorUser = $queryRequest->dispatchedBy ?? $queryRequest->requester;
+        $preflight = $deploymentPreflight->evaluate($queryRequest);
+        $deploymentPreflight->persist($queryRequest, $preflight);
+
+        if ($preflight['status'] === PreflightStatus::Blocked) {
+            $queryRequest->forceFill([
+                'status' => QueryRequestStatus::Approved,
+                'dispatched_at' => null,
+                'dispatched_by_id' => null,
+            ])->save();
+
+            $auditLogger->log('query_request.preflight_blocked', $executorUser, $queryRequest, [
+                'trigger' => 'execution_guard',
+                'blocker_count' => $preflight['summary']['blocker_count'],
+            ]);
+
+            if ($queryRequest->scheduled_at?->isPast()) {
+                $notificationDispatcher->scheduledBatchPreflightBlocked($queryRequest);
+            }
+
+            return;
+        }
 
         $queryRequest->forceFill([
             'status' => QueryRequestStatus::Running,
             'last_error' => null,
         ])->save();
 
-        $statements = $queryRequest->statements->map(fn ($statement): array => [
-            'id' => $statement->id,
-            'position' => $statement->position,
-            'database_connection' => $statement->databaseConnection ?? $queryRequest->databaseConnection,
-            'sql' => $statement->sql,
-            'query_type' => $statement->query_type,
-        ]);
+        $statements = $queryRequest->statements
+            ->filter(fn ($statement): bool => $statement->position >= ($this->resumeFromPosition ?? 1))
+            ->map(fn ($statement): array => [
+                'id' => $statement->id,
+                'position' => $statement->position,
+                'database_connection' => $statement->databaseConnection ?? $queryRequest->databaseConnection,
+                'sql' => $statement->sql,
+                'query_type' => $statement->query_type,
+            ])
+            ->values();
 
         if ($statements->isEmpty()) {
             $statements->push([
@@ -68,6 +116,12 @@ class ExecuteQueryRequest implements ShouldQueue
         $resultTruncated = false;
 
         foreach ($statements as $statement) {
+            if ($this->hasBeenCancelled($queryRequest)) {
+                $this->recordCancellationAcknowledgement($auditLogger, $executorUser, $queryRequest);
+
+                return;
+            }
+
             $startedAt = now();
             $execution = QueryExecution::query()->create([
                 'query_request_id' => $queryRequest->id,
@@ -120,6 +174,12 @@ class ExecuteQueryRequest implements ShouldQueue
                     'error_message' => $exception->getMessage(),
                 ])->save();
 
+                if ($this->hasBeenCancelled($queryRequest)) {
+                    $this->recordCancellationAcknowledgement($auditLogger, $executorUser, $queryRequest);
+
+                    return;
+                }
+
                 $queryRequest->forceFill([
                     'status' => QueryRequestStatus::Failed,
                     'completed_at' => $finishedAt,
@@ -141,8 +201,16 @@ class ExecuteQueryRequest implements ShouldQueue
                     'error' => $exception->getMessage(),
                 ]);
 
+                $notificationDispatcher->batchFailed($queryRequest, $statement['position']);
+
                 throw $exception;
             }
+        }
+
+        if ($this->hasBeenCancelled($queryRequest)) {
+            $this->recordCancellationAcknowledgement($auditLogger, $executorUser, $queryRequest);
+
+            return;
         }
 
         $finishedAt = now();
@@ -165,6 +233,8 @@ class ExecuteQueryRequest implements ShouldQueue
             'row_count' => $totalRowCount,
             'result_truncated' => $resultTruncated,
         ]);
+
+        $notificationDispatcher->batchCompleted($queryRequest);
     }
 
     public function failed(?Throwable $exception): void
@@ -177,6 +247,20 @@ class ExecuteQueryRequest implements ShouldQueue
                 'completed_at' => now(),
                 'last_error' => $exception?->getMessage() ?? 'Query execution failed.',
             ])->save();
+
+            app(NotificationDispatcher::class)->batchFailed($queryRequest);
         }
+    }
+
+    private function hasBeenCancelled(QueryRequest $queryRequest): bool
+    {
+        return $queryRequest->fresh()?->status === QueryRequestStatus::Cancelled;
+    }
+
+    private function recordCancellationAcknowledgement(AuditLogger $auditLogger, User $executorUser, QueryRequest $queryRequest): void
+    {
+        $auditLogger->log('query_request.execution_stop_acknowledged', $executorUser, $queryRequest, [
+            'resume_from_statement_position' => $this->resumeFromPosition,
+        ]);
     }
 }

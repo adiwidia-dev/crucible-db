@@ -6,6 +6,8 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Settings\ApplicationSettingsController;
 use App\Http\Controllers\Settings\AuthenticationMethodController;
 use App\Http\Controllers\Settings\FactoryResetController;
+use App\Http\Controllers\Settings\NotificationPreferencesController;
+use App\Http\Controllers\Settings\NotificationSettingsController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\SsoController;
@@ -30,11 +32,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('user-password.update');
 
     Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
+    Route::get('settings/notifications', [NotificationPreferencesController::class, 'edit'])->name('user-notifications.edit');
+    Route::patch('settings/notifications', [NotificationPreferencesController::class, 'update'])->name('user-notifications.update');
 
     Route::prefix('settings/admin')->group(function (): void {
         Route::get('/', fn () => redirect()->route('application-settings.edit'))->name('admin-settings.index');
         Route::get('application', [ApplicationSettingsController::class, 'edit'])->name('application-settings.edit');
         Route::patch('application', [ApplicationSettingsController::class, 'update'])->name('application-settings.update');
+        Route::get('notifications', [NotificationSettingsController::class, 'edit'])->name('notification-settings.edit');
+        Route::patch('notifications', [NotificationSettingsController::class, 'update'])->name('notification-settings.update');
         Route::delete('application/factory-reset', FactoryResetController::class)->name('application-settings.factory-reset');
         Route::get('authentication', [AuthenticationMethodController::class, 'edit'])->name('authentication-methods.edit');
         Route::patch('authentication', [AuthenticationMethodController::class, 'update'])->name('authentication-methods.update');

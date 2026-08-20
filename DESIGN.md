@@ -184,7 +184,7 @@ The system is flat by default. Canvas, surface tone, hairline rules, and spacing
 
 ### Navigation
 
-Navigation is grouped by Work, Data, and Admin. Default items remain quiet, hover gains a neutral surface, and the active item uses a pale neutral background with an Action Blue icon. On mobile, navigation becomes a sheet while preserving the same hierarchy.
+Navigation is grouped by Work, Data, Account, and Admin. Account and Admin groups can collapse to keep the operational navigation compact. Default items remain quiet, hover gains a neutral surface, and the active item uses a pale neutral background with an Action Blue icon. On mobile, navigation becomes a sheet while preserving the same hierarchy.
 
 ### Operational Table
 
@@ -194,7 +194,7 @@ Tables are open work surfaces, not cards inside cards. Headers remain visible du
 
 ### Do:
 
-- **Do** organize navigation around Work, Data, and Admin.
+- **Do** organize navigation around Work, Data, Account, and Admin.
 - **Do** keep approval, risk, schedule, execution, and access state visible near the object.
 - **Do** use 36px controls and compact table rows for repeated desktop workflows.
 - **Do** apply `focus-visible` treatment and reduced-motion alternatives to every interactive component.

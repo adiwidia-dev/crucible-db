@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Enums\AccessMode;
 use App\Enums\ExecutionStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
+use App\Enums\QueryType;
 use App\Models\DatabaseConnection;
 use App\Models\QueryExecution;
 use App\Models\QueryRequest;
@@ -22,6 +24,7 @@ class QuerySessionWorkflow
         private readonly AuditLogger $auditLogger,
         private readonly QueryGuard $queryGuard,
         private readonly DatabaseQueryExecutor $executor,
+        private readonly NotificationDispatcher $notificationDispatcher,
     ) {}
 
     /**
@@ -44,18 +47,21 @@ class QuerySessionWorkflow
         $queryRequest->loadMissing('accessConnections', 'databaseConnection');
         $databaseConnections = $this->sessionConnections($queryRequest);
 
+        $sessionAccessMode = $queryRequest->requested_access_mode ?? AccessMode::Read;
+        $sessionQueryType = $sessionAccessMode === AccessMode::Write ? QueryType::Write : QueryType::Read;
+
         if (! $user->isAdmin() && $databaseConnections->contains(
-            fn (DatabaseConnection $connection): bool => ! $user->canAccessDatabase($connection),
+            fn (DatabaseConnection $connection): bool => ! $user->effectiveDatabasePermissionFor($connection, $sessionQueryType)['access_mode']->allows($sessionQueryType),
         )) {
             throw ValidationException::withMessages([
-                'query_request' => 'You no longer have access to every database approved for this session.',
+                'query_request' => 'You no longer have the approved session access level on every selected database.',
             ]);
         }
 
         $startedAt = now();
         $durationMinutes = $queryRequest->access_duration_minutes ?? 60;
 
-        return DB::transaction(function () use ($queryRequest, $user, $databaseConnections, $startedAt, $durationMinutes): QuerySession {
+        return DB::transaction(function () use ($queryRequest, $user, $databaseConnections, $sessionAccessMode, $startedAt, $durationMinutes): QuerySession {
             $session = QuerySession::query()->create([
                 'query_request_id' => $queryRequest->id,
                 'user_id' => $user->id,
@@ -75,7 +81,10 @@ class QuerySessionWorkflow
                 'query_request_id' => $queryRequest->id,
                 'expires_at' => $session->expires_at->toIso8601String(),
                 'database_connection_ids' => $databaseConnections->modelKeys(),
+                'requested_access_mode' => $sessionAccessMode->value,
             ]);
+
+            $this->notificationDispatcher->sessionStarted($session);
 
             return $session;
         });
@@ -94,7 +103,7 @@ class QuerySessionWorkflow
             ]);
         }
 
-        $querySession->loadMissing('databaseConnection', 'databaseConnections');
+        $querySession->loadMissing('databaseConnection', 'databaseConnections', 'queryRequest');
         $databaseConnection ??= $querySession->databaseConnection;
 
         if (! $querySession->databaseConnections->contains('id', $databaseConnection->id)) {
@@ -105,7 +114,15 @@ class QuerySessionWorkflow
 
         $queryType = $this->queryGuard->classify($sql);
         $normalizedSql = $this->queryGuard->validateExecutable($sql);
-        $permission = $user->effectiveDatabasePermission($databaseConnection);
+        $sessionAccessMode = $querySession->queryRequest->requested_access_mode ?? AccessMode::Read;
+
+        if (! $sessionAccessMode->allows($queryType)) {
+            throw ValidationException::withMessages([
+                'sql' => 'This is a read-only session. Request read + write access before running data-changing SQL.',
+            ]);
+        }
+
+        $permission = $user->effectiveDatabasePermissionFor($databaseConnection, $queryType);
 
         if (! $user->isAdmin() && ! $permission['access_mode']->allows($queryType)) {
             throw ValidationException::withMessages([
@@ -213,14 +230,20 @@ class QuerySessionWorkflow
         }
 
         DB::transaction(function () use ($querySession, $user): void {
+            $lockedQueryRequest = QueryRequest::query()
+                ->lockForUpdate()
+                ->findOrFail($querySession->query_request_id);
+
             $querySession->forceFill([
                 'ended_at' => now(),
             ])->save();
 
-            $querySession->queryRequest->forceFill([
-                'status' => QueryRequestStatus::Completed,
-                'completed_at' => now(),
-            ])->save();
+            if ($lockedQueryRequest->status === QueryRequestStatus::Running) {
+                $lockedQueryRequest->forceFill([
+                    'status' => QueryRequestStatus::Completed,
+                    'completed_at' => now(),
+                ])->save();
+            }
 
             $this->auditLogger->log('query_session.ended', $user, $querySession);
         });

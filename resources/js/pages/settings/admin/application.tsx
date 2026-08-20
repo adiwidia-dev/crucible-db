@@ -3,6 +3,7 @@ import { AlertTriangle, Mail, Save, Settings2 } from 'lucide-react';
 import { useState } from 'react';
 import ApplicationSettingsController from '@/actions/App/Http/Controllers/Settings/ApplicationSettingsController';
 import { PageHeader } from '@/components/crucible/page-header';
+import { TimezoneCombobox } from '@/components/crucible/timezone-combobox';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import {
@@ -51,6 +52,8 @@ export default function ApplicationSettings({
     const defaultTimezone = settings.default_timezone ?? 'UTC';
     const availableTimezones =
         timezones.length > 0 ? timezones : [defaultTimezone];
+    const [defaultTimezoneValue, setDefaultTimezoneValue] =
+        useState(defaultTimezone);
 
     return (
         <>
@@ -95,34 +98,16 @@ export default function ApplicationSettings({
                                         <InputError message={errors.app_name} />
                                     </div>
                                     <div className="grid gap-2">
-                                        <Label htmlFor="default_timezone">
-                                            Default timezone
-                                        </Label>
-                                        <select
-                                            id="default_timezone"
+                                        <TimezoneCombobox
+                                            label="Default timezone"
                                             name="default_timezone"
-                                            defaultValue={defaultTimezone}
-                                            className="h-9 rounded-md border border-input bg-card px-3 text-sm transition-[color,border-color,box-shadow] duration-150 ease-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-reduce:transition-none"
-                                            required
-                                        >
-                                            {availableTimezones.map(
-                                                (timezone) => (
-                                                    <option
-                                                        key={timezone}
-                                                        value={timezone}
-                                                    >
-                                                        {timezone}
-                                                    </option>
-                                                ),
-                                            )}
-                                        </select>
-                                        <p className="text-xs text-muted-foreground">
-                                            Used for people invited after this
-                                            change. Each person can override it
-                                            in Profile settings.
-                                        </p>
-                                        <InputError
-                                            message={errors.default_timezone}
+                                            timezones={availableTimezones}
+                                            value={defaultTimezoneValue}
+                                            onValueChange={
+                                                setDefaultTimezoneValue
+                                            }
+                                            description="Used for people invited after this change. Each person can override it in Profile settings."
+                                            error={errors.default_timezone}
                                         />
                                     </div>
                                 </CardContent>

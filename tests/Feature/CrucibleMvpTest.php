@@ -20,6 +20,8 @@ use App\Models\RoleDatabasePermission;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
+use App\Services\DeploymentPreflight;
+use App\Services\NotificationDispatcher;
 use App\Services\QueryGuard;
 use App\Services\QueryRequestWorkflow;
 use App\Services\QuerySessionWorkflow;
@@ -443,10 +445,12 @@ class CrucibleMvpTest extends TestCase
             'status' => QueryRequestStatus::PendingReview->value,
             'requires_approval' => true,
         ]);
-        Queue::assertNothingPushed();
+        Queue::assertNotPushed(ExecuteQueryRequest::class);
 
         RoleDatabasePermission::query()->where('role_id', $this->roleId($developer))->update([
             'requires_approval' => false,
+            'read_requires_approval' => false,
+            'write_requires_approval' => false,
         ]);
 
         $this->actingAs($developer)->post(route('query-requests.store'), [
@@ -597,6 +601,7 @@ SQL;
         $queryRequest = QueryRequest::factory()->queryAccess()->create([
             'requester_id' => $admin->id,
             'query_type' => QueryType::Read,
+            'requested_access_mode' => AccessMode::Write,
             'status' => QueryRequestStatus::Running,
         ]);
 
@@ -620,7 +625,8 @@ SQL;
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('query_requests.data.0.latest_query_type', QueryType::Read->value)
-                ->where('query_requests.data.0.effective_query_type', QueryType::Write->value));
+                ->where('query_requests.data.0.effective_query_type', QueryType::Write->value)
+                ->where('query_requests.data.0.requested_access_mode', AccessMode::Write->value));
 
     }
 
@@ -663,6 +669,46 @@ SQL;
                 ->where('query_request.title', 'Shared request')
                 ->where('can_review', false)
                 ->where('can_start_session', false));
+    }
+
+    public function test_query_access_request_show_includes_the_latest_ended_session(): void
+    {
+        $developer = $this->developerUser();
+        $connection = DatabaseConnection::factory()->create();
+        $endedAt = now()->subMinute()->startOfSecond();
+
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $this->roleId($developer),
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+            'requires_approval' => false,
+        ]);
+
+        $queryRequest = QueryRequest::factory()->queryAccess()->create([
+            'requester_id' => $developer->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Completed,
+            'completed_at' => $endedAt,
+        ]);
+        $queryRequest->accessConnections()->sync([$connection->id]);
+
+        QuerySession::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'user_id' => $developer->id,
+            'database_connection_id' => $connection->id,
+            'started_at' => $endedAt->copy()->subMinutes(4),
+            'expires_at' => $endedAt->copy()->addMinutes(5),
+            'ended_at' => $endedAt,
+        ]);
+
+        $this->actingAs($developer)
+            ->get(route('query-requests.show', $queryRequest))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('query_request.status', QueryRequestStatus::Completed->value)
+                ->where('query_request.active_session', null)
+                ->has('query_request.sessions', 1)
+                ->where('query_request.sessions.0.ended_at', $endedAt->toIso8601String()));
     }
 
     public function test_audit_log_index_filters_by_action_actor_ip_and_search(): void
@@ -750,7 +796,7 @@ SQL;
 
         $this->assertSame(QueryRequestStatus::Approved, $queryRequest->status);
         $this->assertSame($reviewer->id, $queryRequest->approved_by_id);
-        Queue::assertNothingPushed();
+        Queue::assertNotPushed(ExecuteQueryRequest::class);
         $this->assertDatabaseHas('query_reviews', [
             'query_request_id' => $queryRequest->id,
             'reviewer_id' => $reviewer->id,
@@ -762,7 +808,7 @@ SQL;
             ->assertSessionHas(SessionKey::FLASH_DATA, [
                 'toast' => [
                     'type' => 'success',
-                    'message' => 'Query scheduled for immediate execution.',
+                    'message' => 'Deployment batch queued for execution.',
                 ],
             ]);
 
@@ -897,8 +943,10 @@ SQL;
     public function test_due_scheduled_query_requests_are_dispatched(): void
     {
         Queue::fake();
+        $admin = $this->adminUser();
 
         $queryRequest = QueryRequest::factory()->scheduled()->create([
+            'requester_id' => $admin->id,
             'scheduled_at' => Carbon::now()->subMinute(),
             'status' => QueryRequestStatus::Scheduled,
         ]);
@@ -908,6 +956,68 @@ SQL;
         $this->assertSame(QueryRequestStatus::Approved, $queryRequest->refresh()->status);
         $this->assertNotNull($queryRequest->dispatched_at);
         Queue::assertPushed(ExecuteQueryRequest::class);
+    }
+
+    public function test_late_approval_keeps_a_scheduled_deployment_batch_ready_for_an_explicit_run(): void
+    {
+        Queue::fake();
+
+        $requester = $this->developerUser();
+        $reviewer = $this->developerUser('Reviewer');
+        $connection = DatabaseConnection::factory()->create();
+
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $this->roleId($requester),
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+            'requires_approval' => true,
+        ]);
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $this->roleId($reviewer),
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+            'can_review' => true,
+            'requires_approval' => false,
+        ]);
+
+        $queryRequest = app(QueryRequestWorkflow::class)->create($requester, $connection, [
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Deploy after delayed approval',
+            'sql' => 'select 1 as value',
+            'scheduled_at' => now()->subHour()->toIso8601String(),
+        ]);
+
+        $this->actingAs($reviewer)->post(route('query-requests.reviews.store', $queryRequest), [
+            'decision' => 'approved',
+        ])->assertRedirect();
+
+        $queryRequest->refresh();
+
+        $this->assertSame(QueryRequestStatus::Approved, $queryRequest->status);
+        $this->assertNull($queryRequest->dispatched_at);
+        Queue::assertNotPushed(ExecuteQueryRequest::class);
+
+        $this->actingAs($requester)
+            ->get(route('query-requests.show', $queryRequest))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('query-requests/show')
+                ->where('query_request.approved_after_schedule', true));
+
+        $this->artisan('crucible:dispatch-due-query-requests')->assertSuccessful();
+        Queue::assertNotPushed(ExecuteQueryRequest::class);
+
+        $this->actingAs($requester)
+            ->post(route('query-requests.dispatch', $queryRequest))
+            ->assertRedirect()
+            ->assertSessionHas(SessionKey::FLASH_DATA, [
+                'toast' => [
+                    'type' => 'success',
+                    'message' => 'Deployment batch queued for execution.',
+                ],
+            ]);
+
+        Queue::assertPushed(ExecuteQueryRequest::class, 1);
     }
 
     public function test_query_access_request_starts_time_boxed_session_and_records_session_query(): void
@@ -1143,6 +1253,7 @@ SQL;
 
     public function test_execution_job_records_result_summary_and_audit_log(): void
     {
+        $admin = $this->adminUser();
         $this->app->bind(DatabaseQueryExecutor::class, fn () => new class extends DatabaseQueryExecutor
         {
             public function execute(DatabaseConnection $connection, string $sql, QueryType $queryType): array
@@ -1157,6 +1268,7 @@ SQL;
         });
 
         $queryRequest = QueryRequest::factory()->approved()->create([
+            'requester_id' => $admin->id,
             'sql' => 'select 1 as value',
             'query_type' => QueryType::Read,
         ]);
@@ -1164,6 +1276,8 @@ SQL;
         (new ExecuteQueryRequest($queryRequest->id))->handle(
             app(DatabaseQueryExecutor::class),
             app(AuditLogger::class),
+            app(DeploymentPreflight::class),
+            app(NotificationDispatcher::class),
         );
 
         $queryRequest->refresh();

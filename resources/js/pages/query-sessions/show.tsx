@@ -9,7 +9,7 @@ import {
     Play,
     Search,
     Sparkles,
-    Square,
+    CircleStop,
     Table2,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -24,6 +24,17 @@ import { StatusBadge } from '@/components/crucible/status-badge';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { driverLabel, formatDate, statusLabel } from '@/lib/crucible';
 import type {
     DatabaseDriver,
@@ -62,6 +73,7 @@ type QuerySession = {
         id: number;
         title: string;
         requester: string;
+        access_mode: 'read' | 'write';
     };
     connection: {
         id: number;
@@ -301,6 +313,11 @@ export default function QuerySessionShow({ session, tables }: Props) {
                             <h1 className="text-2xl font-semibold tracking-normal">
                                 {session.request.title}
                             </h1>
+                            <p className="text-sm text-muted-foreground">
+                                {session.request.access_mode === 'write'
+                                    ? 'Read + write session. Data-changing SQL is permitted for the approved access window.'
+                                    : 'Read-only session. Data-changing SQL is blocked for the approved access window.'}
+                            </p>
                             <div className="mt-3 max-w-md">
                                 <ConnectionCombobox
                                     connections={session.connections}
@@ -326,21 +343,68 @@ export default function QuerySessionShow({ session, tables }: Props) {
                                 {isSessionActive ? remaining : 'Expired'}
                             </div>
                             {isSessionActive && (
-                                <Form
-                                    {...QuerySessionController.end.form(
-                                        session.id,
-                                    )}
-                                >
-                                    {({ processing }) => (
-                                        <Button
-                                            variant="destructive"
-                                            disabled={processing}
-                                        >
-                                            <Square />
-                                            End
+                                <Dialog>
+                                    <DialogTrigger asChild>
+                                        <Button variant="destructive">
+                                            <CircleStop />
+                                            End session
                                         </Button>
-                                    )}
-                                </Form>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>
+                                                End this access session?
+                                            </DialogTitle>
+                                            <DialogDescription>
+                                                This ends every active session for
+                                                this request now. The request
+                                                remains in audit history as
+                                                cancelled.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <Form
+                                            {...QuerySessionController.end.form(
+                                                session.id,
+                                            )}
+                                            className="grid gap-2"
+                                        >
+                                            {({ processing, errors }) => (
+                                                <>
+                                                    <Label htmlFor="end-session-reason">
+                                                        Reason for ending access
+                                                    </Label>
+                                                    <textarea
+                                                        id="end-session-reason"
+                                                        name="reason"
+                                                        rows={3}
+                                                        required
+                                                        className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                                        placeholder="Why should this access session end?"
+                                                    />
+                                                    <InputError
+                                                        message={errors.reason}
+                                                    />
+                                                    <DialogFooter className="mt-2">
+                                                        <DialogClose asChild>
+                                                            <Button variant="outline">
+                                                                Keep session
+                                                            </Button>
+                                                        </DialogClose>
+                                                        <Button
+                                                            variant="destructive"
+                                                            disabled={processing}
+                                                        >
+                                                            <CircleStop />
+                                                            {processing
+                                                                ? 'Ending session...'
+                                                                : 'End session'}
+                                                        </Button>
+                                                    </DialogFooter>
+                                                </>
+                                            )}
+                                        </Form>
+                                    </DialogContent>
+                                </Dialog>
                             )}
                         </div>
                     </div>

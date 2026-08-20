@@ -38,7 +38,7 @@ class FactoryResetService
             return;
         }
 
-        foreach (['queries', 'default'] as $queue) {
+        foreach (['queries', 'default', 'notifications', 'mail'] as $queue) {
             $exitCode = Artisan::call('horizon:clear', [
                 'connection' => 'redis',
                 '--queue' => $queue,
@@ -71,6 +71,8 @@ class FactoryResetService
             'password_reset_tokens',
             'sessions',
             'audit_logs',
+            'notifications',
+            'notification_subscriptions',
             'failed_jobs',
             'job_batches',
             'jobs',

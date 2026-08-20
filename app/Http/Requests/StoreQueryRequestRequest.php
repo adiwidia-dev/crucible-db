@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\AccessMode;
 use App\Enums\QueryRequestKind;
 use App\Models\QueryRequest;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -67,6 +68,11 @@ class StoreQueryRequestRequest extends FormRequest
             'database_connection_ids' => ['nullable', 'required_if:request_kind,'.QueryRequestKind::QueryAccess->value, 'array', 'min:1', 'max:10'],
             'database_connection_ids.*' => ['required', 'integer', 'distinct', 'exists:database_connections,id'],
             'request_kind' => ['required', Rule::enum(QueryRequestKind::class)],
+            'requested_access_mode' => [
+                'nullable',
+                'required_if:request_kind,'.QueryRequestKind::QueryAccess->value,
+                Rule::in([AccessMode::Read->value, AccessMode::Write->value]),
+            ],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             'statements' => ['nullable', 'required_if:request_kind,'.QueryRequestKind::SingleExecution->value, 'array', 'min:1', 'max:50'],

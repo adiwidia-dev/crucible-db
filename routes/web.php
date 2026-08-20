@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DatabaseConnectionController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\NotificationSubscriptionController;
 use App\Http\Controllers\QueryExecutionExportController;
 use App\Http\Controllers\QueryRequestController;
 use App\Http\Controllers\QueryReviewController;
@@ -59,10 +61,18 @@ Route::get('auth-providers/{auth_provider}/callback', [SsoController::class, 'ca
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
+    Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::patch('notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
+    Route::patch('notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+
     Route::resource('connections', DatabaseConnectionController::class)
         ->parameters(['connections' => 'database_connection']);
     Route::post('connections/{database_connection}/test', [DatabaseConnectionController::class, 'test'])
         ->name('connections.test');
+    Route::post('connections/{database_connection}/subscription', [NotificationSubscriptionController::class, 'storeDatabaseConnection'])
+        ->name('connections.subscription.store');
+    Route::delete('connections/{database_connection}/subscription', [NotificationSubscriptionController::class, 'destroyDatabaseConnection'])
+        ->name('connections.subscription.destroy');
 
     Route::resource('query-requests', QueryRequestController::class)
         ->parameters(['query-requests' => 'query_request']);
@@ -70,6 +80,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('query-requests.reviews.store');
     Route::post('query-requests/{query_request}/dispatch', [QueryRequestController::class, 'dispatch'])
         ->name('query-requests.dispatch');
+    Route::post('query-requests/{query_request}/cancel', [QueryRequestController::class, 'cancel'])
+        ->name('query-requests.cancel');
+    Route::post('query-requests/{query_request}/retry', [QueryRequestController::class, 'retry'])
+        ->name('query-requests.retry');
+    Route::post('query-requests/{query_request}/subscription', [NotificationSubscriptionController::class, 'storeQueryRequest'])
+        ->name('query-requests.subscription.store');
+    Route::delete('query-requests/{query_request}/subscription', [NotificationSubscriptionController::class, 'destroyQueryRequest'])
+        ->name('query-requests.subscription.destroy');
     Route::post('query-requests/{query_request}/sessions', [QuerySessionController::class, 'store'])
         ->name('query-requests.sessions.store');
     Route::get('query-sessions/{query_session}', [QuerySessionController::class, 'show'])

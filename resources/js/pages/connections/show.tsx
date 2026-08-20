@@ -1,6 +1,8 @@
 import { Form, Head, Link } from '@inertiajs/react';
 import {
     Database,
+    BellOff,
+    BellRing,
     MoreHorizontal,
     Pencil,
     PlugZap,
@@ -10,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import DatabaseConnectionController from '@/actions/App/Http/Controllers/DatabaseConnectionController';
+import NotificationSubscriptionController from '@/actions/App/Http/Controllers/NotificationSubscriptionController';
 import { StatusBadge } from '@/components/crucible/status-badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,7 +50,8 @@ type Connection = {
         role: string;
         access_mode: string;
         can_review: boolean;
-        requires_approval: boolean;
+        read_requires_approval: boolean;
+        write_requires_approval: boolean;
     }>;
 };
 
@@ -55,16 +59,20 @@ type Props = {
     connection: Connection;
     can_update: boolean;
     can_create: boolean;
+    is_subscribed: boolean;
 };
 
 export default function ConnectionShow({
     connection,
     can_update,
     can_create,
+    is_subscribed,
 }: Props) {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const requiresApproval = connection.permissions.some(
-        (permission) => permission.requires_approval,
+        (permission) =>
+            permission.read_requires_approval ||
+            permission.write_requires_approval,
     );
     const policySummary =
         connection.permissions.length === 0
@@ -102,92 +110,132 @@ export default function ConnectionShow({
                         </p>
                     </div>
 
-                    {(can_create || can_update) && (
-                        <div className="flex shrink-0 flex-wrap items-center gap-2">
-                            {can_update && (
-                                <Form
-                                    {...DatabaseConnectionController.test.form(
-                                        connection.id,
-                                    )}
-                                    options={{ preserveScroll: true }}
-                                    onSuccess={() =>
-                                        showFlashToast({
-                                            type: 'success',
-                                            message:
-                                                'Connection test succeeded.',
-                                        })
-                                    }
-                                    onError={() =>
-                                        showFlashToast({
-                                            type: 'error',
-                                            message:
-                                                'Connection test failed. Check the connection settings and audit log.',
-                                        })
-                                    }
-                                >
-                                    {({ processing }) => (
-                                        <Button
-                                            variant="outline"
-                                            disabled={processing}
-                                        >
-                                            <PlugZap />
-                                            Test connection
-                                        </Button>
-                                    )}
-                                </Form>
-                            )}
-                            {can_update && (
-                                <Button asChild>
-                                    <Link href={edit(connection.id)}>
-                                        <Pencil />
-                                        Edit
-                                    </Link>
-                                </Button>
-                            )}
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="outline">
-                                        <MoreHorizontal />
-                                        More
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                        {is_subscribed ? (
+                            <Form
+                                {...NotificationSubscriptionController.destroyDatabaseConnection.form(
+                                    connection.id,
+                                )}
+                                options={{ preserveScroll: true }}
+                            >
+                                {({ processing }) => (
+                                    <Button
+                                        variant="secondary"
+                                        disabled={processing}
+                                    >
+                                        <BellOff />
+                                        Watching
                                     </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    {can_create && (
-                                        <DropdownMenuItem asChild>
-                                            <Link
-                                                href={create({
-                                                    query: {
-                                                        driver: connection.driver,
-                                                        host: connection.host,
-                                                        port: connection.port,
-                                                        ssl_mode:
-                                                            connection.ssl_mode,
-                                                    },
-                                                })}
-                                            >
-                                                <Plus />
-                                                Add similar connection
-                                            </Link>
-                                        </DropdownMenuItem>
-                                    )}
-                                    {can_create && can_update && (
-                                        <DropdownMenuSeparator />
-                                    )}
-                                    {can_update && (
-                                        <DropdownMenuItem
-                                            variant="destructive"
-                                            onSelect={() =>
-                                                setDeleteDialogOpen(true)
-                                            }
+                                )}
+                            </Form>
+                        ) : (
+                            <Form
+                                {...NotificationSubscriptionController.storeDatabaseConnection.form(
+                                    connection.id,
+                                )}
+                                options={{ preserveScroll: true }}
+                            >
+                                {({ processing }) => (
+                                    <Button
+                                        variant="outline"
+                                        disabled={processing}
+                                    >
+                                        <BellRing />
+                                        Watch health
+                                    </Button>
+                                )}
+                            </Form>
+                        )}
+                        {can_update && (
+                            <Form
+                                {...DatabaseConnectionController.test.form(
+                                    connection.id,
+                                )}
+                                options={{ preserveScroll: true }}
+                                onSuccess={() =>
+                                    showFlashToast({
+                                        type: 'success',
+                                        message: 'Connection test succeeded.',
+                                    })
+                                }
+                                onError={() =>
+                                    showFlashToast({
+                                        type: 'error',
+                                        message:
+                                            'Connection test failed. Check the connection settings and audit log.',
+                                    })
+                                }
+                            >
+                                {({ processing }) => (
+                                    <Button
+                                        variant="outline"
+                                        disabled={processing}
+                                    >
+                                        <PlugZap />
+                                        Test connection
+                                    </Button>
+                                )}
+                            </Form>
+                        )}
+                        {can_update && (
+                            <Button asChild>
+                                <Link href={edit(connection.id)}>
+                                    <Pencil />
+                                    Edit
+                                </Link>
+                            </Button>
+                        )}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline">
+                                    <MoreHorizontal />
+                                    More
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                align="end"
+                                sideOffset={8}
+                                className="w-64"
+                            >
+                                {can_create && (
+                                    <DropdownMenuItem
+                                        asChild
+                                        className="min-h-10 px-3 font-medium"
+                                    >
+                                        <Link
+                                            href={create({
+                                                query: {
+                                                    driver: connection.driver,
+                                                    host: connection.host,
+                                                    port: connection.port,
+                                                    ssl_mode:
+                                                        connection.ssl_mode,
+                                                },
+                                            })}
                                         >
-                                            <Trash2 />
-                                            Delete connection
-                                        </DropdownMenuItem>
-                                    )}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        </div>
-                    )}
+                                            <Plus />
+                                            Add similar connection
+                                        </Link>
+                                    </DropdownMenuItem>
+                                )}
+                                {can_create && can_update && (
+                                    <DropdownMenuSeparator />
+                                )}
+                                {can_update && (
+                                    <DropdownMenuItem
+                                        variant="destructive"
+                                        className="min-h-10 px-3 font-medium"
+                                        onSelect={() =>
+                                            setDeleteDialogOpen(true)
+                                        }
+                                    >
+                                        <Trash2 />
+                                        Delete connection
+                                    </DropdownMenuItem>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
                 </header>
 
                 <section className="max-w-6xl overflow-hidden border-y bg-card sm:rounded-lg sm:border">
@@ -331,14 +379,26 @@ export default function ConnectionShow({
                                                 <td className="py-3.5 pr-4">
                                                     <StatusBadge
                                                         value={
-                                                            permission.requires_approval
+                                                            permission.read_requires_approval
                                                                 ? 'pending_review'
                                                                 : 'completed'
                                                         }
                                                         label={
-                                                            permission.requires_approval
-                                                                ? 'Required'
-                                                                : 'Bypassed'
+                                                            permission.read_requires_approval
+                                                                ? 'Read approval'
+                                                                : 'Read direct'
+                                                        }
+                                                    />
+                                                    <StatusBadge
+                                                        value={
+                                                            permission.write_requires_approval
+                                                                ? 'pending_review'
+                                                                : 'completed'
+                                                        }
+                                                        label={
+                                                            permission.write_requires_approval
+                                                                ? 'Write approval'
+                                                                : 'Write direct'
                                                         }
                                                     />
                                                 </td>

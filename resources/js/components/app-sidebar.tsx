@@ -1,6 +1,7 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     BadgeCheck,
+    Bell,
     Database,
     FileCode2,
     KeyRound,
@@ -32,10 +33,12 @@ import { index as auditLogsIndex } from '@/routes/audit-logs';
 import { index as authenticationProvidersIndex } from '@/routes/auth-providers';
 import { edit as editAuthenticationMethods } from '@/routes/authentication-methods';
 import { index as connectionsIndex } from '@/routes/connections';
+import { edit as editNotificationSettings } from '@/routes/notification-settings';
 import { edit as editProfile } from '@/routes/profile';
 import { index as queryRequestsIndex } from '@/routes/query-requests';
 import { index as rolesIndex } from '@/routes/roles';
 import { edit as editSecurity } from '@/routes/security';
+import { edit as editNotificationPreferences } from '@/routes/user-notifications';
 import { index as usersIndex } from '@/routes/users';
 import type { Auth, NavItem } from '@/types';
 
@@ -88,6 +91,11 @@ export function AppSidebar() {
             icon: Settings2,
         },
         {
+            title: 'Notifications',
+            href: editNotificationSettings(),
+            icon: Bell,
+        },
+        {
             title: 'Audit Log',
             href: auditLogsIndex(),
             icon: ScrollText,
@@ -98,6 +106,11 @@ export function AppSidebar() {
             title: 'Profile',
             href: editProfile(),
             icon: UserRound,
+        },
+        {
+            title: 'Notifications',
+            href: editNotificationPreferences(),
+            icon: Bell,
         },
         {
             title: 'Security',

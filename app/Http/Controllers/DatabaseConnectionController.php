@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateDatabaseConnectionRequest;
 use App\Models\DatabaseConnection;
 use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
+use App\Services\NotificationDispatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -119,11 +120,15 @@ class DatabaseConnectionController extends Controller
                     'role' => $permission->role->name,
                     'access_mode' => $permission->access_mode->value,
                     'can_review' => $permission->can_review,
-                    'requires_approval' => $permission->requires_approval,
+                    'read_requires_approval' => $permission->read_requires_approval,
+                    'write_requires_approval' => $permission->write_requires_approval,
                 ])->values(),
             ],
             'can_update' => request()->user()->can('update', $databaseConnection),
             'can_create' => request()->user()->can('create', DatabaseConnection::class),
+            'is_subscribed' => $databaseConnection->notificationSubscriptions()
+                ->whereBelongsTo(request()->user())
+                ->exists(),
         ]);
     }
 
@@ -168,12 +173,13 @@ class DatabaseConnectionController extends Controller
         Gate::authorize('delete', $databaseConnection);
 
         $auditLogger->log('database_connection.deleted', request()->user(), $databaseConnection);
+        $databaseConnection->notificationSubscriptions()->delete();
         $databaseConnection->delete();
 
         return redirect()->route('connections.index');
     }
 
-    public function test(DatabaseConnection $databaseConnection, DatabaseQueryExecutor $executor, AuditLogger $auditLogger): RedirectResponse
+    public function test(DatabaseConnection $databaseConnection, DatabaseQueryExecutor $executor, AuditLogger $auditLogger, NotificationDispatcher $notificationDispatcher): RedirectResponse
     {
         Gate::authorize('update', $databaseConnection);
 
@@ -187,6 +193,7 @@ class DatabaseConnectionController extends Controller
             $auditLogger->log('database_connection.test_failed', request()->user(), $databaseConnection, [
                 'error' => $exception->getMessage(),
             ]);
+            $notificationDispatcher->connectionTestFailed($databaseConnection, request()->user());
             Inertia::flash('toast', ['type' => 'error', 'message' => 'Connection test failed. Check the connection settings and audit log.']);
 
             return back()->withErrors(['connection' => $exception->getMessage()]);

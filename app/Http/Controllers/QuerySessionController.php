@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\EndQuerySessionRequest;
 use App\Models\DatabaseConnection;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Services\DatabaseSchemaBrowser;
+use App\Services\QueryRequestWorkflow;
 use App\Services\QuerySessionWorkflow;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
@@ -65,6 +67,7 @@ class QuerySessionController extends Controller
                     'id' => $querySession->queryRequest->id,
                     'title' => $querySession->queryRequest->title,
                     'requester' => $querySession->queryRequest->requester->name,
+                    'access_mode' => $querySession->queryRequest->requested_access_mode?->value ?? 'read',
                 ],
                 'connection' => $this->connectionSummary($activeConnection),
                 'connections' => $querySession->databaseConnections
@@ -101,11 +104,17 @@ class QuerySessionController extends Controller
         ]);
     }
 
-    public function end(QuerySession $querySession, QuerySessionWorkflow $workflow): RedirectResponse
+    public function end(EndQuerySessionRequest $request, QuerySession $querySession, QueryRequestWorkflow $workflow): RedirectResponse
     {
-        Gate::authorize('end', $querySession);
+        $queryRequest = $querySession->queryRequest;
 
-        $workflow->end($querySession, request()->user());
+        Gate::authorize('cancel', $queryRequest);
+
+        $workflow->cancel(
+            $queryRequest,
+            $request->user(),
+            $request->validated('reason'),
+        );
 
         return redirect()->route('query-requests.show', $querySession->query_request_id);
     }

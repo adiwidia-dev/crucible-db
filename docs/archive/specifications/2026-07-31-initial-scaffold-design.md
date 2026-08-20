@@ -1,5 +1,7 @@
 # Initial Scaffold Design
 
+> **Historical record.** This July 2026 specification describes the original scaffold, not the current product or deployment. Use the README and current product and architecture documents for active guidance.
+
 Date: 2026-07-31
 
 ## Purpose

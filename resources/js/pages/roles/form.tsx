@@ -1,5 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Check, Database, Shield, Trash2, X } from 'lucide-react';
+import { Check, Database, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import RoleController from '@/actions/App/Http/Controllers/RoleController';
 import { ConnectionAddCombobox } from '@/components/crucible/connection-combobox';
@@ -32,7 +32,9 @@ type RoleFormData = {
         {
             access_mode: AccessMode;
             can_review: boolean;
-            requires_approval: boolean;
+            read_requires_approval: boolean;
+            write_requires_approval: boolean;
+            max_write_session_minutes: number | null;
         }
     >;
 } | null;
@@ -57,7 +59,9 @@ type PolicyDraft = {
     database_connection_id: number;
     access_mode: AccessMode;
     can_review: boolean;
-    requires_approval: boolean;
+    read_requires_approval: boolean;
+    write_requires_approval: boolean;
+    max_write_session_minutes: number | null;
 };
 
 export default function RoleForm({ role, connections, access_modes }: Props) {
@@ -71,7 +75,9 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
                   database_connection_id: Number(connectionId),
                   access_mode: policy.access_mode,
                   can_review: policy.can_review,
-                  requires_approval: policy.requires_approval,
+                  read_requires_approval: policy.read_requires_approval,
+                  write_requires_approval: policy.write_requires_approval,
+                  max_write_session_minutes: policy.max_write_session_minutes,
               }))
             : [],
     );
@@ -90,7 +96,9 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
                 database_connection_id: connectionId,
                 access_mode: 'read',
                 can_review: false,
-                requires_approval: true,
+                read_requires_approval: false,
+                write_requires_approval: true,
+                max_write_session_minutes: null,
             },
         ]);
     };
@@ -118,13 +126,11 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
 
             <div className="crucible-page">
                 <PageHeader
-                    icon={Shield}
-                    eyebrow="Identity"
                     title={isEditing ? 'Edit Role' : 'New Role'}
                     description={
                         isEditing
-                            ? `${role?.name} controls database access and review requirements.`
-                            : 'Create a role and define its database access policy.'
+                            ? `Manage ${role?.name}'s connection permissions and approval requirements.`
+                            : 'Create a reusable permission set for governed database work.'
                     }
                 />
 
@@ -139,11 +145,11 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
                                 <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle>Role Profile</CardTitle>
                                     <CardDescription>
-                                        Role name and operator-facing
-                                        description.
+                                        Give this permission set a clear name
+                                        and purpose for people assigning it.
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="grid max-w-2xl gap-5 px-4 py-5 sm:px-5">
+                                <CardContent className="grid max-w-3xl gap-5 px-4 py-5 sm:grid-cols-2 sm:px-5">
                                     <div className="grid gap-2">
                                         <Label htmlFor="name">Role Name</Label>
                                         <Input
@@ -177,9 +183,8 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
                                 <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle>Database Policies</CardTitle>
                                     <CardDescription>
-                                        Define connection access, reviewer
-                                        authority, and whether query requests
-                                        need approval.
+                                        Set the highest privilege this role may
+                                        request on each connection.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="p-0">
@@ -209,181 +214,338 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
                                             </div>
                                         </div>
                                     ) : (
-                                        <div className="grid gap-5 p-4 sm:p-6">
-                                            {policies.length === 0 ? (
-                                                <div className="rounded-md border border-dashed bg-muted/20 p-6">
-                                                    <div className="flex items-center gap-2 font-medium">
-                                                        <Database className="size-4" />
-                                                        No connection policies
+                                        <div>
+                                            <div className="border-b bg-muted/20 px-4 py-3 sm:px-5">
+                                                <p className="text-sm font-medium">
+                                                    Access and approval work
+                                                    together
+                                                </p>
+                                                <p className="mt-1 max-w-4xl text-xs leading-5 text-muted-foreground">
+                                                    Maximum access controls the
+                                                    strongest work this role can
+                                                    request. Approval controls
+                                                    whether read or write work
+                                                    must wait for a reviewer.
+                                                </p>
+                                            </div>
+
+                                            <div className="grid gap-5 p-4 sm:p-5">
+                                                {policies.length === 0 ? (
+                                                    <div className="rounded-md border border-dashed bg-muted/15 px-4 py-5">
+                                                        <div className="flex items-center gap-2 text-sm font-medium">
+                                                            <Database className="size-4" />
+                                                            No connection
+                                                            policies
+                                                        </div>
+                                                        <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+                                                            This role grants no
+                                                            database access
+                                                            until a connection
+                                                            policy is added
+                                                            below.
+                                                        </p>
                                                     </div>
-                                                    <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-                                                        This role will not grant
-                                                        database access until a
-                                                        connection policy is
-                                                        added.
-                                                    </p>
-                                                </div>
-                                            ) : (
-                                                <div className="overflow-x-auto rounded-md border">
-                                                    <table className="w-full min-w-[1040px] text-sm">
-                                                        <thead>
-                                                            <tr className="border-b bg-muted/45 text-left text-xs text-muted-foreground">
-                                                                <th className="py-2.5 pr-4 pl-3 font-medium sm:pl-4">
-                                                                    Connection
-                                                                </th>
-                                                                <th className="py-2.5 pr-4 font-medium">
-                                                                    Access
-                                                                </th>
-                                                                <th className="py-2.5 pr-4 font-medium">
-                                                                    Review
-                                                                </th>
-                                                                <th className="py-2.5 pr-4 font-medium">
-                                                                    Approval
-                                                                </th>
-                                                                <th className="py-2.5 pr-3 text-right font-medium sm:pr-4">
-                                                                    Remove
-                                                                </th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {policies.map(
-                                                                (
-                                                                    policy,
-                                                                    index,
-                                                                ) => {
-                                                                    const connection =
-                                                                        connections.find(
-                                                                            (
-                                                                                item,
-                                                                            ) =>
-                                                                                item.id ===
-                                                                                policy.database_connection_id,
-                                                                        );
+                                                ) : (
+                                                    <div className="overflow-x-auto rounded-md border">
+                                                        <table className="w-full min-w-[1180px] text-sm">
+                                                            <thead>
+                                                                <tr className="border-b bg-muted/45 text-left text-xs text-muted-foreground">
+                                                                    <th className="py-2.5 pr-4 pl-3 font-medium sm:pl-4">
+                                                                        Connection
+                                                                    </th>
+                                                                    <th
+                                                                        className="py-2.5 pr-4 font-medium"
+                                                                        title="The highest privilege this role may request on this connection."
+                                                                    >
+                                                                        Maximum
+                                                                        access
+                                                                    </th>
+                                                                    <th className="py-2.5 pr-4 font-medium">
+                                                                        Reviewer
+                                                                    </th>
+                                                                    <th className="py-2.5 pr-4 font-medium">
+                                                                        Read
+                                                                        approval
+                                                                    </th>
+                                                                    <th className="py-2.5 pr-4 font-medium">
+                                                                        Write
+                                                                        approval
+                                                                    </th>
+                                                                    <th className="py-2.5 pr-4 font-medium">
+                                                                        Write-session
+                                                                        limit
+                                                                    </th>
+                                                                    <th className="py-2.5 pr-3 text-right font-medium sm:pr-4">
+                                                                        Actions
+                                                                    </th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {policies.map(
+                                                                    (
+                                                                        policy,
+                                                                        index,
+                                                                    ) => {
+                                                                        const connection =
+                                                                            connections.find(
+                                                                                (
+                                                                                    item,
+                                                                                ) =>
+                                                                                    item.id ===
+                                                                                    policy.database_connection_id,
+                                                                            );
 
-                                                                    if (
-                                                                        !connection
-                                                                    ) {
-                                                                        return null;
-                                                                    }
+                                                                        if (
+                                                                            !connection
+                                                                        ) {
+                                                                            return null;
+                                                                        }
 
-                                                                    return (
-                                                                        <tr
-                                                                            key={
-                                                                                connection.id
-                                                                            }
-                                                                            className="border-b align-top last:border-0"
-                                                                        >
-                                                                            <td className="py-4 pr-4 pl-4">
-                                                                                <input
-                                                                                    type="hidden"
-                                                                                    name={`policies[${index}][database_connection_id]`}
-                                                                                    value={
-                                                                                        connection.id
-                                                                                    }
-                                                                                />
-                                                                                <div className="font-medium">
-                                                                                    {
-                                                                                        connection.name
-                                                                                    }
-                                                                                </div>
-                                                                                <div className="mt-1 font-mono text-xs text-muted-foreground">
-                                                                                    {
-                                                                                        connection.host
-                                                                                    }
-
-                                                                                    :
-                                                                                    {
-                                                                                        connection.port
-                                                                                    }{' '}
-                                                                                    /{' '}
-                                                                                    {
-                                                                                        connection.database
-                                                                                    }
-                                                                                </div>
-                                                                                <div className="mt-2 flex flex-wrap gap-2">
-                                                                                    <StatusBadge
+                                                                        return (
+                                                                            <tr
+                                                                                key={
+                                                                                    connection.id
+                                                                                }
+                                                                                className="border-b align-top transition-colors last:border-0 hover:bg-muted/20"
+                                                                            >
+                                                                                <td className="py-4 pr-4 pl-4">
+                                                                                    <input
+                                                                                        type="hidden"
+                                                                                        name={`policies[${index}][database_connection_id]`}
                                                                                         value={
-                                                                                            connection.driver
+                                                                                            connection.id
                                                                                         }
-                                                                                        label={driverLabel(
-                                                                                            connection.driver,
+                                                                                    />
+                                                                                    <div className="font-medium">
+                                                                                        {
+                                                                                            connection.name
+                                                                                        }
+                                                                                    </div>
+                                                                                    <div className="mt-1 font-mono text-xs text-muted-foreground">
+                                                                                        {
+                                                                                            connection.host
+                                                                                        }
+
+                                                                                        :
+                                                                                        {
+                                                                                            connection.port
+                                                                                        }{' '}
+                                                                                        /{' '}
+                                                                                        {
+                                                                                            connection.database
+                                                                                        }
+                                                                                    </div>
+                                                                                    <div className="mt-2 flex flex-wrap gap-2">
+                                                                                        <StatusBadge
+                                                                                            value={
+                                                                                                connection.driver
+                                                                                            }
+                                                                                            label={driverLabel(
+                                                                                                connection.driver,
+                                                                                            )}
+                                                                                        />
+                                                                                        <StatusBadge
+                                                                                            value={
+                                                                                                connection.is_active
+                                                                                                    ? 'active'
+                                                                                                    : 'disabled'
+                                                                                            }
+                                                                                            label={
+                                                                                                connection.is_active
+                                                                                                    ? 'Active'
+                                                                                                    : 'Disabled'
+                                                                                            }
+                                                                                        />
+                                                                                    </div>
+                                                                                </td>
+                                                                                <td className="py-4 pr-4">
+                                                                                    <select
+                                                                                        name={`policies[${index}][access_mode]`}
+                                                                                        value={
+                                                                                            policy.access_mode
+                                                                                        }
+                                                                                        onChange={(
+                                                                                            event,
+                                                                                        ) =>
+                                                                                            updatePolicy(
+                                                                                                index,
+                                                                                                {
+                                                                                                    access_mode:
+                                                                                                        event
+                                                                                                            .target
+                                                                                                            .value as AccessMode,
+                                                                                                },
+                                                                                            )
+                                                                                        }
+                                                                                        className="h-9 min-w-40 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                                                                    >
+                                                                                        {access_modes.map(
+                                                                                            (
+                                                                                                mode,
+                                                                                            ) => (
+                                                                                                <option
+                                                                                                    key={
+                                                                                                        mode
+                                                                                                    }
+                                                                                                    value={
+                                                                                                        mode
+                                                                                                    }
+                                                                                                >
+                                                                                                    {statusLabel(
+                                                                                                        mode,
+                                                                                                    )}
+                                                                                                </option>
+                                                                                            ),
                                                                                         )}
+                                                                                    </select>
+                                                                                    <InputError
+                                                                                        message={
+                                                                                            errors[
+                                                                                                `policies.${index}.access_mode`
+                                                                                            ]
+                                                                                        }
                                                                                     />
-                                                                                    <StatusBadge
+                                                                                </td>
+                                                                                <td className="py-4 pr-4">
+                                                                                    <label className="inline-flex min-h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm shadow-xs">
+                                                                                        <input
+                                                                                            type="hidden"
+                                                                                            name={`policies[${index}][can_review]`}
+                                                                                            value="0"
+                                                                                        />
+                                                                                        <input
+                                                                                            type="checkbox"
+                                                                                            name={`policies[${index}][can_review]`}
+                                                                                            value="1"
+                                                                                            checked={
+                                                                                                policy.can_review
+                                                                                            }
+                                                                                            onChange={(
+                                                                                                event,
+                                                                                            ) =>
+                                                                                                updatePolicy(
+                                                                                                    index,
+                                                                                                    {
+                                                                                                        can_review:
+                                                                                                            event
+                                                                                                                .target
+                                                                                                                .checked,
+                                                                                                    },
+                                                                                                )
+                                                                                            }
+                                                                                            className="size-4 rounded border-input"
+                                                                                        />
+                                                                                        May
+                                                                                        review
+                                                                                    </label>
+                                                                                </td>
+                                                                                <td className="py-4 pr-4">
+                                                                                    <label className="inline-flex min-h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm shadow-xs">
+                                                                                        <input
+                                                                                            type="hidden"
+                                                                                            name={`policies[${index}][read_requires_approval]`}
+                                                                                            value="0"
+                                                                                        />
+                                                                                        <input
+                                                                                            type="checkbox"
+                                                                                            name={`policies[${index}][read_requires_approval]`}
+                                                                                            value="1"
+                                                                                            checked={
+                                                                                                policy.read_requires_approval
+                                                                                            }
+                                                                                            onChange={(
+                                                                                                event,
+                                                                                            ) =>
+                                                                                                updatePolicy(
+                                                                                                    index,
+                                                                                                    {
+                                                                                                        read_requires_approval:
+                                                                                                            event
+                                                                                                                .target
+                                                                                                                .checked,
+                                                                                                    },
+                                                                                                )
+                                                                                            }
+                                                                                            className="size-4 rounded border-input"
+                                                                                        />
+                                                                                        Read
+                                                                                        needs
+                                                                                        approval
+                                                                                    </label>
+                                                                                    <p className="mt-2 max-w-60 text-xs leading-5 text-muted-foreground">
+                                                                                        Clear
+                                                                                        to
+                                                                                        allow
+                                                                                        read-only
+                                                                                        requests
+                                                                                        and
+                                                                                        sessions
+                                                                                        without
+                                                                                        review.
+                                                                                    </p>
+                                                                                </td>
+                                                                                <td className="py-4 pr-4">
+                                                                                    <label className="inline-flex min-h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm shadow-xs">
+                                                                                        <input
+                                                                                            type="hidden"
+                                                                                            name={`policies[${index}][write_requires_approval]`}
+                                                                                            value="0"
+                                                                                        />
+                                                                                        <input
+                                                                                            type="checkbox"
+                                                                                            name={`policies[${index}][write_requires_approval]`}
+                                                                                            value="1"
+                                                                                            checked={
+                                                                                                policy.write_requires_approval
+                                                                                            }
+                                                                                            disabled={
+                                                                                                policy.access_mode !==
+                                                                                                'write'
+                                                                                            }
+                                                                                            onChange={(
+                                                                                                event,
+                                                                                            ) =>
+                                                                                                updatePolicy(
+                                                                                                    index,
+                                                                                                    {
+                                                                                                        write_requires_approval:
+                                                                                                            event
+                                                                                                                .target
+                                                                                                                .checked,
+                                                                                                    },
+                                                                                                )
+                                                                                            }
+                                                                                            className="size-4 rounded border-input disabled:cursor-not-allowed disabled:opacity-50"
+                                                                                        />
+                                                                                        Write
+                                                                                        needs
+                                                                                        approval
+                                                                                    </label>
+                                                                                    <p className="mt-2 max-w-60 text-xs leading-5 text-muted-foreground">
+                                                                                        Applies
+                                                                                        to
+                                                                                        DML,
+                                                                                        DDL,
+                                                                                        and
+                                                                                        read
+                                                                                        +
+                                                                                        write
+                                                                                        sessions.
+                                                                                    </p>
+                                                                                </td>
+                                                                                <td className="py-4 pr-4">
+                                                                                    <Input
+                                                                                        type="number"
+                                                                                        min={
+                                                                                            5
+                                                                                        }
+                                                                                        max={
+                                                                                            1440
+                                                                                        }
+                                                                                        name={`policies[${index}][max_write_session_minutes]`}
                                                                                         value={
-                                                                                            connection.is_active
-                                                                                                ? 'active'
-                                                                                                : 'disabled'
-                                                                                        }
-                                                                                        label={
-                                                                                            connection.is_active
-                                                                                                ? 'Active'
-                                                                                                : 'Disabled'
-                                                                                        }
-                                                                                    />
-                                                                                </div>
-                                                                            </td>
-                                                                            <td className="py-4 pr-4">
-                                                                                <select
-                                                                                    name={`policies[${index}][access_mode]`}
-                                                                                    value={
-                                                                                        policy.access_mode
-                                                                                    }
-                                                                                    onChange={(
-                                                                                        event,
-                                                                                    ) =>
-                                                                                        updatePolicy(
-                                                                                            index,
-                                                                                            {
-                                                                                                access_mode:
-                                                                                                    event
-                                                                                                        .target
-                                                                                                        .value as AccessMode,
-                                                                                            },
-                                                                                        )
-                                                                                    }
-                                                                                    className="h-9 min-w-40 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                                                                >
-                                                                                    {access_modes.map(
-                                                                                        (
-                                                                                            mode,
-                                                                                        ) => (
-                                                                                            <option
-                                                                                                key={
-                                                                                                    mode
-                                                                                                }
-                                                                                                value={
-                                                                                                    mode
-                                                                                                }
-                                                                                            >
-                                                                                                {statusLabel(
-                                                                                                    mode,
-                                                                                                )}
-                                                                                            </option>
-                                                                                        ),
-                                                                                    )}
-                                                                                </select>
-                                                                                <InputError
-                                                                                    message={
-                                                                                        errors[
-                                                                                            `policies.${index}.access_mode`
-                                                                                        ]
-                                                                                    }
-                                                                                />
-                                                                            </td>
-                                                                            <td className="py-4 pr-4">
-                                                                                <label className="inline-flex min-h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm shadow-xs">
-                                                                                    <input
-                                                                                        type="hidden"
-                                                                                        name={`policies[${index}][can_review]`}
-                                                                                        value="0"
-                                                                                    />
-                                                                                    <input
-                                                                                        type="checkbox"
-                                                                                        name={`policies[${index}][can_review]`}
-                                                                                        value="1"
-                                                                                        checked={
-                                                                                            policy.can_review
+                                                                                            policy.max_write_session_minutes ??
+                                                                                            ''
                                                                                         }
                                                                                         onChange={(
                                                                                             event,
@@ -391,119 +553,108 @@ export default function RoleForm({ role, connections, access_modes }: Props) {
                                                                                             updatePolicy(
                                                                                                 index,
                                                                                                 {
-                                                                                                    can_review:
+                                                                                                    max_write_session_minutes:
                                                                                                         event
                                                                                                             .target
-                                                                                                            .checked,
+                                                                                                            .value ===
+                                                                                                        ''
+                                                                                                            ? null
+                                                                                                            : Number(
+                                                                                                                  event
+                                                                                                                      .target
+                                                                                                                      .value,
+                                                                                                              ),
                                                                                                 },
                                                                                             )
                                                                                         }
-                                                                                        className="size-4 rounded border-input"
-                                                                                    />
-                                                                                    Can
-                                                                                    review
-                                                                                </label>
-                                                                            </td>
-                                                                            <td className="py-4 pr-4">
-                                                                                <label className="inline-flex min-h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm shadow-xs">
-                                                                                    <input
-                                                                                        type="hidden"
-                                                                                        name={`policies[${index}][requires_approval]`}
-                                                                                        value="0"
-                                                                                    />
-                                                                                    <input
-                                                                                        type="checkbox"
-                                                                                        name={`policies[${index}][requires_approval]`}
-                                                                                        value="1"
-                                                                                        checked={
-                                                                                            policy.requires_approval
+                                                                                        placeholder="No limit"
+                                                                                        disabled={
+                                                                                            policy.access_mode !==
+                                                                                            'write'
                                                                                         }
-                                                                                        onChange={(
-                                                                                            event,
-                                                                                        ) =>
-                                                                                            updatePolicy(
+                                                                                        className="w-32 bg-background"
+                                                                                    />
+                                                                                    <p className="mt-2 max-w-52 text-xs leading-5 text-muted-foreground">
+                                                                                        Optional
+                                                                                        minutes.
+                                                                                        Only
+                                                                                        limits
+                                                                                        read
+                                                                                        +
+                                                                                        write
+                                                                                        sessions.
+                                                                                    </p>
+                                                                                </td>
+                                                                                <td className="py-4 pr-4">
+                                                                                    <Button
+                                                                                        type="button"
+                                                                                        variant="outline"
+                                                                                        size="sm"
+                                                                                        onClick={() =>
+                                                                                            removePolicy(
                                                                                                 index,
-                                                                                                {
-                                                                                                    requires_approval:
-                                                                                                        event
-                                                                                                            .target
-                                                                                                            .checked,
-                                                                                                },
                                                                                             )
                                                                                         }
-                                                                                        className="size-4 rounded border-input"
-                                                                                    />
-                                                                                    Needs
-                                                                                    approval
-                                                                                </label>
-                                                                                <p className="mt-2 max-w-64 text-xs text-muted-foreground">
-                                                                                    Uncheck
-                                                                                    to
-                                                                                    bypass
-                                                                                    approval
-                                                                                    for
-                                                                                    this
-                                                                                    connection.
-                                                                                </p>
-                                                                            </td>
-                                                                            <td className="py-4 pr-4">
-                                                                                <Button
-                                                                                    type="button"
-                                                                                    variant="outline"
-                                                                                    size="sm"
-                                                                                    onClick={() =>
-                                                                                        removePolicy(
-                                                                                            index,
-                                                                                        )
-                                                                                    }
-                                                                                >
-                                                                                    <Trash2 />
-                                                                                    Remove
-                                                                                </Button>
-                                                                            </td>
-                                                                        </tr>
-                                                                    );
-                                                                },
-                                                            )}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            )}
+                                                                                    >
+                                                                                        <Trash2 />
+                                                                                        Remove
+                                                                                    </Button>
+                                                                                </td>
+                                                                            </tr>
+                                                                        );
+                                                                    },
+                                                                )}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
 
-                                            <div className="max-w-xl">
-                                                <ConnectionAddCombobox
-                                                    connections={connections}
-                                                    disabledValues={policies.map(
-                                                        (policy) =>
-                                                            String(
-                                                                policy.database_connection_id,
-                                                            ),
-                                                    )}
-                                                    onAdd={(connectionId) =>
-                                                        addPolicy(
-                                                            Number(
-                                                                connectionId,
-                                                            ),
-                                                        )
-                                                    }
-                                                />
+                                                <div className="border-t pt-5">
+                                                    <ConnectionAddCombobox
+                                                        connections={
+                                                            connections
+                                                        }
+                                                        disabledValues={policies.map(
+                                                            (policy) =>
+                                                                String(
+                                                                    policy.database_connection_id,
+                                                                ),
+                                                        )}
+                                                        onAdd={(connectionId) =>
+                                                            addPolicy(
+                                                                Number(
+                                                                    connectionId,
+                                                                ),
+                                                            )
+                                                        }
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     )}
                                 </CardContent>
                             </Card>
 
-                            <div className="flex flex-wrap items-center gap-3">
-                                <Button disabled={processing}>
-                                    <Check />
-                                    {isEditing ? 'Save Role' : 'Create Role'}
-                                </Button>
-                                <Button variant="outline" asChild>
-                                    <Link href={rolesIndex()}>
-                                        <X />
-                                        Cancel
-                                    </Link>
-                                </Button>
+                            <div className="flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+                                <p className="max-w-2xl text-xs leading-5 text-muted-foreground">
+                                    Policy changes apply to newly created
+                                    requests. Existing approved work keeps its
+                                    recorded permissions.
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Button variant="outline" asChild>
+                                        <Link href={rolesIndex()}>
+                                            <X />
+                                            Cancel
+                                        </Link>
+                                    </Button>
+                                    <Button disabled={processing}>
+                                        <Check />
+                                        {isEditing
+                                            ? 'Save changes'
+                                            : 'Create role'}
+                                    </Button>
+                                </div>
                             </div>
                         </>
                     )}

@@ -6,6 +6,8 @@ use App\Enums\ExecutionStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
+use App\Http\Requests\CancelQueryRequestRequest;
+use App\Http\Requests\RetryQueryRequestRequest;
 use App\Http\Requests\StoreQueryRequestRequest;
 use App\Http\Requests\UpdateQueryRequestRequest;
 use App\Models\DatabaseConnection;
@@ -70,6 +72,7 @@ class QueryRequestController extends Controller
                 'latest_query_type' => $queryRequest->latestExecution?->query_type?->value,
                 'effective_query_type' => $this->effectiveQueryType($queryRequest),
                 'request_kind' => $queryRequest->request_kind->value,
+                'requested_access_mode' => $queryRequest->requested_access_mode?->value,
                 'requires_approval' => $queryRequest->requires_approval,
                 'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
                 'requester' => $queryRequest->requester->name,
@@ -109,6 +112,7 @@ class QueryRequestController extends Controller
             'database_connection_id' => $request->integer('database_connection_id'),
             'database_connection_ids' => $request->validated('database_connection_ids', []),
             'request_kind' => $request->string('request_kind')->toString(),
+            'requested_access_mode' => $request->filled('requested_access_mode') ? $request->string('requested_access_mode')->toString() : null,
             'title' => $request->string('title')->toString(),
             'description' => $request->filled('description') ? $request->string('description')->toString() : null,
             'statements' => $request->validated('statements', []),
@@ -130,8 +134,11 @@ class QueryRequestController extends Controller
         $queryRequest->load([
             'requester',
             'approvedBy',
+            'cancelledBy',
             'databaseConnection',
             'accessConnections',
+            'retryOf',
+            'retries',
             'reviews.reviewer',
             'statements.databaseConnection',
         ]);
@@ -144,6 +151,7 @@ class QueryRequestController extends Controller
         $statementExecutions = $queryRequest->executions()
             ->whereNotNull('query_request_statement_id')
             ->latest('started_at')
+            ->latest('id')
             ->get()
             ->unique('query_request_statement_id')
             ->keyBy('query_request_statement_id');
@@ -160,6 +168,7 @@ class QueryRequestController extends Controller
         $executions = $queryRequest->executions()
             ->with(['databaseConnection', 'executor', 'statement.databaseConnection'])
             ->latest('started_at')
+            ->latest('id')
             ->paginate(10, ['*'], 'executions_page')
             ->withQueryString()
             ->through(fn (QueryExecution $execution): array => [
@@ -224,17 +233,37 @@ class QueryRequestController extends Controller
                 'status' => $queryRequest->status->value,
                 'query_type' => $queryRequest->query_type->value,
                 'request_kind' => $queryRequest->request_kind->value,
+                'requested_access_mode' => $queryRequest->requested_access_mode?->value,
                 'requires_approval' => $queryRequest->requires_approval,
                 'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
+                'approved_after_schedule' => $queryRequest->request_kind === QueryRequestKind::SingleExecution
+                    && $queryRequest->status === QueryRequestStatus::Approved
+                    && $queryRequest->dispatched_at === null
+                    && $queryRequest->scheduled_at !== null
+                    && $queryRequest->approved_at !== null
+                    && $queryRequest->approved_at->isAfter($queryRequest->scheduled_at),
                 'access_duration_minutes' => $queryRequest->access_duration_minutes,
                 'created_at' => $queryRequest->created_at?->toIso8601String(),
                 'approved_at' => $queryRequest->approved_at?->toIso8601String(),
                 'dispatched_at' => $queryRequest->dispatched_at?->toIso8601String(),
                 'completed_at' => $queryRequest->completed_at?->toIso8601String(),
+                'cancelled_at' => $queryRequest->cancelled_at?->toIso8601String(),
+                'cancellation_reason' => $queryRequest->cancellation_reason,
                 'last_error' => $queryRequest->last_error,
                 'result_summary' => $queryRequest->result_summary,
+                'preflight' => $this->preflightSummary($queryRequest),
                 'requester' => $queryRequest->requester->name,
                 'approved_by' => $queryRequest->approvedBy?->name,
+                'cancelled_by' => $queryRequest->cancelledBy?->name,
+                'retry_of' => $queryRequest->retryOf ? [
+                    'id' => $queryRequest->retryOf->id,
+                    'title' => $queryRequest->retryOf->title,
+                ] : null,
+                'retries' => $queryRequest->retries->map(fn (QueryRequest $retry): array => [
+                    'id' => $retry->id,
+                    'title' => $retry->title,
+                    'status' => $retry->status->value,
+                ])->values(),
                 'connection' => [
                     'id' => $queryRequest->databaseConnection->id,
                     'name' => $queryRequest->databaseConnection->name,
@@ -267,8 +296,14 @@ class QueryRequestController extends Controller
             'can_review' => request()->user()->can('review', $queryRequest),
             'can_update' => request()->user()->can('update', $queryRequest),
             'can_dispatch' => request()->user()->can('dispatch', $queryRequest),
+            'can_cancel' => request()->user()->can('cancel', $queryRequest),
+            'can_retry' => request()->user()->can('retry', $queryRequest),
+            'retry_strategy' => $this->retryStrategy($queryRequest),
             'can_start_session' => $activeSession === null && request()->user()->can('startSession', $queryRequest),
             'can_delete' => request()->user()->can('delete', $queryRequest),
+            'is_subscribed' => $queryRequest->notificationSubscriptions()
+                ->whereBelongsTo(request()->user())
+                ->exists(),
             'statuses' => array_map(fn (QueryRequestStatus $status): string => $status->value, QueryRequestStatus::cases()),
         ]);
     }
@@ -277,9 +312,51 @@ class QueryRequestController extends Controller
     {
         Gate::authorize('dispatch', $queryRequest);
 
-        $workflow->dispatch($queryRequest, request()->user());
+        $dispatched = $workflow->dispatch($queryRequest, request()->user());
 
-        Inertia::flash('toast', ['type' => 'success', 'message' => 'Query scheduled for immediate execution.']);
+        Inertia::flash('toast', $dispatched
+            ? ['type' => 'success', 'message' => 'Deployment batch queued for execution.']
+            : ['type' => 'error', 'message' => 'Deployment batch is blocked by its latest preflight checks.']);
+
+        return back();
+    }
+
+    public function cancel(CancelQueryRequestRequest $request, QueryRequest $queryRequest, QueryRequestWorkflow $workflow): RedirectResponse
+    {
+        $cancelledRequest = $workflow->cancel(
+            $queryRequest,
+            $request->user(),
+            $request->validated('reason'),
+        );
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $cancelledRequest->request_kind === QueryRequestKind::SingleExecution
+                && $cancelledRequest->dispatched_at !== null
+                ? 'Stop requested. The current statement can finish, but no later statements will run.'
+                : 'Query request cancelled.',
+        ]);
+
+        return back();
+    }
+
+    public function retry(RetryQueryRequestRequest $request, QueryRequest $queryRequest, QueryRequestWorkflow $workflow): RedirectResponse
+    {
+        $retryRequest = $workflow->retry($queryRequest, $request->user());
+
+        if ($retryRequest->id !== $queryRequest->id) {
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => 'A linked retry request was created and requires approval before execution.',
+            ]);
+
+            return redirect()->route('query-requests.show', $retryRequest);
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => 'Read-only retry queued from the failed statement.',
+        ]);
 
         return back();
     }
@@ -319,6 +396,7 @@ class QueryRequestController extends Controller
             'statement_count' => $queryRequest->statements()->count(),
         ]);
 
+        $queryRequest->notificationSubscriptions()->delete();
         $queryRequest->delete();
 
         Inertia::flash('toast', [
@@ -400,6 +478,23 @@ class QueryRequestController extends Controller
             ?? $queryRequest->query_type->value;
     }
 
+    private function retryStrategy(QueryRequest $queryRequest): ?string
+    {
+        if ($queryRequest->request_kind === QueryRequestKind::QueryAccess
+            && in_array($queryRequest->status, [QueryRequestStatus::Completed, QueryRequestStatus::Cancelled], true)) {
+            return 'renew_access';
+        }
+
+        if ($queryRequest->request_kind !== QueryRequestKind::SingleExecution
+            || $queryRequest->status !== QueryRequestStatus::Failed) {
+            return null;
+        }
+
+        return $queryRequest->query_type === QueryType::Read
+            ? 'resume_read_only'
+            : 'create_retry_request';
+    }
+
     public function edit(QueryRequest $queryRequest): Response
     {
         Gate::authorize('update', $queryRequest);
@@ -435,6 +530,7 @@ class QueryRequestController extends Controller
             'database_connection_id' => $request->integer('database_connection_id'),
             'database_connection_ids' => $request->validated('database_connection_ids', []),
             'request_kind' => $request->string('request_kind')->toString(),
+            'requested_access_mode' => $request->filled('requested_access_mode') ? $request->string('requested_access_mode')->toString() : null,
             'title' => $request->string('title')->toString(),
             'description' => $request->filled('description') ? $request->string('description')->toString() : null,
             'statements' => $request->validated('statements', []),
@@ -455,7 +551,7 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return Collection<int, array{id:int, name:string, driver:'mysql'|'pgsql'}>
+     * @return Collection<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
      */
     private function connectionOptions(User $user): Collection
     {
@@ -464,11 +560,20 @@ class QueryRequestController extends Controller
             ->when(! $user->isAdmin(), fn ($query) => $query->whereIn('id', $user->accessibleDatabaseConnectionIds()))
             ->orderBy('name')
             ->get()
-            ->map(fn (DatabaseConnection $connection): array => [
-                'id' => $connection->id,
-                'name' => $connection->name,
-                'driver' => $connection->driver->value,
-            ]);
+            ->map(function (DatabaseConnection $connection) use ($user): array {
+                $readPermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Read);
+                $writePermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Write);
+
+                return [
+                    'id' => $connection->id,
+                    'name' => $connection->name,
+                    'driver' => $connection->driver->value,
+                    'can_write' => $writePermission['access_mode']->allows(QueryType::Write),
+                    'read_requires_approval' => $readPermission['read_requires_approval'],
+                    'write_requires_approval' => $writePermission['write_requires_approval'],
+                    'max_write_session_minutes' => $writePermission['max_write_session_minutes'],
+                ];
+            });
     }
 
     /**
@@ -507,6 +612,23 @@ class QueryRequestController extends Controller
             'id' => $connection->id,
             'name' => $connection->name,
             'driver' => $connection->driver->value,
+        ];
+    }
+
+    /**
+     * @return array{status:string,checked_at:string|null,blocker_count:int,warning_count:int,statements:array<int, mixed>}
+     */
+    private function preflightSummary(QueryRequest $queryRequest): array
+    {
+        $report = $queryRequest->preflight_report ?? [];
+        $summary = is_array($report['summary'] ?? null) ? $report['summary'] : [];
+
+        return [
+            'status' => $queryRequest->preflight_status->value,
+            'checked_at' => $queryRequest->preflight_checked_at?->toIso8601String(),
+            'blocker_count' => (int) ($summary['blocker_count'] ?? 0),
+            'warning_count' => (int) ($summary['warning_count'] ?? 0),
+            'statements' => is_array($report['statements'] ?? null) ? $report['statements'] : [],
         ];
     }
 }

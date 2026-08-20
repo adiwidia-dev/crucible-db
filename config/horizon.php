@@ -99,6 +99,8 @@ return [
     'waits' => [
         'redis:default' => 60,
         'redis:queries' => 60,
+        'redis:notifications' => 60,
+        'redis:mail' => 120,
     ],
 
     /*
@@ -222,6 +224,30 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+        'notifications' => [
+            'connection' => 'redis',
+            'queue' => ['notifications'],
+            'balance' => 'simple',
+            'maxProcesses' => 1,
+            'maxTime' => 3600,
+            'maxJobs' => 500,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 60,
+            'nice' => 0,
+        ],
+        'mail' => [
+            'connection' => 'redis',
+            'queue' => ['mail'],
+            'balance' => 'simple',
+            'maxProcesses' => 1,
+            'maxTime' => 3600,
+            'maxJobs' => 250,
+            'memory' => 128,
+            'tries' => 3,
+            'timeout' => 60,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [
@@ -232,6 +258,12 @@ return [
             'default' => [
                 'maxProcesses' => 1,
             ],
+            'notifications' => [
+                'maxProcesses' => 1,
+            ],
+            'mail' => [
+                'maxProcesses' => 1,
+            ],
         ],
 
         'local' => [
@@ -239,6 +271,12 @@ return [
                 'maxProcesses' => 1,
             ],
             'default' => [
+                'maxProcesses' => 1,
+            ],
+            'notifications' => [
+                'maxProcesses' => 1,
+            ],
+            'mail' => [
                 'maxProcesses' => 1,
             ],
         ],

@@ -4,9 +4,11 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Enums\AccessMode;
+use App\Enums\QueryType;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -44,7 +46,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property-read Collection<int, Role> $roles
  * @property-read Collection<int, UserIdentity> $identities
  */
-#[Fillable(['role_id', 'first_name', 'last_name', 'name', 'email', 'timezone', 'password', 'invited_by_id', 'invited_at', 'invitation_accepted_at', 'disabled_at', 'invitation_token_hash'])]
+#[Fillable(['role_id', 'first_name', 'last_name', 'name', 'email', 'timezone', 'password', 'invited_by_id', 'invited_at', 'invitation_accepted_at', 'disabled_at', 'invitation_token_hash', 'notification_preferences', 'is_operational_alert_recipient'])]
 #[Hidden(['password', 'invitation_token_hash', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements PasskeyUser
 {
@@ -65,6 +67,8 @@ class User extends Authenticatable implements PasskeyUser
             'disabled_at' => 'datetime',
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
+            'notification_preferences' => 'array',
+            'is_operational_alert_recipient' => 'boolean',
         ];
     }
 
@@ -96,6 +100,14 @@ class User extends Authenticatable implements PasskeyUser
         return $this->hasMany(UserIdentity::class);
     }
 
+    /**
+     * @return HasMany<NotificationSubscription, $this>
+     */
+    public function notificationSubscriptions(): HasMany
+    {
+        return $this->hasMany(NotificationSubscription::class);
+    }
+
     public function isAdmin(): bool
     {
         if ($this->relationLoaded('roles')) {
@@ -120,7 +132,7 @@ class User extends Authenticatable implements PasskeyUser
     }
 
     /**
-     * @return array{access_mode: AccessMode, can_review: bool, requires_approval: bool}
+     * @return array{access_mode: AccessMode, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
      */
     public function effectiveDatabasePermission(DatabaseConnection $databaseConnection): array
     {
@@ -128,7 +140,9 @@ class User extends Authenticatable implements PasskeyUser
             return [
                 'access_mode' => AccessMode::Write,
                 'can_review' => true,
-                'requires_approval' => false,
+                'read_requires_approval' => false,
+                'write_requires_approval' => false,
+                'max_write_session_minutes' => null,
             ];
         }
 
@@ -148,21 +162,74 @@ class User extends Authenticatable implements PasskeyUser
             return [
                 'access_mode' => AccessMode::None,
                 'can_review' => false,
-                'requires_approval' => true,
+                'read_requires_approval' => true,
+                'write_requires_approval' => true,
+                'max_write_session_minutes' => null,
             ];
         }
 
         return [
             'access_mode' => $permission->access_mode,
             'can_review' => $permission->can_review,
-            'requires_approval' => $permission->requires_approval,
+            'read_requires_approval' => $permission->read_requires_approval,
+            'write_requires_approval' => $permission->write_requires_approval,
+            'max_write_session_minutes' => $permission->max_write_session_minutes,
+        ];
+    }
+
+    /**
+     * Resolve the highest-priority policy that grants the requested query type.
+     *
+     * @return array{access_mode: AccessMode, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
+     */
+    public function effectiveDatabasePermissionFor(DatabaseConnection $databaseConnection, QueryType $queryType): array
+    {
+        if ($this->isAdmin()) {
+            return [
+                'access_mode' => AccessMode::Write,
+                'read_requires_approval' => false,
+                'write_requires_approval' => false,
+                'max_write_session_minutes' => null,
+            ];
+        }
+
+        $permissionTable = (new RoleDatabasePermission)->getTable();
+        $pivotTable = 'role_user';
+        $allowedModes = $queryType === QueryType::Read
+            ? [AccessMode::Read->value, AccessMode::Write->value]
+            : [AccessMode::Write->value];
+
+        $permission = RoleDatabasePermission::query()
+            ->select("{$permissionTable}.*")
+            ->join($pivotTable, "{$pivotTable}.role_id", '=', "{$permissionTable}.role_id")
+            ->where("{$pivotTable}.user_id", $this->id)
+            ->whereBelongsTo($databaseConnection)
+            ->whereIn("{$permissionTable}.access_mode", $allowedModes)
+            ->orderBy("{$pivotTable}.priority")
+            ->orderBy("{$pivotTable}.role_id")
+            ->first();
+
+        if (! $permission instanceof RoleDatabasePermission) {
+            return [
+                'access_mode' => AccessMode::None,
+                'read_requires_approval' => true,
+                'write_requires_approval' => true,
+                'max_write_session_minutes' => null,
+            ];
+        }
+
+        return [
+            'access_mode' => $permission->access_mode,
+            'read_requires_approval' => $permission->read_requires_approval,
+            'write_requires_approval' => $permission->write_requires_approval,
+            'max_write_session_minutes' => $permission->max_write_session_minutes,
         ];
     }
 
     public function canAccessDatabase(DatabaseConnection $databaseConnection): bool
     {
-        return $this->effectiveDatabasePermission($databaseConnection)['access_mode']
-            ->allows($databaseConnection->minimumQueryType());
+        return $this->effectiveDatabasePermissionFor($databaseConnection, QueryType::Read)['access_mode']
+            ->allows(QueryType::Read);
     }
 
     public function canReviewDatabase(DatabaseConnection $databaseConnection): bool
@@ -170,14 +237,26 @@ class User extends Authenticatable implements PasskeyUser
         return $this->effectiveDatabasePermission($databaseConnection)['can_review'];
     }
 
+    public function wantsNotificationEmail(string $preference, bool $default): bool
+    {
+        $value = data_get($this->notification_preferences, "email.{$preference}");
+
+        return is_bool($value) ? $value : $default;
+    }
+
     /**
      * @return array<int, int>
      */
     public function accessibleDatabaseConnectionIds(): array
     {
-        return $this->effectiveRoleDatabasePermissions()
-            ->filter(fn (RoleDatabasePermission $permission): bool => $permission->access_mode !== AccessMode::None)
-            ->keys()
+        return $this->roleDatabasePermissionsQuery()
+            ->whereIn((new RoleDatabasePermission)->getTable().'.access_mode', [
+                AccessMode::Read->value,
+                AccessMode::Write->value,
+            ])
+            ->pluck((new RoleDatabasePermission)->getTable().'.database_connection_id')
+            ->unique()
+            ->values()
             ->all();
     }
 
@@ -213,17 +292,24 @@ class User extends Authenticatable implements PasskeyUser
             return collect();
         }
 
+        $pivotTable = 'role_user';
+
+        return $this->roleDatabasePermissionsQuery()
+            ->orderBy("{$pivotTable}.priority")
+            ->orderBy("{$pivotTable}.role_id")
+            ->get()
+            ->unique('database_connection_id')
+            ->keyBy('database_connection_id');
+    }
+
+    private function roleDatabasePermissionsQuery(): Builder
+    {
         $permissionTable = (new RoleDatabasePermission)->getTable();
         $pivotTable = 'role_user';
 
         return RoleDatabasePermission::query()
             ->select("{$permissionTable}.*")
             ->join($pivotTable, "{$pivotTable}.role_id", '=', "{$permissionTable}.role_id")
-            ->where("{$pivotTable}.user_id", $this->id)
-            ->orderBy("{$pivotTable}.priority")
-            ->orderBy("{$pivotTable}.role_id")
-            ->get()
-            ->unique('database_connection_id')
-            ->keyBy('database_connection_id');
+            ->where("{$pivotTable}.user_id", $this->id);
     }
 }

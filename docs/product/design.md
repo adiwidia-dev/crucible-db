@@ -9,7 +9,7 @@ The Phase 1B direction uses patterns common to focused developer tools:
 - Cool neutral surfaces keep attention on database work.
 - Crucible orange identifies the product; blue identifies interactive actions and focus.
 - Green, amber, red, and blue are reserved for operational state.
-- Navigation follows Work, Data, and Admin.
+- Navigation follows Work, Data, Account, and Admin, with the Account and Admin groups collapsible.
 - Native system typography keeps the interface familiar and avoids a styled dashboard feel.
 - Data begins close to compact page headers and remains denser than form workflows.
 - Tables, toolbars, code surfaces, and lifecycle state take priority over decorative cards.

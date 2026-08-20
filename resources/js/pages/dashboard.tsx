@@ -11,7 +11,10 @@ import {
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { PageHeader } from '@/components/crucible/page-header';
-import { StatusBadge } from '@/components/crucible/status-badge';
+import {
+    SessionAccessBadge,
+    StatusBadge,
+} from '@/components/crucible/status-badge';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatRemaining } from '@/lib/crucible';
 import type {
@@ -34,6 +37,7 @@ type DashboardRequest = {
     status: QueryRequestStatus;
     request_kind: QueryRequestKind;
     query_type: QueryType;
+    requested_access_mode: 'read' | 'write' | null;
     connection: string;
     requester: string;
     scheduled_at: string | null;
@@ -104,9 +108,13 @@ function QueueSection({
 
 function EmptyQueue({ children }: { children: ReactNode }) {
     return (
-        <div className="px-4 py-8 text-sm text-muted-foreground sm:px-5">
-            <CheckCircle2 className="mb-2 size-4 text-emerald-600 dark:text-emerald-400" />
-            {children}
+        <div className="flex items-start gap-3 px-4 py-7 sm:px-5">
+            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+            </span>
+            <div className="min-w-0 text-sm text-muted-foreground">
+                {children}
+            </div>
         </div>
     );
 }
@@ -123,11 +131,20 @@ function RequestQueue({
     if (requests.length === 0) {
         return (
             <EmptyQueue>
-                {queue === 'review'
-                    ? 'No requests are waiting for your review.'
-                    : queue === 'scheduled'
-                      ? 'No executions are scheduled.'
-                      : 'No failed executions are visible to you.'}
+                <p className="font-medium text-foreground">
+                    {queue === 'review'
+                        ? 'No requests need your review.'
+                        : queue === 'scheduled'
+                          ? 'No executions are scheduled.'
+                          : 'No failed executions are visible to you.'}
+                </p>
+                <p className="mt-1 text-xs leading-5">
+                    {queue === 'review'
+                        ? 'Approved work will leave this queue automatically.'
+                        : queue === 'scheduled'
+                          ? 'Choose a future execution time when creating a deployment batch.'
+                          : 'Failures needing follow-up will appear here.'}
+                </p>
             </EmptyQueue>
         );
     }
@@ -146,7 +163,13 @@ function RequestQueue({
                             <span className="truncate text-sm font-medium group-hover:text-primary">
                                 {request.title}
                             </span>
-                            <StatusBadge value={request.query_type} />
+                            {request.request_kind === 'query_access' ? (
+                                <SessionAccessBadge
+                                    mode={request.requested_access_mode}
+                                />
+                            ) : (
+                                <StatusBadge value={request.query_type} />
+                            )}
                         </div>
                         <p className="mt-1 truncate text-xs text-muted-foreground">
                             {request.connection} · {request.requester}
@@ -176,7 +199,15 @@ function RequestQueue({
 function SessionQueue({ sessions }: { sessions: ExpiringSession[] }) {
     if (sessions.length === 0) {
         return (
-            <EmptyQueue>No active database sessions need attention.</EmptyQueue>
+            <EmptyQueue>
+                <p className="font-medium text-foreground">
+                    No active sessions need attention.
+                </p>
+                <p className="mt-1 text-xs leading-5">
+                    Approved query-access requests appear here while their
+                    session is open.
+                </p>
+            </EmptyQueue>
         );
     }
 
@@ -328,18 +359,25 @@ export default function Dashboard({
                     })}
                 </section>
 
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
-                    <QueueSection
-                        id="attention-title"
-                        title="Needs attention"
-                        detail="Review work and failures that need a decision or follow-up."
-                    >
-                        <div className="border-b">
-                            <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
-                                <div className="flex items-center gap-2 text-sm font-medium">
-                                    <FileCheck2 className="size-4 text-amber-600 dark:text-amber-400" />
-                                    Pending review
-                                </div>
+                <div className="grid gap-4 sm:gap-5">
+                    <div className="px-1">
+                        <h2 className="text-base font-semibold">
+                            Needs attention
+                        </h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                            Review work and failures that need a decision or
+                            follow-up.
+                        </p>
+                    </div>
+
+                    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
+                        <div className="grid content-start gap-4 sm:gap-5">
+
+                        <QueueSection
+                            id="pending-review-title"
+                            title="Pending review"
+                            detail="Requests waiting for an authorized decision."
+                            action={
                                 <Link
                                     href={queryRequestsIndex({
                                         query: { status: 'pending_review' },
@@ -348,19 +386,20 @@ export default function Dashboard({
                                 >
                                     View all
                                 </Link>
-                            </div>
+                            }
+                        >
                             <RequestQueue
                                 requests={pending_reviews}
                                 queue="review"
                                 timezone={userTimezone}
                             />
-                        </div>
-                        <div>
-                            <div className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
-                                <div className="flex items-center gap-2 text-sm font-medium">
-                                    <AlertTriangle className="size-4 text-destructive" />
-                                    Failed execution
-                                </div>
+                        </QueueSection>
+
+                        <QueueSection
+                            id="failed-execution-title"
+                            title="Failed execution"
+                            detail="Deployments that stopped and need investigation."
+                            action={
                                 <Link
                                     href={queryRequestsIndex({
                                         query: { status: 'failed' },
@@ -369,16 +408,17 @@ export default function Dashboard({
                                 >
                                     View all
                                 </Link>
-                            </div>
+                            }
+                        >
                             <RequestQueue
                                 requests={failed_requests}
                                 queue="failed"
                                 timezone={userTimezone}
                             />
-                        </div>
-                    </QueueSection>
+                        </QueueSection>
+                    </div>
 
-                    <div className="grid content-start gap-6">
+                        <div className="grid content-start gap-6">
                         <QueueSection
                             id="scheduled-title"
                             title="Scheduled work"
@@ -408,6 +448,7 @@ export default function Dashboard({
                         >
                             <SessionQueue sessions={expiring_sessions} />
                         </QueueSection>
+                        </div>
                     </div>
                 </div>
             </div>

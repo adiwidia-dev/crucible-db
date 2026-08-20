@@ -31,6 +31,20 @@ class ApplicationSettings
 
     public const MailFromName = 'mail_from_name';
 
+    public const NotificationsInAppEnabled = 'notifications_in_app_enabled';
+
+    public const NotificationsEmailEnabled = 'notifications_email_enabled';
+
+    public const NotificationsReviewEnabled = 'notifications_review_enabled';
+
+    public const NotificationsExecutionCompletedEnabled = 'notifications_execution_completed_enabled';
+
+    public const NotificationsExecutionFailedEnabled = 'notifications_execution_failed_enabled';
+
+    public const NotificationsQueryAccessEnabled = 'notifications_query_access_enabled';
+
+    public const NotificationsConnectionFailedEnabled = 'notifications_connection_failed_enabled';
+
     /**
      * @var array<string, string|null>|null
      */
@@ -73,6 +87,44 @@ class ApplicationSettings
     public function passwordLoginEnabled(): bool
     {
         return $this->boolean(self::PasswordLoginEnabled, true);
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    public function notificationFormValues(): array
+    {
+        return [
+            'notifications_in_app_enabled' => $this->notificationsInAppEnabled(),
+            'notifications_email_enabled' => $this->notificationsEmailEnabled(),
+            'notifications_review_enabled' => $this->notificationEventEnabled('review'),
+            'notifications_execution_completed_enabled' => $this->notificationEventEnabled('execution_completed'),
+            'notifications_execution_failed_enabled' => $this->notificationEventEnabled('execution_failed'),
+            'notifications_query_access_enabled' => $this->notificationEventEnabled('query_access'),
+            'notifications_connection_failed_enabled' => $this->notificationEventEnabled('connection_failed'),
+        ];
+    }
+
+    public function notificationsInAppEnabled(): bool
+    {
+        return $this->boolean(self::NotificationsInAppEnabled, true);
+    }
+
+    public function notificationsEmailEnabled(): bool
+    {
+        return $this->boolean(self::NotificationsEmailEnabled, true);
+    }
+
+    public function notificationEventEnabled(string $event): bool
+    {
+        return match ($event) {
+            'review' => $this->boolean(self::NotificationsReviewEnabled, true),
+            'execution_completed' => $this->boolean(self::NotificationsExecutionCompletedEnabled, true),
+            'execution_failed' => $this->boolean(self::NotificationsExecutionFailedEnabled, true),
+            'query_access' => $this->boolean(self::NotificationsQueryAccessEnabled, true),
+            'connection_failed' => $this->boolean(self::NotificationsConnectionFailedEnabled, true),
+            default => false,
+        };
     }
 
     public function passkeyLoginEnabled(): bool

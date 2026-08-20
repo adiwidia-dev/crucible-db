@@ -33,7 +33,8 @@ class QueryRequestPolicy
 
     public function update(User $user, QueryRequest $queryRequest): bool
     {
-        return ($user->isAdmin() || $queryRequest->requester_id === $user->id)
+        return $queryRequest->request_kind === QueryRequestKind::SingleExecution
+            && ($user->isAdmin() || $queryRequest->requester_id === $user->id)
             && $queryRequest->isEditable();
     }
 
@@ -77,6 +78,43 @@ class QueryRequestPolicy
         return $queryRequest->request_kind === QueryRequestKind::QueryAccess
             && $queryRequest->status === QueryRequestStatus::Approved
             && ($user->isAdmin() || $queryRequest->requester_id === $user->id);
+    }
+
+    public function cancel(User $user, QueryRequest $queryRequest): bool
+    {
+        $canCancel = in_array($queryRequest->status, [
+            QueryRequestStatus::PendingReview,
+            QueryRequestStatus::Approved,
+            QueryRequestStatus::Scheduled,
+        ], true) || $queryRequest->status === QueryRequestStatus::Running;
+
+        if (! $canCancel) {
+            return false;
+        }
+
+        return $user->isAdmin()
+            || $queryRequest->requester_id === $user->id
+            || ($queryRequest->status === QueryRequestStatus::Running
+                && $queryRequest->dispatched_by_id === $user->id);
+    }
+
+    public function retry(User $user, QueryRequest $queryRequest): bool
+    {
+        $canRetry = ($queryRequest->request_kind === QueryRequestKind::SingleExecution
+            && $queryRequest->status === QueryRequestStatus::Failed)
+            || ($queryRequest->request_kind === QueryRequestKind::QueryAccess
+                && in_array($queryRequest->status, [
+                    QueryRequestStatus::Completed,
+                    QueryRequestStatus::Cancelled,
+                ], true));
+
+        if (! $canRetry) {
+            return false;
+        }
+
+        return $user->isAdmin()
+            || $queryRequest->requester_id === $user->id
+            || $queryRequest->dispatched_by_id === $user->id;
     }
 
     /**

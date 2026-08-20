@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Enums\QueryRequestStatus;
 use App\Models\QuerySession;
 use App\Services\AuditLogger;
+use App\Services\NotificationDispatcher;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -13,7 +14,7 @@ use Illuminate\Console\Command;
 #[Description('Mark expired query access sessions as ended and complete their source requests.')]
 class ExpireQuerySessions extends Command
 {
-    public function handle(AuditLogger $auditLogger): int
+    public function handle(AuditLogger $auditLogger, NotificationDispatcher $notificationDispatcher): int
     {
         $count = 0;
 
@@ -22,7 +23,7 @@ class ExpireQuerySessions extends Command
             ->whereNull('ended_at')
             ->where('expires_at', '<=', now())
             ->orderBy('expires_at')
-            ->each(function (QuerySession $querySession) use ($auditLogger, &$count): void {
+            ->each(function (QuerySession $querySession) use ($auditLogger, $notificationDispatcher, &$count): void {
                 $endedAt = now();
 
                 $querySession->forceFill([
@@ -40,6 +41,8 @@ class ExpireQuerySessions extends Command
                     'query_request_id' => $querySession->query_request_id,
                     'expires_at' => $querySession->expires_at->toIso8601String(),
                 ]);
+
+                $notificationDispatcher->sessionExpired($querySession);
 
                 $count++;
             });

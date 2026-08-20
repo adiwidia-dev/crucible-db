@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\AccessMode;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
@@ -30,6 +31,7 @@ class QueryRequestFactory extends Factory
             'sql' => 'select 1 as value',
             'query_type' => QueryType::Read,
             'request_kind' => QueryRequestKind::SingleExecution,
+            'requested_access_mode' => null,
             'status' => QueryRequestStatus::PendingReview,
             'requires_approval' => true,
             'scheduled_at' => null,
@@ -43,6 +45,7 @@ class QueryRequestFactory extends Factory
             'sql' => '',
             'query_type' => QueryType::Read,
             'request_kind' => QueryRequestKind::QueryAccess,
+            'requested_access_mode' => AccessMode::Read,
             'access_duration_minutes' => 60,
         ]);
     }

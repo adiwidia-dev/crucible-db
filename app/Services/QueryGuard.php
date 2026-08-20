@@ -35,7 +35,7 @@ class QueryGuard
 
         if (preg_match('/\b(drop|alter|truncate|grant|revoke|create\s+user|copy|load\s+data|load_file|into\s+outfile)\b/i', $singleStatement) === 1) {
             throw ValidationException::withMessages([
-                'sql' => 'Administrative, file, and destructive DDL statements are blocked in the MVP.',
+                'sql' => 'Administrative, file, and destructive DDL statements are blocked.',
             ]);
         }
 

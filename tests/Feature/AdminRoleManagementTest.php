@@ -147,6 +147,36 @@ class AdminRoleManagementTest extends TestCase
         $this->assertSame('Admin', $adminRole->refresh()->name);
     }
 
+    public function test_admin_can_set_independent_read_and_write_approval_rules_for_a_connection(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+
+        $this->actingAs($admin)->post(route('roles.store'), [
+            'name' => 'Staging Maintainer',
+            'description' => 'Reads staging directly and requests approval for changes.',
+            'policies' => [[
+                'database_connection_id' => $connection->id,
+                'access_mode' => AccessMode::Write->value,
+                'can_review' => false,
+                'read_requires_approval' => false,
+                'write_requires_approval' => true,
+                'max_write_session_minutes' => 30,
+            ]],
+        ])->assertRedirect(route('roles.index'));
+
+        $role = Role::query()->where('slug', 'staging-maintainer')->firstOrFail();
+
+        $this->assertDatabaseHas('role_database_permissions', [
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Write->value,
+            'read_requires_approval' => false,
+            'write_requires_approval' => true,
+            'max_write_session_minutes' => 30,
+        ]);
+    }
+
     public function test_role_cannot_be_deleted_while_users_or_permissions_are_attached(): void
     {
         $admin = $this->adminUser();

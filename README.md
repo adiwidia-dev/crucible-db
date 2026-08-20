@@ -19,10 +19,12 @@ Crucible DB gives engineering teams a safer path to production database work wit
 
 ## Why Crucible DB?
 
-- **Review before execution** — submit single SQL statements for review, approval, and asynchronous execution.
-- **Time-bounded database access** — create controlled query sessions that automatically expire.
+- **Deployment batches** — submit one or more ordered SQL statements, each scoped to its own target connection, for review, scheduling, and asynchronous execution.
+- **Time-bounded database access** — request read-only or read + write query sessions across one or more approved connections; sessions automatically expire and enforce their granted access level.
 - **Clear accountability** — record requests, reviews, executions, session activity, and administrative actions.
-- **Role-scoped connections** — grant users access to specific PostgreSQL and MySQL connections through roles and permissions.
+- **Role-scoped connections** — grant users the maximum read/write access, reviewer authority, approval requirement, and optional write-session duration for specific PostgreSQL and MySQL connections.
+- **Operational guardrails** — show conservative per-statement preflight findings, require fresh preflight immediately before a deployment runs, and block definite safety violations.
+- **Follow-up and visibility** — cancel eligible work, create linked retries with fresh policy evaluation, watch important requests or connections, and receive in-app or optional email notifications.
 - **Practical authentication** — support password login, invitations, passkeys, two-factor authentication, and Google, GitHub, or Microsoft sign-in.
 - **Portable operations** — deploy the complete control plane as one application container plus Redis; application metadata is stored in a persistent SQLite volume.
 
@@ -42,7 +44,7 @@ flowchart LR
     T --> L
 ```
 
-Crucible DB connects to the target database only to test a connection, inspect its schema, or execute an authorized request. It currently supports PostgreSQL and MySQL target connections.
+Crucible DB connects to target databases only to test a connection, inspect schema, or execute an authorized request or active session query. It supports PostgreSQL and MySQL target connections. It does not currently expose a general database protocol proxy for desktop database clients.
 
 ## Quick start for contributors
 
@@ -86,7 +88,7 @@ Redis
 └─ cache
 ```
 
-The production application image is published as `hephaestus/crucible-db:alpha`. A deployment directory needs only `compose.production.yaml` and a secure `.env.production` file—there is no need to clone the source repository or build the image on the server.
+The production application image is published as `hephaestus/crucible-db:alpha`. A deployment directory needs `compose.production.yaml`, `.env.production.example`, and a secure `.env.production` file—there is no need to clone the complete source repository or build the image on the server.
 
 ```bash
 cp .env.production.example .env.production
@@ -104,17 +106,17 @@ Then start the stack:
 docker compose -f compose.production.yaml up -d
 ```
 
-On startup, the application waits for Redis, runs database migrations, and starts Octane, Horizon, and the scheduler under a process supervisor. Confirm it is healthy with:
+On startup, the application waits for Redis, creates the local SQLite file when necessary, runs database migrations, and starts FrankenPHP through Laravel Octane, Horizon, and the scheduler under Supervisor. The `crucible_storage` named volume persists the application SQLite database and storage; `crucible_redis` persists Redis data. Confirm it is healthy with:
 
 ```bash
 curl --fail http://localhost:8000/health
 ```
 
-For an update, pull and recreate the two services:
+For a production update, back up the persistent volumes first, then pull and recreate the services:
 
 ```bash
 docker compose -f compose.production.yaml pull
-docker compose -f compose.production.yaml up -d
+docker compose -f compose.production.yaml up -d --remove-orphans
 ```
 
 ## Quality checks

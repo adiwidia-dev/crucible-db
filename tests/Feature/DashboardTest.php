@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AccessMode;
 use App\Enums\QueryRequestStatus;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
@@ -36,8 +37,9 @@ class DashboardTest extends TestCase
             ->withRole(Role::factory()->admin()->create())
             ->create();
         $requester = User::factory()->create();
-        $pendingReview = QueryRequest::factory()->create([
+        $pendingReview = QueryRequest::factory()->queryAccess()->create([
             'requester_id' => $requester->id,
+            'requested_access_mode' => AccessMode::Write,
         ]);
         $scheduledRequest = QueryRequest::factory()->scheduled()->create([
             'requester_id' => $requester->id,
@@ -50,6 +52,7 @@ class DashboardTest extends TestCase
         ]);
         $accessRequest = QueryRequest::factory()->queryAccess()->approved()->create([
             'requester_id' => $requester->id,
+            'requested_access_mode' => AccessMode::Write,
         ]);
         $session = QuerySession::factory()->create([
             'query_request_id' => $accessRequest->id,
@@ -69,6 +72,7 @@ class DashboardTest extends TestCase
                 ->where('pending_reviews.0.id', $pendingReview->id)
                 ->where('scheduled_requests.0.id', $scheduledRequest->id)
                 ->where('failed_requests.0.id', $failedRequest->id)
+                ->where('pending_reviews.0.requested_access_mode', AccessMode::Write->value)
                 ->where('expiring_sessions.0.id', $session->id));
     }
 }

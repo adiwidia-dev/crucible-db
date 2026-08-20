@@ -4,6 +4,8 @@ import {
     ArrowUp,
     CalendarClock,
     Check,
+    CircleCheck,
+    CircleX,
     Clock3,
     FileCode2,
     KeyRound,
@@ -11,9 +13,10 @@ import {
     ShieldAlert,
     Sparkles,
     Trash2,
+    TriangleAlert,
     X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { format } from 'sql-formatter';
 import QueryRequestController from '@/actions/App/Http/Controllers/QueryRequestController';
 import {
@@ -47,12 +50,18 @@ type EditableQueryRequest = {
     }>;
     scheduled_at: string | null;
     access_duration_minutes: number | null;
+    requested_access_mode: 'read' | 'write' | null;
     was_approved: boolean;
 };
 
 type Props = {
     connections: Array<
-        Pick<DatabaseConnectionSummary, 'id' | 'name' | 'driver'>
+        Pick<DatabaseConnectionSummary, 'id' | 'name' | 'driver'> & {
+            can_write: boolean;
+            read_requires_approval: boolean;
+            write_requires_approval: boolean;
+            max_write_session_minutes: number | null;
+        }
     >;
     query_request: EditableQueryRequest | null;
 };
@@ -117,12 +126,105 @@ export default function QueryRequestCreate({
             query_request?.database_connection_ids.map(String) ??
             (defaultConnectionId === '' ? [] : [defaultConnectionId]),
     );
+    const [requestedAccessMode, setRequestedAccessMode] = useState<
+        'read' | 'write'
+    >(query_request?.requested_access_mode ?? 'read');
     const [statements, setStatements] = useState<StatementDraft[]>(() =>
         initialStatements(query_request, defaultConnectionId),
     );
     const form = query_request
         ? QueryRequestController.update.form(query_request.id)
         : QueryRequestController.store.form();
+    const selectedSessionConnections = useMemo(
+        () =>
+            connections.filter((connection) =>
+                selectedConnectionIds.includes(String(connection.id)),
+            ),
+        [connections, selectedConnectionIds],
+    );
+    const canRequestWriteSession =
+        selectedSessionConnections.length > 0 &&
+        selectedSessionConnections.every((connection) => connection.can_write);
+    const sessionRequiresApproval =
+        requestedAccessMode === 'write'
+            ? selectedSessionConnections.some(
+                  (connection) => connection.write_requires_approval,
+              )
+            : selectedSessionConnections.some(
+                  (connection) => connection.read_requires_approval,
+              );
+    const writeSessionMaximumMinutes = useMemo(() => {
+        const limits = selectedSessionConnections
+            .map((connection) => connection.max_write_session_minutes)
+            .filter((limit): limit is number => limit !== null);
+
+        return limits.length > 0 ? Math.min(...limits) : null;
+    }, [selectedSessionConnections]);
+    const deploymentPreflightPreview = useMemo(
+        () =>
+            statements.map((statement, index) => {
+                const sql = statement.sql.trim();
+                const connection = connections.find(
+                    (item) =>
+                        String(item.id) === statement.databaseConnectionId,
+                );
+                const messages: Array<{
+                    level: 'warning' | 'blocked';
+                    message: string;
+                }> = [];
+
+                if (connection === undefined) {
+                    messages.push({
+                        level: 'blocked',
+                        message: 'Choose a target connection.',
+                    });
+                }
+
+                if (sql === '') {
+                    messages.push({
+                        level: 'blocked',
+                        message: 'Add the SQL statement to check it.',
+                    });
+                } else if (
+                    /;\s*\S/.test(sql.replace(/;\s*$/, '')) ||
+                    /\b(drop|alter|truncate|grant|revoke|copy|load\s+data)\b/i.test(
+                        sql,
+                    )
+                ) {
+                    messages.push({
+                        level: 'blocked',
+                        message: 'This SQL is outside the supported governed statement set.',
+                    });
+                } else {
+                    if (
+                        /^(update|delete)\b/i.test(sql) &&
+                        !/\bwhere\b/i.test(sql)
+                    ) {
+                        messages.push({
+                            level: 'warning',
+                            message: 'This UPDATE or DELETE has no WHERE clause.',
+                        });
+                    }
+
+                    if (
+                        /^select\b/i.test(sql) &&
+                        /\bfrom\b/i.test(sql) &&
+                        !/\blimit\b/i.test(sql)
+                    ) {
+                        messages.push({
+                            level: 'warning',
+                            message: 'This SELECT has no LIMIT.',
+                        });
+                    }
+                }
+
+                return {
+                    position: index + 1,
+                    messages,
+                };
+            }),
+        [connections, statements],
+    );
 
     function updateStatement(index: number, sql: string): void {
         setStatements((current) =>
@@ -376,19 +478,129 @@ export default function QueryRequestCreate({
                                     </div>
 
                                     {requestKind === 'query_access' && (
-                                        <div className="grid gap-3 rounded-md border bg-muted/20 p-3.5">
+                                        <div className="grid gap-5 rounded-md border bg-muted/20 p-3.5">
                                             <ConnectionMultiCombobox
                                                 connections={connections}
                                                 values={selectedConnectionIds}
-                                                onValueChange={
-                                                    setSelectedConnectionIds
-                                                }
+                                                onValueChange={(values) => {
+                                                    setSelectedConnectionIds(values);
+
+                                                    const selected = connections.filter(
+                                                        (connection) =>
+                                                            values.includes(
+                                                                String(
+                                                                    connection.id,
+                                                                ),
+                                                            ),
+                                                    );
+
+                                                    if (
+                                                        requestedAccessMode ===
+                                                            'write' &&
+                                                        !selected.every(
+                                                            (connection) =>
+                                                                connection.can_write,
+                                                        )
+                                                    ) {
+                                                        setRequestedAccessMode(
+                                                            'read',
+                                                        );
+                                                    }
+                                                }}
                                                 error={
                                                     errors.database_connection_ids
                                                 }
                                                 label="Session connections"
-                                                description="Choose every database that this time-boxed session may access. Approval is evaluated across all selected targets."
+                                                description="Choose every database that this time-boxed session may access. The requested access level must be available on every selected target."
                                             />
+                                            <div className="grid gap-3 border-t pt-4">
+                                                <div>
+                                                    <Label>
+                                                        Session access level
+                                                    </Label>
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        This limit is enforced on every SQL query for the full session.
+                                                    </p>
+                                                </div>
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <label
+                                                        className={`flex cursor-pointer gap-3 rounded-md border bg-background p-3 transition-colors duration-150 ease-out hover:bg-accent/35 motion-reduce:transition-none ${requestedAccessMode === 'read' ? 'border-primary bg-primary/5' : ''}`}
+                                                    >
+                                                        <input
+                                                            type="radio"
+                                                            name="requested_access_mode"
+                                                            value="read"
+                                                            checked={
+                                                                requestedAccessMode ===
+                                                                'read'
+                                                            }
+                                                            onChange={() =>
+                                                                setRequestedAccessMode(
+                                                                    'read',
+                                                                )
+                                                            }
+                                                            className="mt-0.5 accent-primary"
+                                                        />
+                                                        <span className="grid gap-1">
+                                                            <span className="font-medium">
+                                                                Read-only
+                                                            </span>
+                                                            <span className="text-sm text-muted-foreground">
+                                                                SELECT queries only. Best for routine investigation.
+                                                            </span>
+                                                        </span>
+                                                    </label>
+                                                    <label
+                                                        className={`flex gap-3 rounded-md border bg-background p-3 transition-colors duration-150 ease-out motion-reduce:transition-none ${canRequestWriteSession ? 'cursor-pointer hover:bg-accent/35' : 'cursor-not-allowed opacity-55'} ${requestedAccessMode === 'write' ? 'border-primary bg-primary/5' : ''}`}
+                                                    >
+                                                        <input
+                                                            type="radio"
+                                                            name="requested_access_mode"
+                                                            value="write"
+                                                            checked={
+                                                                requestedAccessMode ===
+                                                                'write'
+                                                            }
+                                                            onChange={() =>
+                                                                setRequestedAccessMode(
+                                                                    'write',
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                !canRequestWriteSession
+                                                            }
+                                                            className="mt-0.5 accent-primary"
+                                                        />
+                                                        <span className="grid gap-1">
+                                                            <span className="font-medium">
+                                                                Read + write
+                                                            </span>
+                                                            <span className="text-sm text-muted-foreground">
+                                                                Allows DML and DDL, subject to approval and the session timer.
+                                                            </span>
+                                                        </span>
+                                                    </label>
+                                                </div>
+                                                {!canRequestWriteSession &&
+                                                    selectedConnectionIds.length >
+                                                        0 && (
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Read + write is unavailable because at least one selected connection does not grant write access.
+                                                        </p>
+                                                    )}
+                                                {selectedConnectionIds.length > 0 && (
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {sessionRequiresApproval
+                                                            ? 'This selection needs approval before the session can start.'
+                                                            : 'This selection can start without review when submitted.'}
+                                                    </p>
+                                                )}
+                                                <InputError
+                                                    message={
+                                                        errors.requested_access_mode
+                                                    }
+                                                />
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -414,6 +626,76 @@ export default function QueryRequestCreate({
                                         <InputError
                                             message={errors.statements}
                                         />
+                                        <section className="overflow-hidden rounded-md border bg-muted/15">
+                                            <div className="flex flex-col gap-1 border-b bg-background px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                                                <div>
+                                                    <h3 className="text-sm font-medium">
+                                                        Preflight preview
+                                                    </h3>
+                                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                                        SQL and common-risk checks update as you prepare the batch. Policy and target checks run again when you submit and execute.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="divide-y bg-background">
+                                                {deploymentPreflightPreview.map(
+                                                    (statement) => {
+                                                        return (
+                                                            <div
+                                                                key={
+                                                                    statement.position
+                                                                }
+                                                                className="flex flex-col gap-1.5 px-3 py-2 text-xs sm:flex-row sm:items-start sm:justify-between"
+                                                            >
+                                                                <span className="font-medium">
+                                                                    Statement{' '}
+                                                                    {
+                                                                        statement.position
+                                                                    }
+                                                                </span>
+                                                                {statement.messages.length ===
+                                                                0 ? (
+                                                                    <span className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300">
+                                                                        <CircleCheck className="size-3.5" />
+                                                                        Ready for server checks
+                                                                    </span>
+                                                                ) : (
+                                                                    <ul className="grid gap-1 sm:max-w-xl">
+                                                                        {statement.messages.map(
+                                                                            (
+                                                                                message,
+                                                                            ) => (
+                                                                                <li
+                                                                                    key={
+                                                                                        message.message
+                                                                                    }
+                                                                                    className={`flex gap-1.5 ${
+                                                                                        message.level ===
+                                                                                        'blocked'
+                                                                                            ? 'text-red-700 dark:text-red-300'
+                                                                                            : 'text-amber-800 dark:text-amber-200'
+                                                                                    }`}
+                                                                                >
+                                                                                    {message.level ===
+                                                                                    'blocked' ? (
+                                                                                        <CircleX className="mt-0.5 size-3.5 shrink-0" />
+                                                                                    ) : (
+                                                                                        <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                                                                                    )}
+                                                                                    {
+                                                                                        message.message
+                                                                                    }
+                                                                                </li>
+                                                                            ),
+                                                                        )}
+                                                                    </ul>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    },
+                                                )}
+                                            </div>
+                                        </section>
                                         {statements.map((statement, index) => (
                                             <section
                                                 key={statement.key}
@@ -596,7 +878,14 @@ export default function QueryRequestCreate({
                                                 name="access_duration_minutes"
                                                 type="number"
                                                 min={5}
-                                                max={1440}
+                                                max={
+                                                    requestedAccessMode ===
+                                                        'write' &&
+                                                    writeSessionMaximumMinutes !==
+                                                        null
+                                                        ? writeSessionMaximumMinutes
+                                                        : 1440
+                                                }
                                                 defaultValue={
                                                     query_request?.access_duration_minutes ??
                                                     60
@@ -605,9 +894,12 @@ export default function QueryRequestCreate({
                                                 required
                                             />
                                             <p className="text-xs text-muted-foreground">
-                                                Minutes. Approved sessions can
-                                                run queries until this timer
-                                                expires.
+                                                {requestedAccessMode ===
+                                                    'write' &&
+                                                writeSessionMaximumMinutes !==
+                                                    null
+                                                    ? `Minutes. The selected write policy limits this session to ${writeSessionMaximumMinutes} minutes.`
+                                                    : 'Minutes. Approved sessions can run queries until this timer expires.'}
                                             </p>
                                             <InputError
                                                 message={
