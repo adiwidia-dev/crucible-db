@@ -371,12 +371,7 @@ export default function QueryRequestCreate({
                     }
 
                     if (policyMessage === null) {
-                        if (
-                            usesEmergencySqlFallback(
-                                sql,
-                                sqlStatementPolicy,
-                            )
-                        ) {
+                        if (usesEmergencySqlFallback(sql, sqlStatementPolicy)) {
                             messages.push({
                                 level: 'warning',
                                 message:

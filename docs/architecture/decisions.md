@@ -55,7 +55,7 @@ Scheduled batches do not run late without an explicit dispatch. If the requested
 
 ### Query Access
 
-A Query Access request selects one or more connections and a session duration. An approved request can start an in-application session. The session loads schema for the active selected connection, records every executed query, and expires or ends explicitly. Read-only sessions block data-changing SQL; read + write sessions require write access and policy approval where applicable. Ended or cancelled sessions can create a linked access request with the same scope; approval is re-evaluated from current policy.
+A Query Access request selects one or more connections and a session duration. An approved request can start an in-application session. The session loads schema for the active selected connection, records every executed query, and expires or ends explicitly. Read-only sessions block data-changing SQL; read + write sessions require write access and policy approval where applicable. Query Access accepts exactly one SQL statement per execution. In the browser editor, a selection is visibly highlighted and can be executed with **Run selected** or `Cmd+Enter` on macOS / `Ctrl+Enter` elsewhere; without a selection, **Run** submits the whole editor and the server rejects multiple statements. Ended or cancelled sessions can create a linked access request with the same scope; approval is re-evaluated from current policy.
 
 ## Deployment preflight
 
@@ -65,7 +65,9 @@ Deployment Batches receive a per-statement preflight report during creation and 
 - **Ready with warnings:** execution may continue, but the requester and reviewer should assess the finding; and
 - **Blocked:** a definite SQL, policy, target, or schedule safety failure prevents approval or execution.
 
-Current warnings include unbounded `SELECT` statements and `UPDATE`/`DELETE` statements without `WHERE`. Workspace administrators control the enabled governed SQL families: read queries, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, and `TRUNCATE TABLE`. Administrative, file, security-management, multi-statement, unsupported, and `EXPLAIN ANALYZE` SQL are always rejected. A blocked scheduled batch stays approved but undispatched and emits notifications to relevant people.
+Current warnings include unbounded `SELECT` statements and `UPDATE`/`DELETE` statements without `WHERE`. Workspace administrators control the enabled governed SQL families: read queries, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, and `TRUNCATE TABLE`; the all-families setting overrides the individual controls without replacing their saved values. CTE-led statements are classified from the top-level executable `SELECT`, `INSERT`, `UPDATE`, or `DELETE`, so their policy and warning behavior remains accurate.
+
+The optional Emergency SQL fallback is an audited Deployment Batch escape hatch for an otherwise unsupported single statement. It is classified as write access, requires the applicable role permission and approval, and produces an explicit preflight warning. It never applies to Query Access. Administrative, file-access, security-management, procedural, transaction-control, multi-statement, and `EXPLAIN ANALYZE` SQL remain blocked even when fallback is enabled. A blocked scheduled batch stays approved but undispatched and emits notifications to relevant people.
 
 ## Notifications and auditability
 
@@ -78,4 +80,4 @@ Meaningful workflows are also written to audit records. Stored connection creden
 - The SQLite metadata database is intended for the single-node Compose deployment provided here. Multi-node production deployments need a deliberate shared metadata strategy before scaling horizontally.
 - Redis is required for queues, Horizon metadata, cache, and sessions; do not substitute the metadata database as the queue backend.
 - Long-running target queries run in queued jobs, not in HTTP workers.
-- Kubernetes, service-account automation, table-level RBAC, break-glass access, and external SQL-client proxying are not current capabilities.
+- Kubernetes, service-account automation, table-level RBAC, break-glass access, and external SQL-client proxying are not current capabilities. Emergency SQL fallback is a governed and audited deployment-batch mechanism, not break-glass access.

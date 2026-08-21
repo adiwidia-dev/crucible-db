@@ -91,6 +91,29 @@ class QueryAccessPolicyTest extends TestCase
         );
     }
 
+    public function test_query_access_session_rejects_multiple_sql_statements(): void
+    {
+        [$user, $connection] = $this->userWithSeparatedReadAndWritePolicies();
+        $request = app(QueryRequestWorkflow::class)->create($user, [
+            'request_kind' => QueryRequestKind::QueryAccess->value,
+            'requested_access_mode' => AccessMode::Read->value,
+            'database_connection_ids' => [$connection->id],
+            'title' => 'Inspect employee records',
+            'access_duration_minutes' => 20,
+        ]);
+        $session = app(QuerySessionWorkflow::class)->start($request, $user);
+
+        $this->actingAs($user)
+            ->post(route('query-sessions.queries.store', $session), [
+                'database_connection_id' => $connection->id,
+                'sql' => "select * from employees limit 1;\nselect * from teams limit 1;",
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors([
+                'sql' => 'Only one SQL statement may be submitted per request.',
+            ]);
+    }
+
     public function test_query_access_creation_persists_the_selected_session_access_level(): void
     {
         [$user, $connection] = $this->userWithSeparatedReadAndWritePolicies();

@@ -23,7 +23,7 @@ Crucible DB gives engineering teams a safer path to production database work wit
 - **Time-bounded database access** — request read-only or read + write query sessions across one or more approved connections; sessions automatically expire and enforce their granted access level.
 - **Clear accountability** — record requests, reviews, executions, session activity, and administrative actions.
 - **Role-scoped access** — grant users the maximum read/write access, reviewer authority, approval requirements, and optional write-session duration through reusable connection groups, with individual connection exceptions where needed.
-- **Controlled SQL surface** — administrators can enable the governed SQL statement families appropriate to the workspace, while administrative, file, and security-management statements remain blocked.
+- **Controlled SQL surface** — administrators can enable each governed statement family or allow all of them. An audited emergency fallback can admit one otherwise unsupported Deployment Batch statement as write access, while administrative, file-access, security-management, procedural, transaction-control, and EXPLAIN ANALYZE SQL remain blocked.
 - **Operational guardrails** — show conservative per-statement preflight findings, require fresh preflight immediately before a deployment runs, and block definite safety violations.
 - **Follow-up and visibility** — cancel eligible work, create linked retries with fresh policy evaluation, watch important requests or connections, and receive in-app or optional email notifications.
 - **Practical authentication** — support password login, invitations, passkeys, two-factor authentication, and Google, GitHub, or Microsoft sign-in.
@@ -46,6 +46,16 @@ flowchart LR
 ```
 
 Crucible DB connects to target databases only to test a connection, inspect schema, or execute an authorized request or active session query. It supports PostgreSQL and MySQL target connections. It does not currently expose a general database protocol proxy for desktop database clients.
+
+### Governed SQL behavior
+
+The workspace SQL policy controls the supported read, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP TABLE, and TRUNCATE TABLE families. The **Allow all governed statement families** switch overrides the individual family settings without discarding them.
+
+Common-table expressions are classified by their top-level executable statement, so `WITH ... UPDATE`, `WITH ... INSERT`, `WITH ... DELETE`, and `WITH ... SELECT` receive the same policy and preflight treatment as their non-CTE forms.
+
+The optional **Emergency SQL fallback** applies only to Deployment Batches. It treats an otherwise unsupported, single statement as write access, still checks every target role and approval policy, records an explicit preflight warning, and writes audit events. Query Access sessions cannot use this fallback.
+
+Query Access executes exactly one SQL statement at a time. In the SQL editor, **Run** submits the whole editor and requires it to contain one statement. Selecting a statement changes the action to **Run selected**; `Cmd+Enter` on macOS or `Ctrl+Enter` elsewhere executes that selection.
 
 ## Quick start for contributors
 
@@ -89,7 +99,7 @@ Redis
 └─ cache
 ```
 
-The production application image is published as `hephaestus/crucible-db:alpha`. A deployment directory needs `compose.production.yaml`, `.env.production.example`, and a secure `.env.production` file—there is no need to clone the complete source repository or build the image on the server.
+Production builds must use `Dockerfile.production`, and the published application image is `hephaestus/crucible-db:alpha`. A deployment directory needs `compose.production.yaml`, `.env.production.example`, and a secure `.env.production` file—there is no need to clone the complete source repository or build the image on the server.
 
 ```bash
 cp .env.production.example .env.production
@@ -113,11 +123,19 @@ Compose waits for the Redis health check before starting the application. On sta
 curl --fail http://localhost:8000/health
 ```
 
-For a production update, back up the persistent volumes first, then pull and recreate the services:
+For a production update, back up the persistent storage and Redis volumes first. Then pull the exact production Compose stack and recreate its services:
 
 ```bash
 docker compose -f compose.production.yaml pull
 docker compose -f compose.production.yaml up -d --remove-orphans
+docker compose -f compose.production.yaml ps
+docker compose -f compose.production.yaml logs --tail=100 app redis
+```
+
+The application entrypoint runs forward-only migrations before Supervisor starts Octane/FrankenPHP, Horizon, and the scheduler. Verify the application health after the services are ready:
+
+```bash
+curl --fail http://localhost:8000/health
 ```
 
 ## Quality checks

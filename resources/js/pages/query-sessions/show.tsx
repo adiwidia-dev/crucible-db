@@ -171,12 +171,13 @@ export default function QuerySessionShow({ session, tables }: Props) {
     );
     const [schemaSearch, setSchemaSearch] = useState('');
     const [editorView, setEditorView] = useState<EditorView | null>(null);
+    const [selectedSql, setSelectedSql] = useState('');
     const latestRows = session.latest_query?.sample_rows ?? [];
     const defaultSql = useMemo(
         () => session.latest_query?.sql ?? '',
         [session.latest_query?.sql],
     );
-    const { data, setData, post, processing, errors } = useForm({
+    const { data, setData, transform, post, processing, errors } = useForm({
         database_connection_id: String(session.connection.id),
         sql: defaultSql,
     });
@@ -209,6 +210,7 @@ export default function QuerySessionShow({ session, tables }: Props) {
     });
 
     function updateSql(value: string): void {
+        setSelectedSql('');
         setData('sql', value);
     }
 
@@ -252,6 +254,20 @@ export default function QuerySessionShow({ session, tables }: Props) {
             return;
         }
 
+        let sql = data.sql;
+
+        if (editorView !== null) {
+            const selection = editorView.state.selection.main;
+
+            if (!selection.empty) {
+                sql = editorView.state.sliceDoc(selection.from, selection.to);
+            }
+        }
+
+        transform((current) => ({
+            ...current,
+            sql,
+        }));
         post(QuerySessionQueryController.store.url(session.id), {
             preserveScroll: true,
         });
@@ -261,6 +277,8 @@ export default function QuerySessionShow({ session, tables }: Props) {
         if (databaseConnectionId === String(session.connection.id)) {
             return;
         }
+
+        setSelectedSql('');
 
         router.get(
             querySessionShow.url(session.id, {
@@ -435,18 +453,26 @@ export default function QuerySessionShow({ session, tables }: Props) {
                                         height="100%"
                                         minHeight="100%"
                                         onEditorReady={setEditorView}
+                                        onSelectionChange={setSelectedSql}
+                                        onRunShortcut={runQuery}
                                     />
                                 </div>
-                                <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3">
-                                    <div>
+                                <div className="grid gap-3 border-t px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                                    <div className="grid min-w-0 gap-1">
                                         <InputError
                                             message={
                                                 errors.database_connection_id
                                             }
                                         />
                                         <InputError message={errors.sql} />
+                                        <p className="text-xs text-muted-foreground">
+                                            Cmd/Ctrl + Enter: run the selected
+                                            statement. Without a selection, Run
+                                            submits the entire editor, which
+                                            must contain one SQL statement.
+                                        </p>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex shrink-0 items-center gap-2 sm:justify-self-end">
                                         <Button
                                             type="button"
                                             variant="outline"
@@ -462,9 +488,12 @@ export default function QuerySessionShow({ session, tables }: Props) {
                                                 processing || !isSessionActive
                                             }
                                             onClick={runQuery}
+                                            className="w-44 justify-center"
                                         >
                                             <Play />
-                                            Run
+                                            {selectedSql.trim() === ''
+                                                ? 'Run'
+                                                : 'Run selected'}
                                         </Button>
                                     </div>
                                 </div>

@@ -2,9 +2,12 @@ import { autocompletion } from '@codemirror/autocomplete';
 import type { Completion } from '@codemirror/autocomplete';
 import { MySQL, PostgreSQL, sql } from '@codemirror/lang-sql';
 import type { SQLNamespace } from '@codemirror/lang-sql';
-import type { Extension } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
+import { StateField } from '@codemirror/state';
+import type { EditorState, Extension } from '@codemirror/state';
+import { Decoration, EditorView } from '@codemirror/view';
+import type { DecorationSet } from '@codemirror/view';
 import CodeMirror from '@uiw/react-codemirror';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useMemo } from 'react';
 
 export type SchemaColumn = {
@@ -28,6 +31,8 @@ type Props = {
     readOnly?: boolean;
     placeholder?: string;
     onEditorReady?: (view: EditorView) => void;
+    onSelectionChange?: (selection: string) => void;
+    onRunShortcut?: () => void;
 };
 
 function schemaFromTables(tables: SchemaTable[]): SQLNamespace {
@@ -49,6 +54,32 @@ function schemaFromTables(tables: SchemaTable[]): SQLNamespace {
     ) as SQLNamespace;
 }
 
+const selectedSqlDecoration = Decoration.mark({
+    class: 'cm-crucible-selection',
+});
+
+function selectedSqlDecorations(state: EditorState): DecorationSet {
+    const selection = state.selection.main;
+
+    return selection.empty
+        ? Decoration.none
+        : Decoration.set([
+              selectedSqlDecoration.range(selection.from, selection.to),
+          ]);
+}
+
+const selectedSqlHighlight = StateField.define<DecorationSet>({
+    create: selectedSqlDecorations,
+    update: (decorations, transaction) => {
+        if (!transaction.selection && !transaction.docChanged) {
+            return decorations;
+        }
+
+        return selectedSqlDecorations(transaction.state);
+    },
+    provide: (field) => EditorView.decorations.from(field),
+});
+
 function editorTheme(): Extension {
     return EditorView.theme({
         '&': {
@@ -59,14 +90,13 @@ function editorTheme(): Extension {
             overflow: 'hidden',
             width: '100%',
         },
-        '.cm-editor': {
-            maxWidth: '100%',
-            overflow: 'hidden',
-            width: '100%',
-        },
         '.cm-scroller': {
+            height: '100%',
+            minHeight: '0',
             maxWidth: '100%',
-            overflow: 'auto',
+            overflowX: 'auto',
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
         },
         '.cm-content': {
             fontFamily:
@@ -93,8 +123,19 @@ function editorTheme(): Extension {
             backgroundColor: 'oklch(0.94 0.01 250)',
             color: 'oklch(0.28 0.006 250)',
         },
-        '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-            backgroundColor: 'oklch(0.86 0.065 252 / 0.42)',
+        '& .cm-selectionBackground': {
+            background: 'oklch(0.62 0.16 255 / 0.92) !important',
+        },
+        '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground':
+            {
+                background: 'oklch(0.62 0.16 255 / 0.92) !important',
+            },
+        '& ::selection': {
+            backgroundColor: 'oklch(0.62 0.16 255 / 0.92) !important',
+        },
+        '.cm-crucible-selection': {
+            backgroundColor: 'oklch(0.62 0.16 255 / 0.92)',
+            color: 'oklch(0.99 0.002 250)',
         },
         '.cm-tooltip': {
             border: '1px solid oklch(0.84 0.006 250)',
@@ -126,7 +167,25 @@ export function SqlEditor({
     readOnly = false,
     placeholder = 'select * from table_name',
     onEditorReady,
+    onSelectionChange,
+    onRunShortcut,
 }: Props) {
+    function handleKeyDownCapture(
+        event: ReactKeyboardEvent<HTMLDivElement>,
+    ): void {
+        if (
+            event.key !== 'Enter' ||
+            (!event.metaKey && !event.ctrlKey) ||
+            event.altKey
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        onRunShortcut?.();
+    }
+
     const extensions = useMemo(() => {
         const dialect = driver === 'mysql' ? MySQL : PostgreSQL;
         const schema = schemaFromTables(tables);
@@ -143,15 +202,28 @@ export function SqlEditor({
                 maxRenderedOptions: 80,
             }),
             EditorView.lineWrapping,
+            selectedSqlHighlight,
+            EditorView.updateListener.of((viewUpdate) => {
+                if (!viewUpdate.selectionSet) {
+                    return;
+                }
+
+                const selection = viewUpdate.state.selection.main;
+
+                onSelectionChange?.(
+                    viewUpdate.state.sliceDoc(selection.from, selection.to),
+                );
+            }),
             editorTheme(),
         ];
-    }, [driver, tables]);
+    }, [driver, onSelectionChange, tables]);
 
     return (
         <CodeMirror
             value={value}
             height={height}
             minHeight={minHeight}
+            className="h-full min-h-0"
             theme="light"
             basicSetup={{
                 lineNumbers: true,
@@ -170,6 +242,7 @@ export function SqlEditor({
             indentWithTab={false}
             onChange={onChange}
             onCreateEditor={(view) => onEditorReady?.(view)}
+            onKeyDownCapture={handleKeyDownCapture}
         />
     );
 }

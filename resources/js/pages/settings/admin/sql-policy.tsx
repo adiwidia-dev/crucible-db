@@ -28,8 +28,7 @@ type SqlSetting =
 
 type StatementFamilySetting = Exclude<
     SqlSetting,
-    | 'sql_all_statement_families_enabled'
-    | 'sql_emergency_fallback_enabled'
+    'sql_all_statement_families_enabled' | 'sql_emergency_fallback_enabled'
 >;
 
 export default function SqlPolicy({
@@ -83,15 +82,20 @@ export default function SqlPolicy({
                                 <div className="flex items-start justify-between gap-5">
                                     <div className="min-w-0">
                                         <h2 className="text-sm font-semibold">
-                                            Allow all governed statement families
+                                            Allow all governed statement
+                                            families
                                         </h2>
                                         <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                                            Enable every supported deployment statement family. The individual controls remain available as a saved fallback.
+                                            Enable every supported deployment
+                                            statement family. The individual
+                                            controls remain available as a saved
+                                            fallback.
                                         </p>
                                     </div>
                                     <label className="shrink-0 cursor-pointer">
                                         <span className="sr-only">
-                                            Allow all governed statement families
+                                            Allow all governed statement
+                                            families
                                         </span>
                                         <input
                                             type="hidden"
@@ -117,15 +121,19 @@ export default function SqlPolicy({
                                             <span
                                                 className={
                                                     allowsAllStatementFamilies
-                                                        ? 'absolute left-1 top-1 size-4 translate-x-5 rounded-full bg-primary-foreground transition-transform duration-200'
-                                                        : 'absolute left-1 top-1 size-4 rounded-full bg-card transition-transform duration-200'
+                                                        ? 'absolute top-1 left-1 size-4 translate-x-5 rounded-full bg-primary-foreground transition-transform duration-200'
+                                                        : 'absolute top-1 left-1 size-4 rounded-full bg-card transition-transform duration-200'
                                                 }
                                             />
                                         </span>
                                     </label>
                                 </div>
                                 <p className="mt-3 border-t pt-3 text-xs leading-5 text-muted-foreground">
-                                    Administrative commands, file access, security-management SQL, transaction control, and multiple statements remain blocked. Connection roles and approval rules still apply.
+                                    Administrative commands, file access,
+                                    security-management SQL, transaction
+                                    control, and multiple statements remain
+                                    blocked. Connection roles and approval rules
+                                    still apply.
                                 </p>
                             </section>
                             <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
@@ -134,7 +142,8 @@ export default function SqlPolicy({
                                         Statement families
                                     </h2>
                                     <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                                        These controls apply when allow all is off.
+                                        These controls apply when allow all is
+                                        off.
                                     </p>
                                 </div>
                                 <div
@@ -147,65 +156,97 @@ export default function SqlPolicy({
                                 >
                                     <PolicyField
                                         name="sql_read_queries_enabled"
-                                        checked={statementFamilySettings.sql_read_queries_enabled}
+                                        checked={
+                                            statementFamilySettings.sql_read_queries_enabled
+                                        }
                                         disabled={allowsAllStatementFamilies}
-                                        onCheckedChange={updateStatementFamilySetting}
+                                        onCheckedChange={
+                                            updateStatementFamilySetting
+                                        }
                                         title="Read queries"
                                         description="SELECT, SHOW, DESCRIBE, and EXPLAIN without ANALYZE."
                                     />
                                     <PolicyField
                                         name="sql_insert_enabled"
-                                        checked={statementFamilySettings.sql_insert_enabled}
+                                        checked={
+                                            statementFamilySettings.sql_insert_enabled
+                                        }
                                         disabled={allowsAllStatementFamilies}
-                                        onCheckedChange={updateStatementFamilySetting}
+                                        onCheckedChange={
+                                            updateStatementFamilySetting
+                                        }
                                         title="INSERT"
                                         description="Create rows through governed deployment batches."
                                     />
                                     <PolicyField
                                         name="sql_update_enabled"
-                                        checked={statementFamilySettings.sql_update_enabled}
+                                        checked={
+                                            statementFamilySettings.sql_update_enabled
+                                        }
                                         disabled={allowsAllStatementFamilies}
-                                        onCheckedChange={updateStatementFamilySetting}
+                                        onCheckedChange={
+                                            updateStatementFamilySetting
+                                        }
                                         title="UPDATE"
                                         description="Modify rows through governed deployment batches."
                                     />
                                     <PolicyField
                                         name="sql_delete_enabled"
-                                        checked={statementFamilySettings.sql_delete_enabled}
+                                        checked={
+                                            statementFamilySettings.sql_delete_enabled
+                                        }
                                         disabled={allowsAllStatementFamilies}
-                                        onCheckedChange={updateStatementFamilySetting}
+                                        onCheckedChange={
+                                            updateStatementFamilySetting
+                                        }
                                         title="DELETE"
                                         description="Delete rows through governed deployment batches."
                                     />
                                     <PolicyField
                                         name="sql_create_table_enabled"
-                                        checked={statementFamilySettings.sql_create_table_enabled}
+                                        checked={
+                                            statementFamilySettings.sql_create_table_enabled
+                                        }
                                         disabled={allowsAllStatementFamilies}
-                                        onCheckedChange={updateStatementFamilySetting}
+                                        onCheckedChange={
+                                            updateStatementFamilySetting
+                                        }
                                         title="CREATE TABLE"
                                         description="Create permanent or temporary tables."
                                     />
                                     <PolicyField
                                         name="sql_alter_table_enabled"
-                                        checked={statementFamilySettings.sql_alter_table_enabled}
+                                        checked={
+                                            statementFamilySettings.sql_alter_table_enabled
+                                        }
                                         disabled={allowsAllStatementFamilies}
-                                        onCheckedChange={updateStatementFamilySetting}
+                                        onCheckedChange={
+                                            updateStatementFamilySetting
+                                        }
                                         title="ALTER TABLE"
                                         description="Change an existing table schema."
                                     />
                                     <PolicyField
                                         name="sql_drop_table_enabled"
-                                        checked={statementFamilySettings.sql_drop_table_enabled}
+                                        checked={
+                                            statementFamilySettings.sql_drop_table_enabled
+                                        }
                                         disabled={allowsAllStatementFamilies}
-                                        onCheckedChange={updateStatementFamilySetting}
+                                        onCheckedChange={
+                                            updateStatementFamilySetting
+                                        }
                                         title="DROP TABLE"
                                         description="Permanently remove a table. This is a high-risk operation."
                                     />
                                     <PolicyField
                                         name="sql_truncate_table_enabled"
-                                        checked={statementFamilySettings.sql_truncate_table_enabled}
+                                        checked={
+                                            statementFamilySettings.sql_truncate_table_enabled
+                                        }
                                         disabled={allowsAllStatementFamilies}
-                                        onCheckedChange={updateStatementFamilySetting}
+                                        onCheckedChange={
+                                            updateStatementFamilySetting
+                                        }
                                         title="TRUNCATE TABLE"
                                         description="Remove every row from a table. This is a high-risk operation."
                                     />
@@ -218,7 +259,9 @@ export default function SqlPolicy({
                                             Emergency SQL fallback
                                         </h2>
                                         <p className="mt-1 text-sm leading-5 text-amber-900/80">
-                                            Allow one otherwise unsupported deployment statement for urgent, approved work.
+                                            Allow one otherwise unsupported
+                                            deployment statement for urgent,
+                                            approved work.
                                         </p>
                                     </div>
                                     <label className="shrink-0 cursor-pointer">
@@ -249,20 +292,25 @@ export default function SqlPolicy({
                                             <span
                                                 className={
                                                     allowsEmergencySqlFallback
-                                                        ? 'absolute left-1 top-1 size-4 translate-x-5 rounded-full bg-white transition-transform duration-200'
-                                                        : 'absolute left-1 top-1 size-4 rounded-full bg-white transition-transform duration-200'
+                                                        ? 'absolute top-1 left-1 size-4 translate-x-5 rounded-full bg-white transition-transform duration-200'
+                                                        : 'absolute top-1 left-1 size-4 rounded-full bg-white transition-transform duration-200'
                                                 }
                                             />
                                         </span>
                                     </label>
                                 </div>
                                 <p className="mt-3 border-t border-amber-200 pt-3 text-xs leading-5 text-amber-900/80">
-                                    Fallback SQL is treated as write access, remains subject to role permissions and approval, and is recorded in the audit log. It applies only to deployment batches; Query Access sessions cannot use it.
+                                    Fallback SQL is treated as write access,
+                                    remains subject to role permissions and
+                                    approval, and is recorded in the audit log.
+                                    It applies only to deployment batches; Query
+                                    Access sessions cannot use it.
                                 </p>
                             </section>
                             <div className="flex justify-end">
                                 <Button disabled={processing}>
-                                    {processing ? <Spinner /> : <Save />} Save SQL policy
+                                    {processing ? <Spinner /> : <Save />} Save
+                                    SQL policy
                                 </Button>
                             </div>
                         </>
@@ -318,7 +366,9 @@ function PolicyField({
                 type="checkbox"
                 checked={checked}
                 disabled={disabled}
-                onChange={(event) => onCheckedChange(name, event.target.checked)}
+                onChange={(event) =>
+                    onCheckedChange(name, event.target.checked)
+                }
                 className="mt-0.5 size-4 rounded border-input text-primary focus:ring-ring"
             />
             <span>

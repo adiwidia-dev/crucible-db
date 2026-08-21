@@ -25,7 +25,7 @@ Do not resemble a generic CRUD admin template, a decorative SaaS dashboard, a Cl
 - **Friction follows risk.** Routine navigation stays fast; destructive or production-impacting actions receive explicit context and confirmation.
 - **Access is explicit.** A query-access session declares its permitted level before it starts, and the application enforces that level for every query.
 - **Warnings guide; blocks protect.** Conservative preflight warnings inform requesters and reviewers, while definite safety failures prevent approval or execution.
-- **Policy is deliberate.** Workspace administrators decide which governed SQL statement families are available; unrecognised, administrative, file, and security-management SQL stays unavailable.
+- **Policy is deliberate.** Workspace administrators decide which governed SQL statement families are available. Emergency fallback is a separately enabled, audited Deployment Batch escape hatch for one otherwise unsupported statement; it never applies to Query Access and does not permit administrative, file-access, security-management, procedural, or transaction-control SQL.
 
 ## Accessibility & Inclusion
 

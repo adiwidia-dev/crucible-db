@@ -14,6 +14,7 @@ The Phase 1B direction uses patterns common to focused developer tools:
 - Data begins close to compact page headers and remains denser than form workflows.
 - Tables, toolbars, code surfaces, and lifecycle state take priority over decorative cards.
 - Query requests read like reviewable engineering changes: summary, SQL, decision, execution, and history.
+- Query Access keeps the SQL action close to the editor. A selected statement is visually distinct, changes the primary action to **Run selected**, and can be executed with `Cmd/Ctrl + Enter`; whole-editor execution clearly communicates the one-statement rule.
 - Shadows are reserved for overlays. Persistent work surfaces stay flat.
 - Motion communicates state and respects reduced-motion preferences.
 
