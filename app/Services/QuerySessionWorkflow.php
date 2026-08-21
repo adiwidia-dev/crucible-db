@@ -112,8 +112,8 @@ class QuerySessionWorkflow
             ]);
         }
 
-        $queryType = $this->queryGuard->classify($sql);
-        $normalizedSql = $this->queryGuard->validateExecutable($sql);
+        $normalizedSql = $this->queryGuard->validateSessionExecutable($sql);
+        $queryType = $this->queryGuard->classify($normalizedSql);
         $sessionAccessMode = $querySession->queryRequest->requested_access_mode ?? AccessMode::Read;
 
         if (! $sessionAccessMode->allows($queryType)) {

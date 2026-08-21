@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\DatabaseDriver;
 use App\Enums\QueryType;
 use App\Models\DatabaseConnection;
+use App\Services\ApplicationSettings;
 use App\Services\DatabaseQueryExecutor;
 use App\Services\QueryGuard;
 use Generator;
@@ -41,6 +42,7 @@ class QueryExecutionSecurityTest extends TestCase
             'EXPLAIN (ANALYZE, BUFFERS) UPDATE users SET name = \'attacker\'',
             'explain (format json, analyze true) insert into users (name) values (\'attacker\')',
             'EXPLAIN /* hidden option */ ANALYZE DELETE FROM users',
+            '/* explain wrapper */ EXPLAIN ANALYZE DELETE FROM users',
         ] as $sql) {
             try {
                 $guard->classify($sql);
@@ -55,6 +57,77 @@ class QueryExecutionSecurityTest extends TestCase
 
         $this->assertSame(QueryType::Read, $guard->classify("EXPLAIN SELECT 'analyze' AS operation"));
         $this->assertSame(QueryType::Read, $guard->classify('EXPLAIN SELECT "analyze" FROM operations'));
+    }
+
+    public function test_cte_led_update_is_classified_as_a_write_statement(): void
+    {
+        $sql = <<<'SQL'
+WITH truth AS (
+    SELECT hub_code, COUNT(*)::int AS active_count
+    FROM riders
+    WHERE on_demand_order_status = 'ACTIVE'
+    GROUP BY hub_code
+)
+UPDATE on_demand_order_daily_summaries AS summary
+SET total_current_active = truth.active_count
+FROM truth
+WHERE summary.hub_code = truth.hub_code
+SQL;
+
+        $guard = app(QueryGuard::class);
+
+        $this->assertSame(QueryType::Write, $guard->classify($sql));
+        $this->assertStringStartsWith('UPDATE', $guard->topLevelExecutableSql($sql));
+    }
+
+    public function test_emergency_fallback_treats_unknown_deployment_sql_as_write_but_keeps_session_and_transaction_guards(): void
+    {
+        $settings = Mockery::mock(ApplicationSettings::class);
+        $settings->shouldReceive('allowsEmergencySqlFallback')->andReturnTrue();
+
+        $guard = new QueryGuard($settings);
+        $sql = 'CREATE INDEX users_email_index ON users (email)';
+
+        $this->assertSame(QueryType::Write, $guard->classify($sql));
+        $this->assertTrue($guard->usesEmergencySqlFallback($sql));
+
+        try {
+            $guard->validateSessionExecutable($sql);
+            $this->fail('Query Access sessions should not use the emergency SQL fallback.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['This SQL statement is not supported in a query access session.'],
+                $exception->errors()['sql'],
+            );
+        }
+
+        try {
+            $guard->validateExecutable('BEGIN');
+            $this->fail('Transaction-control SQL should remain blocked.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['Transaction-control SQL statements are blocked. Submit each executable statement in its own batch position.'],
+                $exception->errors()['sql'],
+            );
+        }
+
+        foreach ([
+            'CREATE EXTENSION pg_trgm',
+            'CREATE FUNCTION refresh_materialized_views() RETURNS void AS $$ SELECT 1; $$ LANGUAGE sql',
+            'CREATE TRIGGER audit_customer_update BEFORE UPDATE ON customers EXECUTE FUNCTION audit_customer_update()',
+            'VACUUM users',
+            'CALL refresh_materialized_views()',
+        ] as $blockedSql) {
+            try {
+                $guard->validateExecutable($blockedSql);
+                $this->fail("Expected [{$blockedSql}] to remain blocked.");
+            } catch (ValidationException $exception) {
+                $this->assertSame(
+                    ['Administrative, file, security-management, and procedural SQL statements are blocked.'],
+                    $exception->errors()['sql'],
+                );
+            }
+        }
     }
 
     public function test_postgresql_reads_run_in_a_read_only_transaction(): void

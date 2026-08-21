@@ -68,6 +68,8 @@ type Props = {
 };
 
 type SqlStatementPolicy = {
+    sql_all_statement_families_enabled: boolean;
+    sql_emergency_fallback_enabled: boolean;
     sql_read_queries_enabled: boolean;
     sql_insert_enabled: boolean;
     sql_update_enabled: boolean;
@@ -84,6 +86,90 @@ type StatementDraft = {
     databaseConnectionId: string;
 };
 
+const SQL_STATEMENT_FAMILIES = [
+    {
+        key: 'sql_read_queries_enabled' as const,
+        label: 'Read queries',
+        pattern: /^(select|show|describe|desc|explain)\b/i,
+    },
+    {
+        key: 'sql_insert_enabled' as const,
+        label: 'INSERT',
+        pattern: /^insert\b/i,
+    },
+    {
+        key: 'sql_update_enabled' as const,
+        label: 'UPDATE',
+        pattern: /^update\b/i,
+    },
+    {
+        key: 'sql_delete_enabled' as const,
+        label: 'DELETE',
+        pattern: /^delete\b/i,
+    },
+    {
+        key: 'sql_create_table_enabled' as const,
+        label: 'CREATE TABLE',
+        pattern: /^create\s+(temporary\s+)?table\b/i,
+    },
+    {
+        key: 'sql_alter_table_enabled' as const,
+        label: 'ALTER TABLE',
+        pattern: /^alter\s+table\b/i,
+    },
+    {
+        key: 'sql_drop_table_enabled' as const,
+        label: 'DROP TABLE',
+        pattern: /^drop\s+(temporary\s+)?table\b/i,
+    },
+    {
+        key: 'sql_truncate_table_enabled' as const,
+        label: 'TRUNCATE TABLE',
+        pattern: /^truncate(?:\s+table)?\b/i,
+    },
+] as const;
+
+const EMERGENCY_FALLBACK_BLOCKED_SQL_PATTERN =
+    /\b(grant|revoke|create\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\s+data\s+wrapper|server|publication|subscription)|alter\s+(?:user|role|database|system|function|procedure|trigger|rule)|drop\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\s+data\s+wrapper|server|publication|subscription)|copy|load\s+data|load_file|into\s+outfile|vacuum|analyze|reindex|cluster|checkpoint|do|call|prepare|execute|deallocate|discard|lock|listen|notify|unlisten|reset)\b/i;
+
+function topLevelGovernedSql(executableSql: string): string {
+    if (!/^with\b/i.test(executableSql)) {
+        return executableSql;
+    }
+
+    let parenthesisDepth = 0;
+
+    for (let index = 4; index < executableSql.length; index += 1) {
+        const character = executableSql[index];
+
+        if (character === '(') {
+            parenthesisDepth += 1;
+            continue;
+        }
+
+        if (character === ')') {
+            parenthesisDepth = Math.max(0, parenthesisDepth - 1);
+            continue;
+        }
+
+        if (parenthesisDepth !== 0) {
+            continue;
+        }
+
+        const statementMatch = executableSql
+            .slice(index)
+            .match(/^\s*(select|insert|update|delete)\b/i);
+
+        if (statementMatch !== null) {
+            return executableSql.slice(
+                index + statementMatch[0].length - statementMatch[1].length,
+            );
+        }
+    }
+
+    return executableSql;
+}
+
 function sqlStatementPolicyMessage(
     sql: string,
     policy: SqlStatementPolicy,
@@ -94,72 +180,61 @@ function sqlStatementPolicyMessage(
         .trim();
 
     if (
-        /\b(grant|revoke|create\s+user|alter\s+(?:user|role|database|system)|copy|load\s+data|load_file|into\s+outfile)\b/i.test(
-            executableSql,
-        )
-    ) {
-        return 'Administrative, file, and security-management SQL statements remain blocked.';
-    }
-
-    if (
         /^explain\b/i.test(executableSql) &&
         /\banalyze\b/i.test(executableSql)
     ) {
         return 'EXPLAIN ANALYZE is not supported because it can execute the explained statement.';
     }
 
-    const statementFamily = [
-        {
-            key: 'sql_read_queries_enabled' as const,
-            label: 'Read queries',
-            pattern: /^(select|show|describe|desc|explain)\b/i,
-        },
-        {
-            key: 'sql_insert_enabled' as const,
-            label: 'INSERT',
-            pattern: /^insert\b/i,
-        },
-        {
-            key: 'sql_update_enabled' as const,
-            label: 'UPDATE',
-            pattern: /^update\b/i,
-        },
-        {
-            key: 'sql_delete_enabled' as const,
-            label: 'DELETE',
-            pattern: /^delete\b/i,
-        },
-        {
-            key: 'sql_create_table_enabled' as const,
-            label: 'CREATE TABLE',
-            pattern: /^create\s+(temporary\s+)?table\b/i,
-        },
-        {
-            key: 'sql_alter_table_enabled' as const,
-            label: 'ALTER TABLE',
-            pattern: /^alter\s+table\b/i,
-        },
-        {
-            key: 'sql_drop_table_enabled' as const,
-            label: 'DROP TABLE',
-            pattern: /^drop\s+(temporary\s+)?table\b/i,
-        },
-        {
-            key: 'sql_truncate_table_enabled' as const,
-            label: 'TRUNCATE TABLE',
-            pattern: /^truncate(?:\s+table)?\b/i,
-        },
-    ].find((family) => family.pattern.test(executableSql));
-
-    if (statementFamily === undefined) {
-        return 'This SQL statement is not supported by the governed SQL policy.';
+    if (EMERGENCY_FALLBACK_BLOCKED_SQL_PATTERN.test(executableSql)) {
+        return 'Administrative, file, security-management, and procedural SQL statements remain blocked.';
     }
 
-    if (!policy[statementFamily.key]) {
+    if (
+        /^(begin|start\s+transaction|commit|rollback|savepoint|release\s+savepoint|set\s+transaction)\b/i.test(
+            executableSql,
+        )
+    ) {
+        return 'Transaction-control SQL statements are blocked. Submit each executable statement in its own batch position.';
+    }
+
+    const topLevelSql = topLevelGovernedSql(executableSql);
+    const statementFamily = SQL_STATEMENT_FAMILIES.find((family) =>
+        family.pattern.test(topLevelSql),
+    );
+
+    if (statementFamily === undefined) {
+        return policy.sql_emergency_fallback_enabled
+            ? null
+            : 'This SQL statement is not supported by the governed SQL policy.';
+    }
+
+    if (
+        !policy.sql_all_statement_families_enabled &&
+        !policy[statementFamily.key]
+    ) {
         return `${statementFamily.label} statements are disabled by the workspace administrator.`;
     }
 
     return null;
+}
+
+function usesEmergencySqlFallback(
+    sql: string,
+    policy: SqlStatementPolicy,
+): boolean {
+    if (!policy.sql_emergency_fallback_enabled) {
+        return false;
+    }
+
+    const executableSql = sql
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/--.*$/gm, ' ')
+        .trim();
+
+    return !SQL_STATEMENT_FAMILIES.some((family) =>
+        family.pattern.test(topLevelGovernedSql(executableSql)),
+    );
 }
 
 function initialStatements(
@@ -297,8 +372,23 @@ export default function QueryRequestCreate({
 
                     if (policyMessage === null) {
                         if (
-                            /^(update|delete)\b/i.test(sql) &&
-                            !/\bwhere\b/i.test(sql)
+                            usesEmergencySqlFallback(
+                                sql,
+                                sqlStatementPolicy,
+                            )
+                        ) {
+                            messages.push({
+                                level: 'warning',
+                                message:
+                                    'This statement uses the emergency SQL fallback. It is treated as write access and must satisfy write permission and approval.',
+                            });
+                        }
+
+                        const topLevelSql = topLevelGovernedSql(sql);
+
+                        if (
+                            /^(update|delete)\b/i.test(topLevelSql) &&
+                            !/\bwhere\b/i.test(topLevelSql)
                         ) {
                             messages.push({
                                 level: 'warning',
@@ -308,9 +398,9 @@ export default function QueryRequestCreate({
                         }
 
                         if (
-                            /^select\b/i.test(sql) &&
-                            /\bfrom\b/i.test(sql) &&
-                            !/\blimit\b/i.test(sql)
+                            /^select\b/i.test(topLevelSql) &&
+                            /\bfrom\b/i.test(topLevelSql) &&
+                            !/\blimit\b/i.test(topLevelSql)
                         ) {
                             messages.push({
                                 level: 'warning',

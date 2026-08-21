@@ -123,6 +123,49 @@ class ApplicationAdministrationTest extends TestCase
         $this->assertSame(QueryType::Write, app(QueryGuard::class)->classify('ALTER TABLE employee ADD COLUMN region VARCHAR(100)'));
     }
 
+    public function test_administrator_can_allow_all_governed_statement_families(): void
+    {
+        $admin = $this->administrator();
+
+        $this->actingAs($admin)
+            ->patch(route('sql-statement-policy.update'), [
+                ...$this->sqlStatementPolicyPayload([
+                    'sql_all_statement_families_enabled' => true,
+                ]),
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue(app(ApplicationSettings::class)->allowsAllSqlStatementFamilies());
+        $this->assertTrue(app(ApplicationSettings::class)->allowsSqlStatementFamily(SqlStatementFamily::DropTable));
+        $this->assertSame(QueryType::Write, app(QueryGuard::class)->classify('DROP TABLE employee'));
+    }
+
+    public function test_administrator_can_enable_the_emergency_sql_fallback(): void
+    {
+        $admin = $this->administrator();
+
+        $this->actingAs($admin)
+            ->patch(route('sql-statement-policy.update'), [
+                ...$this->sqlStatementPolicyPayload([
+                    'sql_emergency_fallback_enabled' => true,
+                ]),
+            ])
+            ->assertSessionHasNoErrors();
+
+        $guard = app(QueryGuard::class);
+        $this->assertTrue(app(ApplicationSettings::class)->allowsEmergencySqlFallback());
+        $this->assertSame(QueryType::Write, $guard->classify('CREATE INDEX users_email_index ON users (email)'));
+        $this->assertTrue($guard->usesEmergencySqlFallback('CREATE INDEX users_email_index ON users (email)'));
+
+        $auditLog = AuditLog::query()
+            ->where('action', 'sql_statement_policy.emergency_fallback_toggled')
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertSame($admin->id, $auditLog->actor_id);
+        $this->assertTrue($auditLog->metadata['enabled']);
+    }
+
     public function test_administrative_sql_remains_blocked_when_schema_statement_families_are_enabled(): void
     {
         $admin = $this->administrator();
@@ -142,7 +185,7 @@ class ApplicationAdministrationTest extends TestCase
             $this->fail('Administrative SQL should remain blocked.');
         } catch (ValidationException $exception) {
             $this->assertSame(
-                ['Administrative, file, and security-management SQL statements are blocked.'],
+                ['Administrative, file, security-management, and procedural SQL statements are blocked.'],
                 $exception->errors()['sql'],
             );
         }
@@ -224,6 +267,8 @@ class ApplicationAdministrationTest extends TestCase
     private function sqlStatementPolicyPayload(array $overrides = []): array
     {
         return [
+            'sql_all_statement_families_enabled' => false,
+            'sql_emergency_fallback_enabled' => false,
             'sql_read_queries_enabled' => true,
             'sql_insert_enabled' => true,
             'sql_update_enabled' => true,

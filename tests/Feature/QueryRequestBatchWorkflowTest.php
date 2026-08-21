@@ -18,6 +18,7 @@ use App\Models\Role;
 use App\Models\RoleDatabasePermission;
 use App\Models\User;
 use App\Notifications\OperationalNotification;
+use App\Services\ApplicationSettings;
 use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
 use App\Services\DeploymentPreflight;
@@ -152,6 +153,38 @@ class QueryRequestBatchWorkflowTest extends TestCase
         $this->assertSame(1, $queryRequest->preflight_report['summary']['warning_count']);
         $this->assertSame('warning', $queryRequest->preflight_report['statements'][0]['status']);
         $this->assertSame('passed', $queryRequest->preflight_report['statements'][1]['status']);
+    }
+
+    public function test_emergency_sql_fallback_warns_and_audits_an_unsupported_deployment_statement(): void
+    {
+        app(ApplicationSettings::class)->put([
+            ApplicationSettings::SqlEmergencyFallbackEnabled => true,
+        ]);
+
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+
+        $this->actingAs($admin)->post(route('query-requests.store'), [
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Urgent index creation',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'CREATE INDEX customers_email_index ON customers (email)',
+            ]],
+        ])->assertSessionHasNoErrors();
+
+        $queryRequest = QueryRequest::query()->firstOrFail();
+
+        $this->assertSame(QueryType::Write, $queryRequest->query_type);
+        $this->assertSame(PreflightStatus::PassedWithWarnings, $queryRequest->preflight_status);
+        $this->assertSame(
+            'emergency_sql_fallback',
+            $queryRequest->preflight_report['statements'][0]['messages'][0]['code'],
+        );
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'query_request.emergency_sql_fallback_used',
+            'auditable_id' => $queryRequest->id,
+        ]);
     }
 
     public function test_execution_guard_blocks_a_batch_when_its_target_becomes_inactive_after_approval(): void

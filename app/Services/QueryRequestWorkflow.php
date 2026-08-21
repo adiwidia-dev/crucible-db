@@ -52,6 +52,10 @@ class QueryRequestWorkflow
         $statements = $requestKind === QueryRequestKind::SingleExecution
             ? $this->validateStatements($this->statementInput($data))
             : [];
+        $usesEmergencySqlFallback = $requestKind === QueryRequestKind::SingleExecution
+            && collect($statements)->contains(
+                fn (array $statement): bool => $this->queryGuard->usesEmergencySqlFallback($statement['sql']),
+            );
         $databaseConnections = $requestKind === QueryRequestKind::SingleExecution
             ? $this->databaseConnectionsForStatements($statements)
             : $this->databaseConnectionsForAccess($data);
@@ -118,7 +122,7 @@ class QueryRequestWorkflow
             $this->ensureWriteSessionDurationIsAllowed($requester, $databaseConnections, $accessDurationMinutes ?? 60);
         }
 
-        return DB::transaction(function () use ($requester, $databaseConnection, $databaseConnections, $data, $requestKind, $queryType, $statements, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
+        return DB::transaction(function () use ($requester, $databaseConnection, $databaseConnections, $data, $requestKind, $queryType, $statements, $usesEmergencySqlFallback, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
             $status = QueryRequestStatus::PendingReview;
 
             if (! $requiresApproval) {
@@ -160,7 +164,18 @@ class QueryRequestWorkflow
                 'requested_access_mode' => $queryRequest->requested_access_mode?->value,
                 'database_connection_ids' => $databaseConnections->pluck('id')->values()->all(),
                 'statement_count' => count($statements),
+                'uses_emergency_sql_fallback' => $usesEmergencySqlFallback,
             ]);
+
+            if ($usesEmergencySqlFallback) {
+                $this->auditLogger->log('query_request.emergency_sql_fallback_used', $requester, $queryRequest, [
+                    'statement_positions' => collect($statements)
+                        ->filter(fn (array $statement): bool => $this->queryGuard->usesEmergencySqlFallback($statement['sql']))
+                        ->pluck('position')
+                        ->values()
+                        ->all(),
+                ]);
+            }
 
             if ($requiresApproval) {
                 $this->notificationDispatcher->requestSubmitted($queryRequest);
@@ -181,6 +196,10 @@ class QueryRequestWorkflow
         $statements = $requestKind === QueryRequestKind::SingleExecution
             ? $this->validateStatements($this->statementInput($data))
             : [];
+        $usesEmergencySqlFallback = $requestKind === QueryRequestKind::SingleExecution
+            && collect($statements)->contains(
+                fn (array $statement): bool => $this->queryGuard->usesEmergencySqlFallback($statement['sql']),
+            );
         $databaseConnections = $requestKind === QueryRequestKind::SingleExecution
             ? $this->databaseConnectionsForStatements($statements)
             : $this->databaseConnectionsForAccess($data);
@@ -241,7 +260,7 @@ class QueryRequestWorkflow
             $this->ensureWriteSessionDurationIsAllowed($actor, $databaseConnections, $accessDurationMinutes ?? 60);
         }
 
-        return DB::transaction(function () use ($queryRequest, $actor, $databaseConnection, $databaseConnections, $data, $requestKind, $statements, $queryType, $requestedAccessMode, $scheduledAt, $accessDurationMinutes): QueryRequest {
+        return DB::transaction(function () use ($queryRequest, $actor, $databaseConnection, $databaseConnections, $data, $requestKind, $statements, $usesEmergencySqlFallback, $queryType, $requestedAccessMode, $scheduledAt, $accessDurationMinutes): QueryRequest {
             $lockedQueryRequest = QueryRequest::query()->lockForUpdate()->findOrFail($queryRequest->id);
 
             if (! $lockedQueryRequest->isEditable()) {
@@ -293,7 +312,18 @@ class QueryRequestWorkflow
                 'requested_access_mode' => $lockedQueryRequest->requested_access_mode?->value,
                 'database_connection_ids' => $databaseConnections->pluck('id')->values()->all(),
                 'statement_count' => count($statements),
+                'uses_emergency_sql_fallback' => $usesEmergencySqlFallback,
             ]);
+
+            if ($usesEmergencySqlFallback) {
+                $this->auditLogger->log('query_request.emergency_sql_fallback_used', $actor, $lockedQueryRequest, [
+                    'statement_positions' => collect($statements)
+                        ->filter(fn (array $statement): bool => $this->queryGuard->usesEmergencySqlFallback($statement['sql']))
+                        ->pluck('position')
+                        ->values()
+                        ->all(),
+                ]);
+            }
 
             $this->notificationDispatcher->reapprovalRequired($lockedQueryRequest);
 

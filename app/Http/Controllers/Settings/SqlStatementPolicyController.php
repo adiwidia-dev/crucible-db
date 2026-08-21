@@ -31,6 +31,12 @@ class SqlStatementPolicyController extends Controller
             'after' => $settings->sqlStatementPolicyFormValues(),
         ]);
 
+        if ($before['sql_emergency_fallback_enabled'] !== $settings->allowsEmergencySqlFallback()) {
+            $auditLogger->log('sql_statement_policy.emergency_fallback_toggled', $request->user(), null, [
+                'enabled' => $settings->allowsEmergencySqlFallback(),
+            ]);
+        }
+
         Inertia::flash('toast', ['type' => 'success', 'message' => 'SQL policy updated.']);
 
         return back();

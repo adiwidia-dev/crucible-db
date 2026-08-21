@@ -105,6 +105,14 @@ class DeploymentPreflight
         try {
             $sql = $this->queryGuard->validateExecutable($statement->sql);
             $queryType = $this->queryGuard->classify($sql);
+
+            if ($this->queryGuard->usesEmergencySqlFallback($sql)) {
+                $messages[] = $this->message(
+                    'warning',
+                    'emergency_sql_fallback',
+                    'This statement is using the emergency SQL fallback. It is treated as write access and should be reviewed carefully.',
+                );
+            }
         } catch (ValidationException $exception) {
             $messages[] = $this->message(
                 'blocked',
@@ -138,7 +146,9 @@ class DeploymentPreflight
             }
         }
 
-        if ($queryType === QueryType::Write && preg_match('/^(update|delete)\b[\s\S]*\bwhere\b/i', $sql) !== 1) {
+        $topLevelSql = $this->queryGuard->topLevelExecutableSql($sql);
+
+        if ($queryType === QueryType::Write && preg_match('/^(update|delete)\b[\s\S]*\bwhere\b/i', $topLevelSql) !== 1) {
             $messages[] = $this->message(
                 'warning',
                 'unbounded_write',
@@ -147,8 +157,8 @@ class DeploymentPreflight
         }
 
         if ($queryType === QueryType::Read
-            && preg_match('/^select\b[\s\S]*\bfrom\b/i', $sql) === 1
-            && preg_match('/\blimit\b/i', $sql) !== 1) {
+            && preg_match('/^select\b[\s\S]*\bfrom\b/i', $topLevelSql) === 1
+            && preg_match('/\blimit\b/i', $topLevelSql) !== 1) {
             $messages[] = $this->message(
                 'warning',
                 'unbounded_read',

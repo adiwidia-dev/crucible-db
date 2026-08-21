@@ -48,6 +48,10 @@ class ApplicationSettings
 
     public const SqlReadQueriesEnabled = 'sql_read_queries_enabled';
 
+    public const SqlAllStatementFamiliesEnabled = 'sql_all_statement_families_enabled';
+
+    public const SqlEmergencyFallbackEnabled = 'sql_emergency_fallback_enabled';
+
     public const SqlInsertEnabled = 'sql_insert_enabled';
 
     public const SqlUpdateEnabled = 'sql_update_enabled';
@@ -98,10 +102,24 @@ class ApplicationSettings
 
     public function allowsSqlStatementFamily(SqlStatementFamily $statementFamily): bool
     {
+        if ($this->allowsAllSqlStatementFamilies()) {
+            return true;
+        }
+
         return $this->boolean(
             $statementFamily->settingKey(),
             $statementFamily->isEnabledByDefault(),
         );
+    }
+
+    public function allowsAllSqlStatementFamilies(): bool
+    {
+        return $this->boolean(self::SqlAllStatementFamiliesEnabled, false);
+    }
+
+    public function allowsEmergencySqlFallback(): bool
+    {
+        return $this->boolean(self::SqlEmergencyFallbackEnabled, false);
     }
 
     public function appName(): string
@@ -231,7 +249,18 @@ class ApplicationSettings
      */
     private function sqlStatementPolicyValues(array $values): array
     {
-        $settings = [];
+        $settings = [
+            self::SqlAllStatementFamiliesEnabled => filter_var(
+                Arr::get($values, self::SqlAllStatementFamiliesEnabled, false),
+                FILTER_VALIDATE_BOOL,
+                FILTER_NULL_ON_FAILURE,
+            ) ?? false,
+            self::SqlEmergencyFallbackEnabled => filter_var(
+                Arr::get($values, self::SqlEmergencyFallbackEnabled, false),
+                FILTER_VALIDATE_BOOL,
+                FILTER_NULL_ON_FAILURE,
+            ) ?? false,
+        ];
 
         foreach (SqlStatementFamily::cases() as $statementFamily) {
             $settings[$statementFamily->settingKey()] = filter_var(
