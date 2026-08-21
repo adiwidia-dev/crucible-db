@@ -3,10 +3,13 @@
 namespace App\Services;
 
 use App\Enums\QueryType;
+use App\Enums\SqlStatementFamily;
 use Illuminate\Validation\ValidationException;
 
 class QueryGuard
 {
+    public function __construct(private readonly ApplicationSettings $settings) {}
+
     public function normalize(string $sql): string
     {
         return trim(str_replace(["\r\n", "\r"], "\n", $sql));
@@ -33,9 +36,23 @@ class QueryGuard
             ]);
         }
 
-        if (preg_match('/\b(drop|alter|truncate|grant|revoke|create\s+user|copy|load\s+data|load_file|into\s+outfile)\b/i', $singleStatement) === 1) {
+        if (preg_match('/\b(grant|revoke|create\s+user|alter\s+(?:user|role|database|system)|copy|load\s+data|load_file|into\s+outfile)\b/i', $this->executableSql($singleStatement)) === 1) {
             throw ValidationException::withMessages([
-                'sql' => 'Administrative, file, and destructive DDL statements are blocked.',
+                'sql' => 'Administrative, file, and security-management SQL statements are blocked.',
+            ]);
+        }
+
+        if (preg_match('/^explain\b/i', $singleStatement) === 1 && preg_match('/\banalyze\b/i', $this->executableSql($singleStatement)) === 1) {
+            throw ValidationException::withMessages([
+                'sql' => 'EXPLAIN ANALYZE is not supported because it can execute the explained statement.',
+            ]);
+        }
+
+        $statementFamily = $this->statementFamily($singleStatement);
+
+        if (! $this->settings->allowsSqlStatementFamily($statementFamily)) {
+            throw ValidationException::withMessages([
+                'sql' => "{$statementFamily->label()} statements are disabled by the workspace administrator.",
             ]);
         }
 
@@ -49,27 +66,29 @@ class QueryGuard
     {
         $statement = $this->validateExecutable($sql);
 
-        if (preg_match('/^explain\b/i', $statement) === 1 && preg_match('/\banalyze\b/i', $this->executableSql($statement)) === 1) {
-            throw ValidationException::withMessages([
-                'sql' => 'EXPLAIN ANALYZE is not supported because it can execute the explained statement.',
-            ]);
-        }
+        return $this->statementFamily($statement)->queryType();
+    }
 
-        if (preg_match('/^(select|show|describe|desc|explain)\b/i', $statement) === 1) {
-            return QueryType::Read;
-        }
+    /**
+     * @throws ValidationException
+     */
+    private function statementFamily(string $statement): SqlStatementFamily
+    {
+        $executableSql = ltrim($this->executableSql($statement));
 
-        if (preg_match('/^(insert|update|delete)\b/i', $statement) === 1) {
-            return QueryType::Write;
-        }
-
-        if (preg_match('/^create\s+(temporary\s+)?table\b/i', $statement) === 1) {
-            return QueryType::Write;
-        }
-
-        throw ValidationException::withMessages([
-            'sql' => 'Only SELECT, SHOW, DESCRIBE, EXPLAIN, INSERT, UPDATE, DELETE, and CREATE TABLE statements are supported in the MVP.',
-        ]);
+        return match (true) {
+            preg_match('/^(select|show|describe|desc|explain)\b/i', $executableSql) === 1 => SqlStatementFamily::Read,
+            preg_match('/^insert\b/i', $executableSql) === 1 => SqlStatementFamily::Insert,
+            preg_match('/^update\b/i', $executableSql) === 1 => SqlStatementFamily::Update,
+            preg_match('/^delete\b/i', $executableSql) === 1 => SqlStatementFamily::Delete,
+            preg_match('/^create\s+(temporary\s+)?table\b/i', $executableSql) === 1 => SqlStatementFamily::CreateTable,
+            preg_match('/^alter\s+table\b/i', $executableSql) === 1 => SqlStatementFamily::AlterTable,
+            preg_match('/^drop\s+(temporary\s+)?table\b/i', $executableSql) === 1 => SqlStatementFamily::DropTable,
+            preg_match('/^truncate(?:\s+table)?\b/i', $executableSql) === 1 => SqlStatementFamily::TruncateTable,
+            default => throw ValidationException::withMessages([
+                'sql' => 'This SQL statement is not supported by the governed SQL policy.',
+            ]),
+        };
     }
 
     private function stripTrailingTerminator(string $sql): string

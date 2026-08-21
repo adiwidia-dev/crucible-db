@@ -37,12 +37,12 @@ export default function AuthenticationMethods({
 }: Props) {
     return (
         <>
-            <Head title="Sign-in methods" />
+            <Head title="Authentication" />
 
             <div className="crucible-page">
                 <PageHeader
-                    title="Sign-in methods"
-                    description="Control which approved sign-in options are visible and accepted on the login page."
+                    title="Authentication"
+                    description="Manage sign-in methods and the SSO providers available to invited users."
                 />
 
                 <Form
@@ -130,7 +130,7 @@ export default function AuthenticationMethods({
                             />
                             <Button disabled={processing}>
                                 {processing ? <Spinner /> : <Save />}
-                                Save sign-in methods
+                                Save authentication settings
                             </Button>
                         </>
                     )}
@@ -192,5 +192,5 @@ export default function AuthenticationMethods({
 }
 
 AuthenticationMethods.layout = {
-    breadcrumbs: [{ title: 'Sign-in methods', href: edit() }],
+    breadcrumbs: [{ title: 'Authentication', href: edit() }],
 };

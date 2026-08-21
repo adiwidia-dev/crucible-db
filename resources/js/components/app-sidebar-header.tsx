@@ -1,14 +1,16 @@
-import { Form, Link, usePage } from '@inertiajs/react';
+import { Form, Link, router, usePage } from '@inertiajs/react';
 import {
     Bell,
     BellOff,
     CheckCheck,
     CircleAlert,
     Info,
+    LogOut,
     MailCheck,
 } from 'lucide-react';
 import NotificationController from '@/actions/App/Http/Controllers/NotificationController';
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -17,8 +19,10 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { useInitials } from '@/hooks/use-initials';
+import { logout } from '@/routes';
 import { index as notificationsIndex } from '@/routes/notifications';
-import type { BreadcrumbItem as BreadcrumbItemType } from '@/types';
+import type { Auth, BreadcrumbItem as BreadcrumbItemType } from '@/types';
 
 type NotificationPreview = {
     id: string;
@@ -34,12 +38,14 @@ export function AppSidebarHeader({
 }: {
     breadcrumbs?: BreadcrumbItemType[];
 }) {
-    const notificationSummary = usePage<{
+    const { auth, notification_summary: notificationSummary } = usePage<{
+        auth: Auth;
         notification_summary?: {
             unread_count?: number;
             recent?: NotificationPreview[];
         };
-    }>().props.notification_summary;
+    }>().props;
+    const getInitials = useInitials();
     const unreadCount = notificationSummary?.unread_count ?? 0;
     const recentNotifications = notificationSummary?.recent ?? [];
 
@@ -56,107 +62,147 @@ export function AppSidebarHeader({
                     </span>
                 )}
             </div>
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="relative ml-auto size-8 text-muted-foreground hover:text-foreground"
-                        aria-label={
-                            unreadCount > 0
-                                ? `${unreadCount} unread notifications`
-                                : 'Notifications'
-                        }
-                    >
-                        <Bell className="size-4" />
-                        {unreadCount > 0 && (
-                            <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[9px] font-semibold text-destructive-foreground">
-                                {unreadCount > 9 ? '9+' : unreadCount}
-                            </span>
-                        )}
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                    align="end"
-                    sideOffset={8}
-                    className="w-[min(19rem,calc(100vw-2rem))] p-0"
-                >
-                    <div className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5">
-                        <p className="text-sm font-semibold">Notifications</p>
-                        <Form
-                            {...NotificationController.markAllRead.form()}
-                            options={{ preserveScroll: true }}
+            <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="relative size-8 text-muted-foreground hover:text-foreground"
+                            aria-label={
+                                unreadCount > 0
+                                    ? `${unreadCount} unread notifications`
+                                    : 'Notifications'
+                            }
                         >
-                            {({ processing }) => (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 px-1.5 text-xs font-medium text-primary hover:text-primary"
-                                    disabled={processing || unreadCount === 0}
-                                >
-                                    <CheckCheck className="size-3.5" />
-                                    Mark all read
-                                </Button>
+                            <Bell className="size-4" />
+                            {unreadCount > 0 && (
+                                <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-destructive text-[9px] font-semibold text-destructive-foreground">
+                                    {unreadCount > 9 ? '9+' : unreadCount}
+                                </span>
                             )}
-                        </Form>
-                    </div>
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                        align="end"
+                        sideOffset={8}
+                        className="w-[min(19rem,calc(100vw-2rem))] p-0"
+                    >
+                        <div className="flex items-center justify-between gap-3 border-b px-3.5 py-2.5">
+                            <p className="text-sm font-semibold">
+                                Notifications
+                            </p>
+                            <Form
+                                {...NotificationController.markAllRead.form()}
+                                options={{ preserveScroll: true }}
+                            >
+                                {({ processing }) => (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 px-1.5 text-xs font-medium text-primary hover:text-primary"
+                                        disabled={
+                                            processing || unreadCount === 0
+                                        }
+                                    >
+                                        <CheckCheck className="size-3.5" />
+                                        Mark all read
+                                    </Button>
+                                )}
+                            </Form>
+                        </div>
 
-                    {recentNotifications.length === 0 ? (
-                        <div className="flex items-center gap-2.5 px-3.5 py-4">
-                            <BellOff className="size-4 shrink-0 text-muted-foreground" />
-                            <div>
-                                <p className="text-sm font-medium">
-                                    No unread notifications
-                                </p>
-                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                    New operational updates appear here.
-                                </p>
+                        {recentNotifications.length === 0 ? (
+                            <div className="flex items-center gap-2.5 px-3.5 py-4">
+                                <BellOff className="size-4 shrink-0 text-muted-foreground" />
+                                <div>
+                                    <p className="text-sm font-medium">
+                                        No unread notifications
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        New operational updates appear here.
+                                    </p>
+                                </div>
                             </div>
-                        </div>
-                    ) : (
-                        <div className="max-h-[min(24rem,calc(100vh-10rem))] overflow-y-auto py-1">
-                            {recentNotifications.map((notification) => (
-                                <DropdownMenuItem
-                                    key={notification.id}
-                                    asChild
-                                    className="items-start gap-3 rounded-none px-4 py-3 whitespace-normal"
-                                >
-                                    <Link href={notification.url}>
-                                        <NotificationSeverityIcon
-                                            severity={notification.severity}
-                                        />
-                                        <span className="min-w-0 flex-1">
-                                            <span className="flex items-center gap-2">
-                                                <span className="truncate text-sm font-medium">
-                                                    {notification.title}
+                        ) : (
+                            <div className="max-h-[min(24rem,calc(100vh-10rem))] overflow-y-auto py-1">
+                                {recentNotifications.map((notification) => (
+                                    <DropdownMenuItem
+                                        key={notification.id}
+                                        asChild
+                                        className="items-start gap-3 rounded-none px-4 py-3 whitespace-normal"
+                                    >
+                                        <Link href={notification.url}>
+                                            <NotificationSeverityIcon
+                                                severity={notification.severity}
+                                            />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="flex items-center gap-2">
+                                                    <span className="truncate text-sm font-medium">
+                                                        {notification.title}
+                                                    </span>
+                                                    {notification.read_at ===
+                                                        null && (
+                                                        <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+                                                    )}
                                                 </span>
-                                                {notification.read_at ===
-                                                    null && (
-                                                    <span className="size-1.5 shrink-0 rounded-full bg-primary" />
-                                                )}
+                                                <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-muted-foreground">
+                                                    {notification.message}
+                                                </span>
                                             </span>
-                                            <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-muted-foreground">
-                                                {notification.message}
-                                            </span>
-                                        </span>
-                                    </Link>
-                                </DropdownMenuItem>
-                            ))}
-                        </div>
-                    )}
+                                        </Link>
+                                    </DropdownMenuItem>
+                                ))}
+                            </div>
+                        )}
 
-                    <div className="border-t p-1.5">
-                        <DropdownMenuItem
-                            asChild
-                            className="justify-center font-medium text-primary"
+                        <div className="border-t p-1.5">
+                            <DropdownMenuItem
+                                asChild
+                                className="justify-center font-medium text-primary"
+                            >
+                                <Link href={notificationsIndex()}>
+                                    View history
+                                </Link>
+                            </DropdownMenuItem>
+                        </div>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+
+                {auth.user && (
+                    <div className="flex min-w-0 items-center gap-1 border-l border-border pl-2 sm:gap-1.5">
+                        <div
+                            className="flex min-w-0 items-center gap-2"
+                            title={`${auth.user.name} · ${auth.user.email}`}
                         >
-                            <Link href={notificationsIndex()}>
-                                View history
-                            </Link>
-                        </DropdownMenuItem>
+                            <Avatar className="size-8">
+                                <AvatarImage
+                                    src={auth.user.avatar}
+                                    alt={auth.user.name}
+                                />
+                                <AvatarFallback className="bg-muted text-sm text-foreground">
+                                    {getInitials(auth.user.name)}
+                                </AvatarFallback>
+                            </Avatar>
+                            <span className="max-w-32 truncate text-sm font-medium text-foreground sm:max-w-40">
+                                {auth.user.name}
+                            </span>
+                            <span className="sr-only">{auth.user.email}</span>
+                        </div>
+                        <Link
+                            href={logout()}
+                            as="button"
+                            onClick={() => router.flushAll()}
+                            aria-label="Log out"
+                            title="Log out"
+                            data-test="logout-button"
+                            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none motion-reduce:transition-none"
+                        >
+                            <LogOut className="size-4" />
+                        </Link>
                     </div>
-                </DropdownMenuContent>
-            </DropdownMenu>
+                )}
+            </div>
         </header>
     );
 }

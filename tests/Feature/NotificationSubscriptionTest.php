@@ -63,10 +63,10 @@ class NotificationSubscriptionTest extends TestCase
             ->assertRedirect();
 
         $this->actingAs($user)
-            ->get(route('user-notifications.edit'))
+            ->get(route('preferences.edit'))
             ->assertOk()
             ->assertInertia(fn ($page) => $page
-                ->component('settings/notifications')
+                ->component('settings/preferences')
                 ->has('subscriptions', 1)
                 ->where('subscriptions.0.type', 'database_connection')
                 ->where('subscriptions.0.title', $connection->name),

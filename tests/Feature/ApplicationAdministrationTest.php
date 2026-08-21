@@ -2,12 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Enums\QueryType;
+use App\Enums\SqlStatementFamily;
 use App\Models\ApplicationSetting;
 use App\Models\AuditLog;
 use App\Models\AuthProvider;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ApplicationSettings;
+use App\Services\QueryGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class ApplicationAdministrationTest extends TestCase
@@ -29,6 +34,10 @@ class ApplicationAdministrationTest extends TestCase
 
         $this->actingAs($user)
             ->get(route('application-settings.edit'))
+            ->assertForbidden();
+
+        $this->actingAs($user)
+            ->get(route('sql-statement-policy.edit'))
             ->assertForbidden();
     }
 
@@ -89,6 +98,54 @@ class ApplicationAdministrationTest extends TestCase
             ])
             ->assertRedirect(route('application-settings.edit'))
             ->assertSessionHasErrors('default_timezone');
+    }
+
+    public function test_administrator_can_enable_alter_table_statements_for_governed_requests(): void
+    {
+        $admin = $this->administrator();
+
+        $this->actingAs($admin)
+            ->get(route('sql-statement-policy.edit'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('settings/admin/sql-policy')
+                ->where('settings.sql_alter_table_enabled', false));
+
+        $this->actingAs($admin)
+            ->patch(route('sql-statement-policy.update'), [
+                ...$this->sqlStatementPolicyPayload([
+                    'sql_alter_table_enabled' => true,
+                ]),
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue(app(ApplicationSettings::class)->allowsSqlStatementFamily(SqlStatementFamily::AlterTable));
+        $this->assertSame(QueryType::Write, app(QueryGuard::class)->classify('ALTER TABLE employee ADD COLUMN region VARCHAR(100)'));
+    }
+
+    public function test_administrative_sql_remains_blocked_when_schema_statement_families_are_enabled(): void
+    {
+        $admin = $this->administrator();
+
+        $this->actingAs($admin)
+            ->patch(route('sql-statement-policy.update'), [
+                ...$this->sqlStatementPolicyPayload([
+                    'sql_alter_table_enabled' => true,
+                    'sql_drop_table_enabled' => true,
+                    'sql_truncate_table_enabled' => true,
+                ]),
+            ])
+            ->assertSessionHasNoErrors();
+
+        try {
+            app(QueryGuard::class)->classify('ALTER USER reporting_user WITH SUPERUSER');
+            $this->fail('Administrative SQL should remain blocked.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['Administrative, file, and security-management SQL statements are blocked.'],
+                $exception->errors()['sql'],
+            );
+        }
     }
 
     public function test_administrator_cannot_disable_every_login_method_without_an_enabled_sso_provider(): void
@@ -158,5 +215,24 @@ class ApplicationAdministrationTest extends TestCase
         $role = Role::factory()->admin()->create();
 
         return User::factory()->withRole($role)->create();
+    }
+
+    /**
+     * @param  array<string, bool>  $overrides
+     * @return array<string, bool>
+     */
+    private function sqlStatementPolicyPayload(array $overrides = []): array
+    {
+        return [
+            'sql_read_queries_enabled' => true,
+            'sql_insert_enabled' => true,
+            'sql_update_enabled' => true,
+            'sql_delete_enabled' => true,
+            'sql_create_table_enabled' => true,
+            'sql_alter_table_enabled' => false,
+            'sql_drop_table_enabled' => false,
+            'sql_truncate_table_enabled' => false,
+            ...$overrides,
+        ];
     }
 }

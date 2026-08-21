@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
@@ -58,6 +59,16 @@ class DatabaseConnection extends Model
     public function rolePermissions(): HasMany
     {
         return $this->hasMany(RoleDatabasePermission::class);
+    }
+
+    /**
+     * @return BelongsToMany<ConnectionGroup, $this>
+     */
+    public function connectionGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(ConnectionGroup::class)
+            ->withTimestamps()
+            ->orderBy('connection_groups.name');
     }
 
     /**

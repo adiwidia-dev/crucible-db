@@ -70,9 +70,9 @@ class NotificationDeliveryTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $this->actingAs($user)->get(route('user-notifications.edit'))
+        $this->actingAs($user)->get(route('preferences.edit'))
             ->assertOk()
-            ->assertInertia(fn ($page) => $page->component('settings/notifications'));
+            ->assertInertia(fn ($page) => $page->component('settings/preferences'));
 
         $this->actingAs($user)->patch(route('user-notifications.update'), [
             'email_approvals' => true,

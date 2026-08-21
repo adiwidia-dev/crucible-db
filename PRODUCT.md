@@ -6,7 +6,7 @@ Crucible DB serves developers, reviewers, SREs, DBAs, security operators, and ad
 
 ## Product Purpose
 
-Crucible DB is a governed database operations control plane. It makes every database action visible, reviewable, time-bounded when appropriate, and attributable. The current product supports deployment batches of ordered, single SQL statements and query-access sessions with a declared read-only or read + write level. Success means a user can understand target scope, risk, approval state, next action, execution result, and audit history without leaving the workflow or guessing whether an operation ran.
+Crucible DB is a governed database operations control plane. It makes every database action visible, reviewable, time-bounded when appropriate, and attributable. The current product supports deployment batches of ordered, single SQL statements and query-access sessions with a declared read-only or read + write level. Administrators organise targets into explicit connection groups, apply role defaults to those groups, and use individual connection exceptions only when needed. Success means a user can understand target scope, risk, approval state, next action, execution result, and audit history without leaving the workflow or guessing whether an operation ran.
 
 ## Brand Personality
 
@@ -25,6 +25,7 @@ Do not resemble a generic CRUD admin template, a decorative SaaS dashboard, a Cl
 - **Friction follows risk.** Routine navigation stays fast; destructive or production-impacting actions receive explicit context and confirmation.
 - **Access is explicit.** A query-access session declares its permitted level before it starts, and the application enforces that level for every query.
 - **Warnings guide; blocks protect.** Conservative preflight warnings inform requesters and reviewers, while definite safety failures prevent approval or execution.
+- **Policy is deliberate.** Workspace administrators decide which governed SQL statement families are available; unrecognised, administrative, file, and security-management SQL stays unavailable.
 
 ## Accessibility & Inclusion
 

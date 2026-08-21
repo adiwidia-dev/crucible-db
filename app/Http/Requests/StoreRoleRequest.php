@@ -38,6 +38,14 @@ class StoreRoleRequest extends FormRequest
             'policies.*.read_requires_approval' => ['sometimes', 'boolean'],
             'policies.*.write_requires_approval' => ['sometimes', 'boolean'],
             'policies.*.max_write_session_minutes' => ['nullable', 'integer', 'min:5', 'max:1440'],
+            'group_policies' => ['nullable', 'array'],
+            'group_policies.*.connection_group_id' => ['required', 'integer', 'distinct', 'exists:connection_groups,id'],
+            'group_policies.*.access_mode' => ['required', Rule::enum(AccessMode::class)],
+            'group_policies.*.can_review' => ['sometimes', 'boolean'],
+            'group_policies.*.requires_approval' => ['sometimes', 'boolean'],
+            'group_policies.*.read_requires_approval' => ['sometimes', 'boolean'],
+            'group_policies.*.write_requires_approval' => ['sometimes', 'boolean'],
+            'group_policies.*.max_write_session_minutes' => ['nullable', 'integer', 'min:5', 'max:1440'],
         ];
     }
 
@@ -67,6 +75,30 @@ class StoreRoleRequest extends FormRequest
         foreach ($policies as $policy) {
             $attributes[] = [
                 'database_connection_id' => (int) $policy['database_connection_id'],
+                'access_mode' => $policy['access_mode'],
+                'can_review' => (bool) ($policy['can_review'] ?? false),
+                'read_requires_approval' => (bool) ($policy['read_requires_approval'] ?? $policy['requires_approval'] ?? true),
+                'write_requires_approval' => (bool) ($policy['write_requires_approval'] ?? $policy['requires_approval'] ?? true),
+                'max_write_session_minutes' => isset($policy['max_write_session_minutes'])
+                    ? (int) $policy['max_write_session_minutes']
+                    : null,
+            ];
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * @return array<int, array{connection_group_id: int, access_mode: string, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}>
+     */
+    public function groupPolicyAttributes(): array
+    {
+        $policies = $this->validated('group_policies', []);
+        $attributes = [];
+
+        foreach ($policies as $policy) {
+            $attributes[] = [
+                'connection_group_id' => (int) $policy['connection_group_id'],
                 'access_mode' => $policy['access_mode'],
                 'can_review' => (bool) ($policy['can_review'] ?? false),
                 'read_requires_approval' => (bool) ($policy['read_requires_approval'] ?? $policy['requires_approval'] ?? true),

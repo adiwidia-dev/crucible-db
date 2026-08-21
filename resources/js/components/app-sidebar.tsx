@@ -1,44 +1,43 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     BadgeCheck,
-    Bell,
     Database,
     FileCode2,
+    FolderTree,
     KeyRound,
     LayoutGrid,
-    Palette,
     ScrollText,
     Settings2,
     Shield,
     ShieldCheck,
+    ShieldAlert,
+    SlidersHorizontal,
     UserRound,
     UsersRound,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
-import { NavUser } from '@/components/nav-user';
 import {
     Sidebar,
     SidebarContent,
-    SidebarFooter,
     SidebarHeader,
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
-import { edit as editAppearance } from '@/routes/appearance';
 import { edit as editApplicationSettings } from '@/routes/application-settings';
 import { index as auditLogsIndex } from '@/routes/audit-logs';
-import { index as authenticationProvidersIndex } from '@/routes/auth-providers';
 import { edit as editAuthenticationMethods } from '@/routes/authentication-methods';
+import { index as connectionGroupsIndex } from '@/routes/connection-groups';
 import { index as connectionsIndex } from '@/routes/connections';
 import { edit as editNotificationSettings } from '@/routes/notification-settings';
+import { edit as editPreferences } from '@/routes/preferences';
 import { edit as editProfile } from '@/routes/profile';
 import { index as queryRequestsIndex } from '@/routes/query-requests';
 import { index as rolesIndex } from '@/routes/roles';
 import { edit as editSecurity } from '@/routes/security';
-import { edit as editNotificationPreferences } from '@/routes/user-notifications';
+import { edit as editSqlStatementPolicy } from '@/routes/sql-statement-policy';
 import { index as usersIndex } from '@/routes/users';
 import type { Auth, NavItem } from '@/types';
 
@@ -63,42 +62,63 @@ export function AppSidebar() {
             href: connectionsIndex(),
             icon: Database,
         },
+        ...(isAdmin
+            ? [
+                  {
+                      title: 'Connection Groups',
+                      href: connectionGroupsIndex(),
+                      icon: FolderTree,
+                  },
+              ]
+            : []),
     ];
-    const adminNavItems: NavItem[] = [
+    const adminNavSections = [
         {
-            title: 'People',
-            href: usersIndex(),
-            icon: UsersRound,
+            label: 'Access',
+            items: [
+                { title: 'People', href: usersIndex(), icon: UsersRound },
+                { title: 'Access Roles', href: rolesIndex(), icon: KeyRound },
+            ],
         },
         {
-            title: 'Access Roles',
-            href: rolesIndex(),
-            icon: KeyRound,
+            label: 'Authentication',
+            items: [
+                {
+                    title: 'Authentication',
+                    href: editAuthenticationMethods(),
+                    icon: ShieldCheck,
+                },
+            ],
         },
         {
-            title: 'Sign-in methods',
-            href: editAuthenticationMethods(),
-            icon: ShieldCheck,
+            label: 'Workspace',
+            items: [
+                {
+                    title: 'Application',
+                    href: editApplicationSettings(),
+                    icon: Settings2,
+                },
+                {
+                    title: 'Notification Policy',
+                    href: editNotificationSettings(),
+                    icon: BadgeCheck,
+                },
+            ],
         },
         {
-            title: 'Authentication providers',
-            href: authenticationProvidersIndex(),
-            icon: BadgeCheck,
-        },
-        {
-            title: 'Application',
-            href: editApplicationSettings(),
-            icon: Settings2,
-        },
-        {
-            title: 'Notifications',
-            href: editNotificationSettings(),
-            icon: Bell,
-        },
-        {
-            title: 'Audit Log',
-            href: auditLogsIndex(),
-            icon: ScrollText,
+            label: 'Governance',
+            items: [
+                {
+                    title: 'SQL Policy',
+                    href: editSqlStatementPolicy(),
+                    icon: ShieldAlert,
+                },
+                {
+                    title: 'Audit Log',
+                    href: auditLogsIndex(),
+                    icon: ScrollText,
+                },
+            ],
         },
     ];
     const accountNavItems: NavItem[] = [
@@ -108,20 +128,11 @@ export function AppSidebar() {
             icon: UserRound,
         },
         {
-            title: 'Notifications',
-            href: editNotificationPreferences(),
-            icon: Bell,
+            title: 'Preferences',
+            href: editPreferences(),
+            icon: SlidersHorizontal,
         },
-        {
-            title: 'Security',
-            href: editSecurity(),
-            icon: Shield,
-        },
-        {
-            title: 'Appearance',
-            href: editAppearance(),
-            icon: Palette,
-        },
+        { title: 'Security', href: editSecurity(), icon: Shield },
     ];
 
     return (
@@ -154,16 +165,12 @@ export function AppSidebar() {
                 {isAdmin && (
                     <NavMain
                         label="Admin"
-                        items={adminNavItems}
+                        sections={adminNavSections}
                         collapsible
                         storageKey="crucible.sidebar.admin-open"
                     />
                 )}
             </SidebarContent>
-
-            <SidebarFooter className="border-t border-sidebar-border px-3 py-2.5 group-data-[collapsible=icon]:px-2">
-                <NavUser />
-            </SidebarFooter>
         </Sidebar>
     );
 }

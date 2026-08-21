@@ -432,6 +432,7 @@ class CrucibleMvpTest extends TestCase
             'access_mode' => AccessMode::Read,
             'requires_approval' => true,
         ]);
+        $developer->refresh();
 
         $this->actingAs($developer)->post(route('query-requests.store'), [
             'database_connection_id' => $connection->id,
@@ -452,6 +453,7 @@ class CrucibleMvpTest extends TestCase
             'read_requires_approval' => false,
             'write_requires_approval' => false,
         ]);
+        $developer->refresh();
 
         $this->actingAs($developer)->post(route('query-requests.store'), [
             'database_connection_id' => $connection->id,
@@ -516,6 +518,7 @@ class CrucibleMvpTest extends TestCase
         RoleDatabasePermission::query()->where('role_id', $this->roleId($developer))->update([
             'access_mode' => AccessMode::Write,
         ]);
+        $developer->refresh();
 
         $this->actingAs($developer)->post(route('query-requests.store'), [
             'database_connection_id' => $connection->id,
@@ -821,7 +824,7 @@ SQL;
         Queue::assertPushed(ExecuteQueryRequest::class, 1);
     }
 
-    public function test_multiple_roles_use_highest_priority_database_policy(): void
+    public function test_multiple_roles_use_first_ordered_database_policy(): void
     {
         Queue::fake();
 
@@ -833,8 +836,8 @@ SQL;
             'slug' => 'trusted-executor',
         ]);
 
-        $developer->roles()->updateExistingPivot($developerRoleId, ['priority' => 10]);
-        $developer->roles()->attach($bypassRole, ['priority' => 20]);
+        $developer->roles()->updateExistingPivot($developerRoleId, ['priority' => 1]);
+        $developer->roles()->attach($bypassRole, ['priority' => 2]);
 
         RoleDatabasePermission::factory()->create([
             'role_id' => $developerRoleId,
@@ -852,35 +855,36 @@ SQL;
         $this->actingAs($developer)->post(route('query-requests.store'), [
             'database_connection_id' => $connection->id,
             'request_kind' => QueryRequestKind::SingleExecution->value,
-            'title' => 'Priority requires approval',
+            'title' => 'First role requires approval',
             'sql' => 'select 3 as value',
         ])->assertRedirect();
 
         $this->assertDatabaseHas('query_requests', [
-            'title' => 'Priority requires approval',
+            'title' => 'First role requires approval',
             'status' => QueryRequestStatus::PendingReview->value,
             'requires_approval' => true,
         ]);
         Queue::assertNothingPushed();
 
-        $developer->roles()->updateExistingPivot($bypassRole->id, ['priority' => 5]);
+        $developer->roles()->updateExistingPivot($bypassRole->id, ['priority' => 0]);
+        $developer->refresh();
 
         $this->actingAs($developer)->post(route('query-requests.store'), [
             'database_connection_id' => $connection->id,
             'request_kind' => QueryRequestKind::SingleExecution->value,
-            'title' => 'Priority bypasses approval',
+            'title' => 'First role bypasses approval',
             'sql' => 'select 4 as value',
         ])->assertRedirect();
 
         $this->assertDatabaseHas('query_requests', [
-            'title' => 'Priority bypasses approval',
+            'title' => 'First role bypasses approval',
             'status' => QueryRequestStatus::Approved->value,
             'requires_approval' => false,
         ]);
         Queue::assertNothingPushed();
     }
 
-    public function test_review_authority_uses_highest_priority_database_policy(): void
+    public function test_review_authority_uses_first_ordered_database_policy(): void
     {
         Queue::fake();
 
@@ -893,8 +897,8 @@ SQL;
         ]);
         $connection = DatabaseConnection::factory()->create();
 
-        $reviewer->roles()->updateExistingPivot($reviewerPrimaryRoleId, ['priority' => 10]);
-        $reviewer->roles()->attach($reviewerBackupRole, ['priority' => 20]);
+        $reviewer->roles()->updateExistingPivot($reviewerPrimaryRoleId, ['priority' => 1]);
+        $reviewer->roles()->attach($reviewerBackupRole, ['priority' => 2]);
 
         RoleDatabasePermission::factory()->create([
             'role_id' => $this->roleId($developer),
@@ -919,7 +923,7 @@ SQL;
 
         $queryRequest = app(QueryRequestWorkflow::class)->create($developer, $connection, [
             'request_kind' => QueryRequestKind::SingleExecution->value,
-            'title' => 'Priority review',
+            'title' => 'Ordered policy review',
             'sql' => 'select 1 as value',
         ]);
 
@@ -927,7 +931,8 @@ SQL;
             'decision' => 'approved',
         ])->assertForbidden();
 
-        $reviewer->roles()->updateExistingPivot($reviewerBackupRole->id, ['priority' => 5]);
+        $reviewer->roles()->updateExistingPivot($reviewerBackupRole->id, ['priority' => 0]);
+        $reviewer->refresh();
 
         $this->actingAs($reviewer)->post(route('query-requests.reviews.store', $queryRequest), [
             'decision' => 'approved',

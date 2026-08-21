@@ -1,10 +1,10 @@
 # Crucible DB Architecture Decisions
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 ## Current product boundary
 
-Crucible DB is a governed database operations control plane. It manages role-scoped PostgreSQL and MySQL connections, reviewed deployment batches, time-bounded query-access sessions, execution history, audit records, connection health, and operational notifications.
+Crucible DB is a governed database operations control plane. It manages PostgreSQL and MySQL connections, explicit connection groups, role-scoped access policy, reviewed deployment batches, time-bounded query-access sessions, execution history, audit records, connection health, and operational notifications.
 
 The application does not currently implement a database protocol proxy for external tools such as pgAdmin. Query Access is an in-application, browser-based SQL workspace with an explicit read-only or read + write session level.
 
@@ -29,7 +29,9 @@ Octane workers keep Laravel booted between requests. Application code must not r
 
 ## Access policy model
 
-Connection policy is assigned through roles. Each role + connection entry defines:
+Connection policy is assigned through roles. A role can define one policy for every explicit member of a connection group and, when needed, a more-specific policy for an individual connection. An individual connection policy overrides that role's group policy for the same connection. Group membership changes take effect immediately.
+
+Each role policy defines:
 
 - maximum access: none, read, or write;
 - reviewer authority;
@@ -63,7 +65,7 @@ Deployment Batches receive a per-statement preflight report during creation and 
 - **Ready with warnings:** execution may continue, but the requester and reviewer should assess the finding; and
 - **Blocked:** a definite SQL, policy, target, or schedule safety failure prevents approval or execution.
 
-Current warnings include unbounded `SELECT` statements and `UPDATE`/`DELETE` statements without `WHERE`. Administrative, file, and destructive DDL are rejected by the SQL safety guard. A blocked scheduled batch stays approved but undispatched and emits notifications to relevant people.
+Current warnings include unbounded `SELECT` statements and `UPDATE`/`DELETE` statements without `WHERE`. Workspace administrators control the enabled governed SQL families: read queries, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, and `TRUNCATE TABLE`. Administrative, file, security-management, multi-statement, unsupported, and `EXPLAIN ANALYZE` SQL are always rejected. A blocked scheduled batch stays approved but undispatched and emits notifications to relevant people.
 
 ## Notifications and auditability
 

@@ -2,14 +2,17 @@
 
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthProviderController;
+use App\Http\Controllers\ConnectionGroupController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Settings\ApplicationSettingsController;
 use App\Http\Controllers\Settings\AuthenticationMethodController;
 use App\Http\Controllers\Settings\FactoryResetController;
 use App\Http\Controllers\Settings\NotificationPreferencesController;
 use App\Http\Controllers\Settings\NotificationSettingsController;
+use App\Http\Controllers\Settings\PreferencesController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
+use App\Http\Controllers\Settings\SqlStatementPolicyController;
 use App\Http\Controllers\SsoController;
 use App\Http\Controllers\UserInvitationController;
 use App\Http\Controllers\UserRoleController;
@@ -31,14 +34,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('throttle:6,1')
         ->name('user-password.update');
 
-    Route::inertia('settings/appearance', 'settings/appearance')->name('appearance.edit');
-    Route::get('settings/notifications', [NotificationPreferencesController::class, 'edit'])->name('user-notifications.edit');
+    Route::get('settings/preferences', [PreferencesController::class, 'edit'])->name('preferences.edit');
+    Route::redirect('settings/appearance', '/settings/preferences')->name('appearance.edit');
+    Route::redirect('settings/notifications', '/settings/preferences')->name('user-notifications.edit');
     Route::patch('settings/notifications', [NotificationPreferencesController::class, 'update'])->name('user-notifications.update');
 
     Route::prefix('settings/admin')->group(function (): void {
         Route::get('/', fn () => redirect()->route('application-settings.edit'))->name('admin-settings.index');
         Route::get('application', [ApplicationSettingsController::class, 'edit'])->name('application-settings.edit');
         Route::patch('application', [ApplicationSettingsController::class, 'update'])->name('application-settings.update');
+        Route::get('sql-policy', [SqlStatementPolicyController::class, 'edit'])->name('sql-statement-policy.edit');
+        Route::patch('sql-policy', [SqlStatementPolicyController::class, 'update'])->name('sql-statement-policy.update');
         Route::get('notifications', [NotificationSettingsController::class, 'edit'])->name('notification-settings.edit');
         Route::patch('notifications', [NotificationSettingsController::class, 'update'])->name('notification-settings.update');
         Route::delete('application/factory-reset', FactoryResetController::class)->name('application-settings.factory-reset');
@@ -59,6 +65,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('users/{user}/disable', [UserRoleController::class, 'disable'])->name('users.disable');
         Route::patch('users/{user}/enable', [UserRoleController::class, 'enable'])->name('users.enable');
         Route::resource('roles', RoleController::class);
+        Route::resource('connection-groups', ConnectionGroupController::class)
+            ->parameters(['connection-groups' => 'connection_group']);
         Route::get('audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
         Route::get('audit-logs/export', [AuditLogController::class, 'export'])->name('audit-logs.export');
     });
@@ -67,6 +75,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::redirect('settings/authentication-providers', '/settings/admin/authentication-providers');
     Route::redirect('users', '/settings/admin/users');
     Route::redirect('roles', '/settings/admin/roles');
+    Route::redirect('connection-groups', '/settings/admin/connection-groups');
     Route::redirect('audit-logs', '/settings/admin/audit-logs');
 });
 

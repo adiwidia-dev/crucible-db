@@ -1,5 +1,5 @@
 import { Combobox } from '@cloudflare/kumo/components/combobox';
-import { Check, Database, Plus, SearchX } from 'lucide-react';
+import { Check, Database, FolderTree, Plus, SearchX } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { driverLabel } from '@/lib/crucible';
 import type { DatabaseConnectionSummary } from '@/lib/crucible';
@@ -26,6 +26,21 @@ type MultiProps = Omit<Props, 'onValueChange' | 'value'> & {
 
 type AddProps = {
     connections: ConnectionOption[];
+    description?: string;
+    disabledValues: string[];
+    label?: string;
+    onAdd: (value: string) => void;
+};
+
+type ConnectionGroupOption = {
+    id: number;
+    name: string;
+    description: string | null;
+    database_connections_count: number;
+};
+
+type GroupAddProps = {
+    connectionGroups: ConnectionGroupOption[];
     description?: string;
     disabledValues: string[];
     label?: string;
@@ -309,6 +324,115 @@ export function ConnectionAddCombobox({
                     <div className="flex items-center gap-2 py-1">
                         <SearchX className="size-4" />
                         <span>No matching connections</span>
+                    </div>
+                </Combobox.Empty>
+            </Combobox.Content>
+        </Combobox>
+    );
+}
+
+export function ConnectionGroupAddCombobox({
+    connectionGroups,
+    description = 'Search by group name or description. Members receive this policy immediately.',
+    disabledValues,
+    label = 'Add a connection group',
+    onAdd,
+}: GroupAddProps) {
+    const { contains } = Combobox.useFilter();
+    const [value, setValue] = useState<ConnectionGroupOption | null>(null);
+    const addedGroupIds = new Set(disabledValues);
+    const filter = useCallback(
+        (connectionGroup: ConnectionGroupOption, query: string): boolean =>
+            contains(connectionGroup.name, query) ||
+            contains(connectionGroup.description ?? '', query),
+        [contains],
+    );
+
+    return (
+        <Combobox
+            items={connectionGroups}
+            value={value}
+            onValueChange={(connectionGroup) => {
+                if (!connectionGroup) {
+                    setValue(null);
+
+                    return;
+                }
+
+                const connectionGroupId = String(
+                    (connectionGroup as ConnectionGroupOption).id,
+                );
+
+                if (!addedGroupIds.has(connectionGroupId)) {
+                    onAdd(connectionGroupId);
+                }
+
+                setValue(null);
+            }}
+            filter={filter}
+            label={label}
+            description={description}
+        >
+            <Combobox.TriggerInput
+                placeholder="Search and add a connection group..."
+                className="max-w-none"
+            />
+            <Combobox.Content className="max-h-80">
+                <Combobox.List>
+                    {(connectionGroup: ConnectionGroupOption) => {
+                        const isAdded = addedGroupIds.has(
+                            String(connectionGroup.id),
+                        );
+
+                        return (
+                            <Combobox.Item
+                                key={connectionGroup.id}
+                                value={connectionGroup}
+                                disabled={isAdded}
+                                className="py-2 text-sm"
+                            >
+                                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-kumo-tint text-kumo-default ring-1 ring-kumo-line">
+                                            <FolderTree className="size-4" />
+                                        </span>
+                                        <span className="min-w-0">
+                                            <span className="block truncate font-medium">
+                                                {connectionGroup.name}
+                                            </span>
+                                            <span className="block truncate text-xs text-kumo-subtle">
+                                                {
+                                                    connectionGroup.database_connections_count
+                                                }{' '}
+                                                connections
+                                                {connectionGroup.description
+                                                    ? ` · ${connectionGroup.description}`
+                                                    : ''}
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <span className="inline-flex h-7 items-center gap-1.5 rounded-md border bg-background px-2 text-xs font-medium text-muted-foreground">
+                                        {isAdded ? (
+                                            <>
+                                                <Check className="size-3.5" />
+                                                Added
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Plus className="size-3.5" />
+                                                Add
+                                            </>
+                                        )}
+                                    </span>
+                                </div>
+                            </Combobox.Item>
+                        );
+                    }}
+                </Combobox.List>
+                <Combobox.Empty>
+                    <div className="flex items-center gap-2 py-1">
+                        <SearchX className="size-4" />
+                        <span>No matching connection groups</span>
                     </div>
                 </Combobox.Empty>
             </Combobox.Content>

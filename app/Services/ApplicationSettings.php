@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\SqlStatementFamily;
 use App\Models\ApplicationSetting;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Mail;
@@ -45,6 +46,22 @@ class ApplicationSettings
 
     public const NotificationsConnectionFailedEnabled = 'notifications_connection_failed_enabled';
 
+    public const SqlReadQueriesEnabled = 'sql_read_queries_enabled';
+
+    public const SqlInsertEnabled = 'sql_insert_enabled';
+
+    public const SqlUpdateEnabled = 'sql_update_enabled';
+
+    public const SqlDeleteEnabled = 'sql_delete_enabled';
+
+    public const SqlCreateTableEnabled = 'sql_create_table_enabled';
+
+    public const SqlAlterTableEnabled = 'sql_alter_table_enabled';
+
+    public const SqlDropTableEnabled = 'sql_drop_table_enabled';
+
+    public const SqlTruncateTableEnabled = 'sql_truncate_table_enabled';
+
     /**
      * @var array<string, string|null>|null
      */
@@ -67,7 +84,24 @@ class ApplicationSettings
             'mail_from_address' => $this->string(self::MailFromAddress, config('mail.from.address'), $values),
             'mail_from_name' => $this->string(self::MailFromName, config('mail.from.name'), $values),
             'has_mail_password' => array_key_exists(self::MailPassword, $values),
+            ...$this->sqlStatementPolicyValues($values),
         ];
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    public function sqlStatementPolicyFormValues(): array
+    {
+        return $this->sqlStatementPolicyValues($this->values());
+    }
+
+    public function allowsSqlStatementFamily(SqlStatementFamily $statementFamily): bool
+    {
+        return $this->boolean(
+            $statementFamily->settingKey(),
+            $statementFamily->isEnabledByDefault(),
+        );
     }
 
     public function appName(): string
@@ -189,6 +223,29 @@ class ApplicationSettings
     private function boolean(string $key, bool $default): bool
     {
         return filter_var(Arr::get($this->values(), $key, $default), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? $default;
+    }
+
+    /**
+     * @param  array<string, string|null>  $values
+     * @return array<string, bool>
+     */
+    private function sqlStatementPolicyValues(array $values): array
+    {
+        $settings = [];
+
+        foreach (SqlStatementFamily::cases() as $statementFamily) {
+            $settings[$statementFamily->settingKey()] = filter_var(
+                Arr::get(
+                    $values,
+                    $statementFamily->settingKey(),
+                    $statementFamily->isEnabledByDefault(),
+                ),
+                FILTER_VALIDATE_BOOL,
+                FILTER_NULL_ON_FAILURE,
+            ) ?? $statementFamily->isEnabledByDefault();
+        }
+
+        return $settings;
     }
 
     /**

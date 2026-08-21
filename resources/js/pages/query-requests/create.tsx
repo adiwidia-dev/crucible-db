@@ -63,7 +63,19 @@ type Props = {
             max_write_session_minutes: number | null;
         }
     >;
+    sql_statement_policy: SqlStatementPolicy;
     query_request: EditableQueryRequest | null;
+};
+
+type SqlStatementPolicy = {
+    sql_read_queries_enabled: boolean;
+    sql_insert_enabled: boolean;
+    sql_update_enabled: boolean;
+    sql_delete_enabled: boolean;
+    sql_create_table_enabled: boolean;
+    sql_alter_table_enabled: boolean;
+    sql_drop_table_enabled: boolean;
+    sql_truncate_table_enabled: boolean;
 };
 
 type StatementDraft = {
@@ -71,6 +83,84 @@ type StatementDraft = {
     sql: string;
     databaseConnectionId: string;
 };
+
+function sqlStatementPolicyMessage(
+    sql: string,
+    policy: SqlStatementPolicy,
+): string | null {
+    const executableSql = sql
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/--.*$/gm, ' ')
+        .trim();
+
+    if (
+        /\b(grant|revoke|create\s+user|alter\s+(?:user|role|database|system)|copy|load\s+data|load_file|into\s+outfile)\b/i.test(
+            executableSql,
+        )
+    ) {
+        return 'Administrative, file, and security-management SQL statements remain blocked.';
+    }
+
+    if (
+        /^explain\b/i.test(executableSql) &&
+        /\banalyze\b/i.test(executableSql)
+    ) {
+        return 'EXPLAIN ANALYZE is not supported because it can execute the explained statement.';
+    }
+
+    const statementFamily = [
+        {
+            key: 'sql_read_queries_enabled' as const,
+            label: 'Read queries',
+            pattern: /^(select|show|describe|desc|explain)\b/i,
+        },
+        {
+            key: 'sql_insert_enabled' as const,
+            label: 'INSERT',
+            pattern: /^insert\b/i,
+        },
+        {
+            key: 'sql_update_enabled' as const,
+            label: 'UPDATE',
+            pattern: /^update\b/i,
+        },
+        {
+            key: 'sql_delete_enabled' as const,
+            label: 'DELETE',
+            pattern: /^delete\b/i,
+        },
+        {
+            key: 'sql_create_table_enabled' as const,
+            label: 'CREATE TABLE',
+            pattern: /^create\s+(temporary\s+)?table\b/i,
+        },
+        {
+            key: 'sql_alter_table_enabled' as const,
+            label: 'ALTER TABLE',
+            pattern: /^alter\s+table\b/i,
+        },
+        {
+            key: 'sql_drop_table_enabled' as const,
+            label: 'DROP TABLE',
+            pattern: /^drop\s+(temporary\s+)?table\b/i,
+        },
+        {
+            key: 'sql_truncate_table_enabled' as const,
+            label: 'TRUNCATE TABLE',
+            pattern: /^truncate(?:\s+table)?\b/i,
+        },
+    ].find((family) => family.pattern.test(executableSql));
+
+    if (statementFamily === undefined) {
+        return 'This SQL statement is not supported by the governed SQL policy.';
+    }
+
+    if (!policy[statementFamily.key]) {
+        return `${statementFamily.label} statements are disabled by the workspace administrator.`;
+    }
+
+    return null;
+}
 
 function initialStatements(
     queryRequest: EditableQueryRequest | null,
@@ -99,6 +189,7 @@ function initialStatements(
 
 export default function QueryRequestCreate({
     connections,
+    sql_statement_policy: sqlStatementPolicy,
     query_request,
 }: Props) {
     const { auth } = usePage<{ auth: Auth }>().props;
@@ -185,38 +276,47 @@ export default function QueryRequestCreate({
                         level: 'blocked',
                         message: 'Add the SQL statement to check it.',
                     });
-                } else if (
-                    /;\s*\S/.test(sql.replace(/;\s*$/, '')) ||
-                    /\b(drop|alter|truncate|grant|revoke|copy|load\s+data)\b/i.test(
-                        sql,
-                    )
-                ) {
+                } else if (/;\s*\S/.test(sql.replace(/;\s*$/, ''))) {
                     messages.push({
                         level: 'blocked',
                         message:
-                            'This SQL is outside the supported governed statement set.',
+                            'Only one SQL statement may be submitted per statement slot.',
                     });
                 } else {
-                    if (
-                        /^(update|delete)\b/i.test(sql) &&
-                        !/\bwhere\b/i.test(sql)
-                    ) {
+                    const policyMessage = sqlStatementPolicyMessage(
+                        sql,
+                        sqlStatementPolicy,
+                    );
+
+                    if (policyMessage !== null) {
                         messages.push({
-                            level: 'warning',
-                            message:
-                                'This UPDATE or DELETE has no WHERE clause.',
+                            level: 'blocked',
+                            message: policyMessage,
                         });
                     }
 
-                    if (
-                        /^select\b/i.test(sql) &&
-                        /\bfrom\b/i.test(sql) &&
-                        !/\blimit\b/i.test(sql)
-                    ) {
-                        messages.push({
-                            level: 'warning',
-                            message: 'This SELECT has no LIMIT.',
-                        });
+                    if (policyMessage === null) {
+                        if (
+                            /^(update|delete)\b/i.test(sql) &&
+                            !/\bwhere\b/i.test(sql)
+                        ) {
+                            messages.push({
+                                level: 'warning',
+                                message:
+                                    'This UPDATE or DELETE has no WHERE clause.',
+                            });
+                        }
+
+                        if (
+                            /^select\b/i.test(sql) &&
+                            /\bfrom\b/i.test(sql) &&
+                            !/\blimit\b/i.test(sql)
+                        ) {
+                            messages.push({
+                                level: 'warning',
+                                message: 'This SELECT has no LIMIT.',
+                            });
+                        }
                     }
                 }
 
@@ -225,7 +325,7 @@ export default function QueryRequestCreate({
                     messages,
                 };
             }),
-        [connections, statements],
+        [connections, sqlStatementPolicy, statements],
     );
 
     function updateStatement(index: number, sql: string): void {

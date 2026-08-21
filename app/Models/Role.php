@@ -52,4 +52,12 @@ class Role extends Model
     {
         return $this->hasMany(RoleDatabasePermission::class);
     }
+
+    /**
+     * @return HasMany<RoleConnectionGroupPolicy, $this>
+     */
+    public function connectionGroupPolicies(): HasMany
+    {
+        return $this->hasMany(RoleConnectionGroupPolicy::class);
+    }
 }

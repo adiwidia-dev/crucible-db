@@ -1,6 +1,6 @@
 # Initial Scaffold Implementation Plan
 
-> **Historical record.** This July 2026 implementation plan describes the original scaffold, not the current product or deployment. Use the README and current product and architecture documents for active guidance.
+> **Historical record.** This July 2026 implementation plan is a frozen account of the original scaffold, not current product, dependency, UI, or deployment guidance. Use the [README](../../../README.md), [product overview](../../product/overview.md), and [architecture decisions](../../architecture/decisions.md) for active guidance.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

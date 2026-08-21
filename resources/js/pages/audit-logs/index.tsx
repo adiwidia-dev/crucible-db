@@ -1,5 +1,14 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
-import { Download, Filter, Fingerprint, RotateCcw, Search } from 'lucide-react';
+import {
+    ChevronDown,
+    ChevronRight,
+    Download,
+    Filter,
+    Fingerprint,
+    RotateCcw,
+    Search,
+} from 'lucide-react';
+import { Fragment, useState } from 'react';
 import { DataRegistry } from '@/components/crucible/data-registry';
 import { EmptyState } from '@/components/crucible/empty-state';
 import { PageHeader } from '@/components/crucible/page-header';
@@ -46,6 +55,23 @@ export default function AuditLogsIndex({
 }: Props) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const userTimezone = auth.user.timezone ?? 'UTC';
+    const [expandedLogIds, setExpandedLogIds] = useState<Set<number>>(
+        () => new Set(),
+    );
+
+    const toggleLogDetails = (logId: number): void => {
+        setExpandedLogIds((currentLogIds) => {
+            const nextLogIds = new Set(currentLogIds);
+
+            if (nextLogIds.has(logId)) {
+                nextLogIds.delete(logId);
+            } else {
+                nextLogIds.add(logId);
+            }
+
+            return nextLogIds;
+        });
+    };
 
     return (
         <>
@@ -71,7 +97,7 @@ export default function AuditLogsIndex({
 
                 <DataRegistry
                     title="Event stream"
-                    description="Actor, subject, source, metadata, and timestamp."
+                    description="Expand an event to inspect its recorded metadata."
                 >
                     <Form
                         action={index.url()}
@@ -153,9 +179,14 @@ export default function AuditLogsIndex({
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full min-w-[76rem] text-sm">
+                                <table className="w-full min-w-[58rem] text-sm">
                                     <thead>
                                         <tr className="border-b bg-muted/45 text-left text-xs text-muted-foreground">
+                                            <th className="w-11 py-2.5 pl-3 sm:pl-4">
+                                                <span className="sr-only">
+                                                    Event details
+                                                </span>
+                                            </th>
                                             <th className="py-2.5 pr-4 pl-3 font-medium sm:pl-4">
                                                 Action
                                             </th>
@@ -168,53 +199,110 @@ export default function AuditLogsIndex({
                                             <th className="py-2.5 pr-4 font-medium">
                                                 IP
                                             </th>
-                                            <th className="py-2.5 pr-4 font-medium">
-                                                Metadata
-                                            </th>
                                             <th className="py-2.5 pr-3 font-medium sm:pr-4">
                                                 Time
                                             </th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {audit_logs.data.map((log) => (
-                                            <tr
-                                                key={log.id}
-                                                className="border-b align-top transition-colors last:border-0 hover:bg-accent/40"
-                                            >
-                                                <td className="py-3 pr-4 pl-3 sm:pl-4">
-                                                    <span className="inline-flex items-center rounded-full border bg-background px-2.5 py-1 font-mono text-xs font-medium shadow-xs">
-                                                        {log.action}
-                                                    </span>
-                                                </td>
-                                                <td className="py-3 pr-4 font-medium">
-                                                    {log.actor}
-                                                </td>
-                                                <td className="py-3 pr-4 text-muted-foreground">
-                                                    {log.auditable_type
-                                                        ? `${log.auditable_type} #${log.auditable_id}`
-                                                        : 'None'}
-                                                </td>
-                                                <td className="py-3 pr-4 font-mono text-xs">
-                                                    {log.ip_address ?? 'n/a'}
-                                                </td>
-                                                <td className="max-w-[28rem] py-3 pr-4">
-                                                    <pre className="max-h-28 overflow-auto rounded-md border bg-muted/50 p-3 text-xs leading-5">
-                                                        {JSON.stringify(
-                                                            log.metadata ?? {},
-                                                            null,
-                                                            2,
-                                                        )}
-                                                    </pre>
-                                                </td>
-                                                <td className="py-3 pr-3 text-muted-foreground sm:pr-4">
-                                                    {formatDate(
-                                                        log.created_at,
-                                                        userTimezone,
+                                        {audit_logs.data.map((log) => {
+                                            const isExpanded =
+                                                expandedLogIds.has(log.id);
+                                            const hasMetadata =
+                                                log.metadata !== null &&
+                                                Object.keys(log.metadata)
+                                                    .length > 0;
+
+                                            return (
+                                                <Fragment key={log.id}>
+                                                    <tr
+                                                        key={log.id}
+                                                        className="border-b align-top transition-colors hover:bg-accent/40"
+                                                    >
+                                                        <td className="py-2.5 pl-3 sm:pl-4">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    toggleLogDetails(
+                                                                        log.id,
+                                                                    )
+                                                                }
+                                                                aria-expanded={
+                                                                    isExpanded
+                                                                }
+                                                                aria-label={`${isExpanded ? 'Hide' : 'Show'} details for ${log.action}`}
+                                                                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                                                            >
+                                                                {isExpanded ? (
+                                                                    <ChevronDown className="size-4" />
+                                                                ) : (
+                                                                    <ChevronRight className="size-4" />
+                                                                )}
+                                                            </button>
+                                                        </td>
+                                                        <td className="py-3 pr-4 pl-3">
+                                                            <span className="inline-flex items-center rounded-full border bg-background px-2.5 py-1 font-mono text-xs font-medium shadow-xs">
+                                                                {log.action}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3 pr-4 font-medium">
+                                                            {log.actor}
+                                                        </td>
+                                                        <td className="py-3 pr-4 text-muted-foreground">
+                                                            {log.auditable_type
+                                                                ? `${log.auditable_type} #${log.auditable_id}`
+                                                                : 'None'}
+                                                        </td>
+                                                        <td className="py-3 pr-4 font-mono text-xs">
+                                                            {log.ip_address ??
+                                                                'n/a'}
+                                                        </td>
+                                                        <td className="py-3 pr-3 text-muted-foreground sm:pr-4">
+                                                            {formatDate(
+                                                                log.created_at,
+                                                                userTimezone,
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                    {isExpanded && (
+                                                        <tr
+                                                            key={`${log.id}-details`}
+                                                            className="border-b bg-muted/20 last:border-0"
+                                                        >
+                                                            <td
+                                                                colSpan={6}
+                                                                className="px-3 py-3 sm:px-4"
+                                                            >
+                                                                <div className="grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-start">
+                                                                    <p className="pt-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                                                        Metadata
+                                                                    </p>
+                                                                    {hasMetadata ? (
+                                                                        <pre className="max-h-72 overflow-auto rounded-md border bg-background p-3 font-mono text-xs leading-5 text-foreground">
+                                                                            {JSON.stringify(
+                                                                                log.metadata,
+                                                                                null,
+                                                                                2,
+                                                                            )}
+                                                                        </pre>
+                                                                    ) : (
+                                                                        <p className="rounded-md border border-dashed bg-background px-3 py-2 text-sm text-muted-foreground">
+                                                                            No
+                                                                            metadata
+                                                                            was
+                                                                            recorded
+                                                                            for
+                                                                            this
+                                                                            event.
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
                                                     )}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                </Fragment>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>

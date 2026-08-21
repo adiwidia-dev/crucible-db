@@ -184,7 +184,7 @@ The system is flat by default. Canvas, surface tone, hairline rules, and spacing
 
 ### Navigation
 
-Navigation is grouped by Work, Data, Account, and Admin. Account and Admin groups can collapse to keep the operational navigation compact. Default items remain quiet, hover gains a neutral surface, and the active item uses a pale neutral background with an Action Blue icon. On mobile, navigation becomes a sheet while preserving the same hierarchy.
+Navigation is grouped by Work, Data, Account, and Admin. Account and Admin groups can collapse to keep the operational navigation compact; Admin further groups Access, Authentication, Workspace, and Governance. The top bar carries a compact notification control and account identity with direct sign-out. Default items remain quiet, hover gains a neutral surface, and the active item uses a pale neutral background with an Action Blue icon. On mobile, navigation becomes a sheet while preserving the same hierarchy.
 
 ### Operational Table
 

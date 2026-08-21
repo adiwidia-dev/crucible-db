@@ -31,6 +31,7 @@ type RoleRecord = {
     is_admin: boolean;
     users_count: number;
     database_permissions_count: number;
+    connection_group_policies_count: number;
 };
 
 type Props = {
@@ -111,6 +112,8 @@ export default function RolesIndex({ roles }: Props) {
                                             !role.is_admin &&
                                             role.users_count === 0 &&
                                             role.database_permissions_count ===
+                                                0 &&
+                                            role.connection_group_policies_count ===
                                                 0;
 
                                         return (
@@ -152,10 +155,19 @@ export default function RolesIndex({ roles }: Props) {
                                                 </td>
                                                 <td className="py-3 pr-4">
                                                     <span className="tabular-nums">
-                                                        {
-                                                            role.database_permissions_count
-                                                        }
+                                                        {role.database_permissions_count +
+                                                            role.connection_group_policies_count}
                                                     </span>
+                                                    {role.connection_group_policies_count >
+                                                        0 && (
+                                                        <span className="ml-1.5 text-xs text-muted-foreground">
+                                                            (
+                                                            {
+                                                                role.connection_group_policies_count
+                                                            }{' '}
+                                                            groups)
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="py-3 pr-3 sm:pr-4">
                                                     <div className="flex items-center justify-end gap-2">

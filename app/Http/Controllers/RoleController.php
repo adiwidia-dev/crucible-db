@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Enums\AccessMode;
 use App\Http\Requests\StoreRoleRequest;
 use App\Http\Requests\UpdateRoleRequest;
+use App\Models\ConnectionGroup;
 use App\Models\DatabaseConnection;
 use App\Models\Role;
+use App\Models\RoleConnectionGroupPolicy;
 use App\Models\RoleDatabasePermission;
 use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
@@ -23,7 +25,7 @@ class RoleController extends Controller
 
         return Inertia::render('roles/index', [
             'roles' => Role::query()
-                ->withCount(['users', 'databasePermissions'])
+                ->withCount(['users', 'databasePermissions', 'connectionGroupPolicies'])
                 ->orderByDesc('is_admin')
                 ->orderBy('name')
                 ->get()
@@ -35,6 +37,7 @@ class RoleController extends Controller
                     'is_admin' => $role->is_admin,
                     'users_count' => $role->users_count,
                     'database_permissions_count' => $role->database_permissions_count,
+                    'connection_group_policies_count' => $role->connection_group_policies_count,
                 ]),
         ]);
     }
@@ -46,6 +49,7 @@ class RoleController extends Controller
         return Inertia::render('roles/form', [
             'role' => null,
             'connections' => $this->databaseConnectionOptions(),
+            'connection_groups' => $this->connectionGroupOptions(),
             'access_modes' => array_map(fn (AccessMode $mode): string => $mode->value, AccessMode::cases()),
         ]);
     }
@@ -55,6 +59,7 @@ class RoleController extends Controller
         $role = DB::transaction(function () use ($request): Role {
             $role = Role::query()->create($request->roleAttributes());
             $this->syncDatabasePolicies($role, $request->policyAttributes());
+            $this->syncConnectionGroupPolicies($role, $request->groupPolicyAttributes());
 
             return $role;
         });
@@ -62,6 +67,7 @@ class RoleController extends Controller
         $auditLogger->log('role.created', $request->user(), $role, [
             'role_id' => $role->id,
             'database_policy_count' => $role->databasePermissions()->count(),
+            'connection_group_policy_count' => $role->connectionGroupPolicies()->count(),
         ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Role created.']);
@@ -81,7 +87,7 @@ class RoleController extends Controller
         abort_unless(request()->user()->isAdmin(), 403);
         abort_if($role->is_admin, 403);
 
-        $role->load('databasePermissions');
+        $role->load(['databasePermissions', 'connectionGroupPolicies']);
 
         return Inertia::render('roles/form', [
             'role' => [
@@ -99,8 +105,18 @@ class RoleController extends Controller
                         'max_write_session_minutes' => $permission->max_write_session_minutes,
                     ],
                 ]),
+                'group_policies' => $role->connectionGroupPolicies->mapWithKeys(fn (RoleConnectionGroupPolicy $policy): array => [
+                    (string) $policy->connection_group_id => [
+                        'access_mode' => $policy->access_mode->value,
+                        'can_review' => $policy->can_review,
+                        'read_requires_approval' => $policy->read_requires_approval,
+                        'write_requires_approval' => $policy->write_requires_approval,
+                        'max_write_session_minutes' => $policy->max_write_session_minutes,
+                    ],
+                ]),
             ],
             'connections' => $this->databaseConnectionOptions(),
+            'connection_groups' => $this->connectionGroupOptions(),
             'access_modes' => array_map(fn (AccessMode $mode): string => $mode->value, AccessMode::cases()),
         ]);
     }
@@ -114,6 +130,7 @@ class RoleController extends Controller
         DB::transaction(function () use ($request, $role): void {
             $role->update($request->roleAttributes());
             $this->syncDatabasePolicies($role, $request->policyAttributes());
+            $this->syncConnectionGroupPolicies($role, $request->groupPolicyAttributes());
         });
 
         $auditLogger->log('role.updated', $request->user(), $role, [
@@ -121,6 +138,7 @@ class RoleController extends Controller
             'before' => $before,
             'after' => $role->only(['name', 'slug', 'description']),
             'database_policy_count' => $role->databasePermissions()->count(),
+            'connection_group_policy_count' => $role->connectionGroupPolicies()->count(),
         ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Role updated.']);
@@ -133,9 +151,9 @@ class RoleController extends Controller
         abort_unless(request()->user()->isAdmin(), 403);
         abort_if($role->is_admin, 403);
 
-        if ($role->users()->exists() || $role->databasePermissions()->exists()) {
+        if ($role->users()->exists() || $role->databasePermissions()->exists() || $role->connectionGroupPolicies()->exists()) {
             return back()->withErrors([
-                'role' => 'Role cannot be deleted while users or database permissions are attached.',
+                'role' => 'Role cannot be deleted while users or connection policies are attached.',
             ]);
         }
 
@@ -174,6 +192,27 @@ class RoleController extends Controller
     }
 
     /**
+     * @return Collection<int, array{id: int, name: string, description: string|null, database_connections_count: int<0, max>}>
+     */
+    private function connectionGroupOptions(): Collection
+    {
+        $connectionGroups = ConnectionGroup::query()
+            ->withCount('databaseConnections')
+            ->orderBy('name')
+            ->get(['id', 'name', 'description'])
+            ->map(fn (ConnectionGroup $connectionGroup): array => [
+                'id' => $connectionGroup->id,
+                'name' => $connectionGroup->name,
+                'description' => $connectionGroup->description,
+                'database_connections_count' => $connectionGroup->database_connections_count,
+            ]);
+
+        /** @var Collection<int, array{id: int, name: string, description: string|null, database_connections_count: int<0, max>}> $connectionGroups */
+        /** @phpstan-ignore-next-line The mapped Eloquent collection preserves the declared value shape. */
+        return $connectionGroups;
+    }
+
+    /**
      * @param  array<int, array{database_connection_id: int, access_mode: string, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}>  $policies
      */
     private function syncDatabasePolicies(Role $role, array $policies): void
@@ -207,6 +246,49 @@ class RoleController extends Controller
                 [
                     'database_connection_id' => $policy['database_connection_id'],
                 ],
+                [
+                    'access_mode' => $policy['access_mode'],
+                    'can_review' => $policy['can_review'],
+                    'requires_approval' => $policy['read_requires_approval']
+                        && $policy['write_requires_approval'],
+                    'read_requires_approval' => $policy['read_requires_approval'],
+                    'write_requires_approval' => $policy['write_requires_approval'],
+                    'max_write_session_minutes' => $policy['max_write_session_minutes'],
+                ],
+            );
+        }
+    }
+
+    /**
+     * @param  array<int, array{connection_group_id: int, access_mode: string, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}>  $policies
+     */
+    private function syncConnectionGroupPolicies(Role $role, array $policies): void
+    {
+        $submittedGroupIds = collect($policies)
+            ->pluck('connection_group_id')
+            ->all();
+
+        if ($submittedGroupIds === []) {
+            $role->connectionGroupPolicies()->delete();
+        } else {
+            $role->connectionGroupPolicies()
+                ->whereNotIn('connection_group_id', $submittedGroupIds)
+                ->delete();
+        }
+
+        foreach ($policies as $policy) {
+            $hasRuntimeEffect = $policy['access_mode'] !== AccessMode::None->value || $policy['can_review'];
+
+            if (! $hasRuntimeEffect) {
+                $role->connectionGroupPolicies()
+                    ->where('connection_group_id', $policy['connection_group_id'])
+                    ->delete();
+
+                continue;
+            }
+
+            $role->connectionGroupPolicies()->updateOrCreate(
+                ['connection_group_id' => $policy['connection_group_id']],
                 [
                     'access_mode' => $policy['access_mode'],
                     'can_review' => $policy['can_review'],

@@ -22,7 +22,8 @@ Crucible DB gives engineering teams a safer path to production database work wit
 - **Deployment batches** — submit one or more ordered SQL statements, each scoped to its own target connection, for review, scheduling, and asynchronous execution.
 - **Time-bounded database access** — request read-only or read + write query sessions across one or more approved connections; sessions automatically expire and enforce their granted access level.
 - **Clear accountability** — record requests, reviews, executions, session activity, and administrative actions.
-- **Role-scoped connections** — grant users the maximum read/write access, reviewer authority, approval requirement, and optional write-session duration for specific PostgreSQL and MySQL connections.
+- **Role-scoped access** — grant users the maximum read/write access, reviewer authority, approval requirements, and optional write-session duration through reusable connection groups, with individual connection exceptions where needed.
+- **Controlled SQL surface** — administrators can enable the governed SQL statement families appropriate to the workspace, while administrative, file, and security-management statements remain blocked.
 - **Operational guardrails** — show conservative per-statement preflight findings, require fresh preflight immediately before a deployment runs, and block definite safety violations.
 - **Follow-up and visibility** — cancel eligible work, create linked retries with fresh policy evaluation, watch important requests or connections, and receive in-app or optional email notifications.
 - **Practical authentication** — support password login, invitations, passkeys, two-factor authentication, and Google, GitHub, or Microsoft sign-in.
@@ -106,7 +107,7 @@ Then start the stack:
 docker compose -f compose.production.yaml up -d
 ```
 
-On startup, the application waits for Redis, creates the local SQLite file when necessary, runs database migrations, and starts FrankenPHP through Laravel Octane, Horizon, and the scheduler under Supervisor. The `crucible_storage` named volume persists the application SQLite database and storage; `crucible_redis` persists Redis data. Confirm it is healthy with:
+Compose waits for the Redis health check before starting the application. On startup, the application creates the local SQLite file when necessary, runs database migrations, and starts FrankenPHP through Laravel Octane, Horizon, and the scheduler under Supervisor. The `crucible_storage` named volume persists the application SQLite database and storage; `crucible_redis` persists Redis data. Confirm it is healthy with:
 
 ```bash
 curl --fail http://localhost:8000/health

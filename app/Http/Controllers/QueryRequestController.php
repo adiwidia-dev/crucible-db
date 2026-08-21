@@ -18,6 +18,7 @@ use App\Models\QueryRequestStatement;
 use App\Models\QuerySession;
 use App\Models\QuerySessionQuery;
 use App\Models\User;
+use App\Services\ApplicationSettings;
 use App\Services\AuditLogger;
 use App\Services\QueryRequestWorkflow;
 use Illuminate\Database\Eloquent\Builder;
@@ -94,7 +95,7 @@ class QueryRequestController extends Controller
         ]);
     }
 
-    public function create(): Response
+    public function create(ApplicationSettings $settings): Response
     {
         Gate::authorize('create', QueryRequest::class);
 
@@ -103,6 +104,7 @@ class QueryRequestController extends Controller
         return Inertia::render('query-requests/create', [
             'connections' => $this->connectionOptions($user),
             'query_request' => null,
+            'sql_statement_policy' => $settings->sqlStatementPolicyFormValues(),
         ]);
     }
 
@@ -498,7 +500,7 @@ class QueryRequestController extends Controller
             : 'create_retry_request';
     }
 
-    public function edit(QueryRequest $queryRequest): Response
+    public function edit(QueryRequest $queryRequest, ApplicationSettings $settings): Response
     {
         Gate::authorize('update', $queryRequest);
 
@@ -506,6 +508,7 @@ class QueryRequestController extends Controller
 
         return Inertia::render('query-requests/create', [
             'connections' => $this->connectionOptions(request()->user()),
+            'sql_statement_policy' => $settings->sqlStatementPolicyFormValues(),
             'query_request' => [
                 'id' => $queryRequest->id,
                 'database_connection_id' => $queryRequest->database_connection_id,

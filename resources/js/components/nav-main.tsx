@@ -19,18 +19,23 @@ import type { NavItem } from '@/types';
 export function NavMain({
     label,
     items = [],
+    sections = [],
     collapsible = false,
     defaultOpen = true,
     storageKey,
 }: {
     label: string;
-    items: NavItem[];
+    items?: NavItem[];
+    sections?: Array<{ label: string; items: NavItem[] }>;
     collapsible?: boolean;
     defaultOpen?: boolean;
     storageKey?: string;
 }) {
     const { isCurrentUrl } = useCurrentUrl();
-    const hasActiveItem = items.some((item) => isCurrentUrl(item.href));
+    const hasActiveItem = [
+        ...items,
+        ...sections.flatMap((section) => section.items),
+    ].some((item) => isCurrentUrl(item.href));
     const [isOpen, setIsOpen] = useState(() => {
         if (typeof window !== 'undefined' && storageKey) {
             const storedState = window.localStorage.getItem(storageKey);
@@ -51,9 +56,9 @@ export function NavMain({
         }
     };
 
-    const menu = (
+    const menuItems = (sectionItems: NavItem[]) => (
         <SidebarMenu className="gap-0.5">
-            {items.map((item) => (
+            {sectionItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
                         asChild
@@ -70,6 +75,22 @@ export function NavMain({
             ))}
         </SidebarMenu>
     );
+
+    const menu =
+        sections.length > 0 ? (
+            <div className="grid gap-2 pt-1">
+                {sections.map((section) => (
+                    <div key={section.label}>
+                        <p className="px-2 pb-1 text-[10px] font-medium tracking-wide text-sidebar-foreground/45 uppercase group-data-[collapsible=icon]:hidden">
+                            {section.label}
+                        </p>
+                        {menuItems(section.items)}
+                    </div>
+                ))}
+            </div>
+        ) : (
+            menuItems(items)
+        );
 
     if (!collapsible) {
         return (

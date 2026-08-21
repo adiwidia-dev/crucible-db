@@ -17,7 +17,7 @@ use Tests\TestCase;
 
 class QueryExecutionSecurityTest extends TestCase
 {
-    public function test_destructive_ddl_uses_the_current_safety_policy_copy(): void
+    public function test_disabled_statement_families_use_the_current_safety_policy_copy(): void
     {
         $guard = app(QueryGuard::class);
 
@@ -26,7 +26,7 @@ class QueryExecutionSecurityTest extends TestCase
             $this->fail('Destructive DDL should be blocked.');
         } catch (ValidationException $exception) {
             $this->assertSame(
-                ['Administrative, file, and destructive DDL statements are blocked.'],
+                ['DROP TABLE statements are disabled by the workspace administrator.'],
                 $exception->errors()['sql'],
             );
         }
