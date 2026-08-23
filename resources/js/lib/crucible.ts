@@ -1,6 +1,7 @@
 export type AccessMode = 'none' | 'read' | 'write';
 export type DatabaseDriver = 'mysql' | 'pgsql';
 export type QueryRequestStatus =
+    | 'draft'
     | 'pending_review'
     | 'approved'
     | 'rejected'

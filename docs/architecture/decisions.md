@@ -1,6 +1,6 @@
 # Crucible DB Architecture Decisions
 
-Last updated: 2026-08-21
+Last updated: 2026-08-23
 
 ## Current product boundary
 
@@ -33,7 +33,8 @@ Connection policy is assigned through roles. A role can define one policy for ev
 
 Each role policy defines:
 
-- maximum access: none, read, or write;
+- maximum deployment access: none, read, or write;
+- Query Access capability: read-only by default, with read + write available only when maximum deployment access is write;
 - reviewer authority;
 - whether reads require approval;
 - whether writes require approval; and
@@ -41,13 +42,13 @@ Each role policy defines:
 
 Users can hold multiple roles. The ordered **Policy precedence** list determines which role supplies an overlapping policy; the first applicable role wins. Users cannot approve their own requests, even when a role grants reviewer authority.
 
-For a deployment batch, approval is evaluated from every selected statement connection and query type: any statement that requires approval causes the request to require approval. For Query Access, the requester declares read-only or read + write access before the session starts. That declared access level is checked against every selected connection and enforced on every session query.
+For a deployment batch, approval is evaluated from every selected statement connection and query type: any statement that requires approval causes the request to require approval. For Query Access, the requester declares read-only or read + write access before the session starts. The selected level must be allowed by the effective Query Access capability on every target connection, which is distinct from deployment write authority. That declared access level and the current effective Query Access capability are enforced on every session query.
 
 ## Query request workflows
 
 ### Deployment Batch
 
-A Deployment Batch contains one or more ordered, single SQL statements. Each statement has its own target connection. The workflow is created, reviewed when policy requires it, optionally scheduled, dispatched through the `queries` queue, and executed in order. Execution stops at the first failed statement; completed and failed statements remain visible and locked in the request record.
+A Deployment Batch contains one or more ordered, single SQL statements. Each statement has its own target connection. It can be saved as a non-executable Draft even when preflight is blocked; drafts retain the SQL and latest report but do not create review work, notifications, schedules, or execution jobs. An editable saved batch can run preflight explicitly, which persists a fresh report and audit event. Strict submission from Draft repeats statement validation, role checks, approval evaluation, and preflight, and it rolls back when that fresh preflight is blocked. Submitted work is reviewed when policy requires it, optionally scheduled, dispatched through the `queries` queue, and executed in order. Execution stops at the first failed statement; completed and failed statements remain visible and locked in the request record.
 
 Changes to an approved batch invalidate that approval. Eligible work can be cancelled with a reason. A failed deployment can be retried: read-only retries can be dispatched from the failed statement; write-impacting retries create a linked request for fresh policy evaluation and approval.
 
@@ -55,7 +56,7 @@ Scheduled batches do not run late without an explicit dispatch. If the requested
 
 ### Query Access
 
-A Query Access request selects one or more connections and a session duration. An approved request can start an in-application session. The session loads schema for the active selected connection, records every executed query, and expires or ends explicitly. Read-only sessions block data-changing SQL; read + write sessions require write access and policy approval where applicable. Query Access accepts exactly one SQL statement per execution. In the browser editor, a selection is visibly highlighted and can be executed with **Run selected** or `Cmd+Enter` on macOS / `Ctrl+Enter` elsewhere; without a selection, **Run** submits the whole editor and the server rejects multiple statements. Ended or cancelled sessions can create a linked access request with the same scope; approval is re-evaluated from current policy.
+A Query Access request selects one or more connections and a session duration. An approved request can start an in-application session. The session loads schema for the active selected connection, records every executed query, and expires or ends explicitly. Read-only sessions block data-changing SQL; read + write sessions require explicit Query Access write capability and policy approval where applicable. Query Access accepts exactly one SQL statement per execution. In the browser editor, a selection is visibly highlighted and can be executed with **Run selected** or `Cmd+Enter` on macOS / `Ctrl+Enter` elsewhere; without a selection, **Run** submits the whole editor and the server rejects multiple statements. Ended or cancelled sessions can create a linked access request with the same scope; approval and current capability are re-evaluated from policy.
 
 ## Deployment preflight
 

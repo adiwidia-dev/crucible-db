@@ -6,9 +6,11 @@ use App\Enums\AccessMode;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
+use App\Models\ConnectionGroup;
 use App\Models\DatabaseConnection;
 use App\Models\QueryRequest;
 use App\Models\Role;
+use App\Models\RoleConnectionGroupPolicy;
 use App\Models\RoleDatabasePermission;
 use App\Models\User;
 use App\Services\DatabaseQueryExecutor;
@@ -88,6 +90,85 @@ class QueryAccessPolicyTest extends TestCase
             $user,
             'update employees set active = 1 where id = 1',
             $connection,
+        );
+    }
+
+    public function test_write_deployment_access_defaults_query_access_to_read_only(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $user = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        RoleDatabasePermission::factory()->write()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+        ]);
+
+        $deploymentBatch = app(QueryRequestWorkflow::class)->create($user, [
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Correct employee records',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'UPDATE employees SET active = 1 WHERE id = 1',
+            ]],
+        ]);
+
+        $this->assertSame(QueryRequestStatus::PendingReview, $deploymentBatch->status);
+
+        try {
+            app(QueryRequestWorkflow::class)->create($user, [
+                'request_kind' => QueryRequestKind::QueryAccess->value,
+                'requested_access_mode' => AccessMode::Write->value,
+                'database_connection_ids' => [$connection->id],
+                'title' => 'Correct employee records interactively',
+                'access_duration_minutes' => 20,
+            ]);
+            $this->fail('Write Query Access should require an explicit policy opt-in.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'Your role is not allowed to request the selected session access level for every selected database.',
+                $exception->errors()['database_connection_ids'][0],
+            );
+        }
+
+        $readSession = app(QueryRequestWorkflow::class)->create($user, [
+            'request_kind' => QueryRequestKind::QueryAccess->value,
+            'requested_access_mode' => AccessMode::Read->value,
+            'database_connection_ids' => [$connection->id],
+            'title' => 'Inspect employee records',
+            'access_duration_minutes' => 20,
+        ]);
+
+        $this->assertSame(QueryRequestStatus::PendingReview, $readSession->status);
+        $this->assertSame(AccessMode::Read, $readSession->requested_access_mode);
+    }
+
+    public function test_direct_connection_query_access_policy_overrides_group_policy(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $user = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        $connectionGroup = ConnectionGroup::factory()->create();
+        $connectionGroup->databaseConnections()->sync([$connection->id]);
+        RoleConnectionGroupPolicy::factory()->create([
+            'role_id' => $role->id,
+            'connection_group_id' => $connectionGroup->id,
+            'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::Write,
+        ]);
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::Read,
+        ]);
+
+        $this->assertSame(
+            AccessMode::Read,
+            $user->effectiveQueryAccessPermissionFor($connection, QueryType::Read)['query_access_mode'],
+        );
+        $this->assertSame(
+            AccessMode::None,
+            $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write)['query_access_mode'],
         );
     }
 
@@ -194,6 +275,44 @@ class QueryAccessPolicyTest extends TestCase
         $this->assertSame(QueryType::Write, $result['query']->query_type);
     }
 
+    public function test_active_write_session_stops_accepting_writes_when_query_access_is_restricted(): void
+    {
+        [$user, $connection] = $this->userWithSeparatedReadAndWritePolicies();
+        $request = app(QueryRequestWorkflow::class)->create($user, [
+            'request_kind' => QueryRequestKind::QueryAccess->value,
+            'requested_access_mode' => AccessMode::Write->value,
+            'database_connection_ids' => [$connection->id],
+            'title' => 'Correct employee records',
+            'access_duration_minutes' => 20,
+        ]);
+        $request->forceFill([
+            'status' => QueryRequestStatus::Approved,
+            'approved_at' => now(),
+        ])->save();
+
+        $session = app(QuerySessionWorkflow::class)->start($request, $user);
+        RoleDatabasePermission::query()
+            ->where('database_connection_id', $connection->id)
+            ->where('access_mode', AccessMode::Write->value)
+            ->update(['query_access_mode' => AccessMode::Read->value]);
+        $user->refresh();
+
+        try {
+            app(QuerySessionWorkflow::class)->execute(
+                $session,
+                $user,
+                'UPDATE employees SET active = 1 WHERE id = 1',
+                $connection,
+            );
+            $this->fail('The session should enforce the current Query Access capability.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'Your current roles are not allowed to run this query type on the selected database.',
+                $exception->errors()['sql'][0],
+            );
+        }
+    }
+
     public function test_query_access_renewal_rechecks_the_current_policy_for_the_selected_session_level(): void
     {
         [$user, $connection] = $this->userWithSeparatedReadAndWritePolicies();
@@ -259,6 +378,7 @@ class QueryAccessPolicyTest extends TestCase
             'role_id' => $writeRole->id,
             'database_connection_id' => $connection->id,
             'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::Write,
             'read_requires_approval' => false,
             'write_requires_approval' => true,
             'max_write_session_minutes' => 30,

@@ -52,12 +52,14 @@ type EditableQueryRequest = {
     access_duration_minutes: number | null;
     requested_access_mode: 'read' | 'write' | null;
     was_approved: boolean;
+    is_draft: boolean;
 };
 
 type Props = {
     connections: Array<
         Pick<DatabaseConnectionSummary, 'id' | 'name' | 'driver'> & {
             can_write: boolean;
+            can_query_access_write: boolean;
             read_requires_approval: boolean;
             write_requires_approval: boolean;
             max_write_session_minutes: number | null;
@@ -270,6 +272,7 @@ export default function QueryRequestCreate({
     const { auth } = usePage<{ auth: Auth }>().props;
     const userTimezone = auth.user.timezone ?? 'UTC';
     const isEditing = query_request !== null;
+    const isDraft = query_request?.is_draft ?? false;
     const [requestKind, setRequestKind] = useState<
         'single_execution' | 'query_access'
     >(query_request?.request_kind ?? 'single_execution');
@@ -310,7 +313,9 @@ export default function QueryRequestCreate({
     );
     const canRequestWriteSession =
         selectedSessionConnections.length > 0 &&
-        selectedSessionConnections.every((connection) => connection.can_write);
+        selectedSessionConnections.every(
+            (connection) => connection.can_query_access_write,
+        );
     const sessionRequiresApproval =
         requestedAccessMode === 'write'
             ? selectedSessionConnections.some(
@@ -508,7 +513,9 @@ export default function QueryRequestCreate({
                     }
                     description={
                         isEditing
-                            ? 'Revise the deployment batch and send the complete request back for approval.'
+                            ? isDraft
+                                ? 'Refine this draft, then submit it when preflight is ready.'
+                                : 'Revise the deployment batch and send the complete request back for approval.'
                             : 'Prepare a governed deployment batch or request time-boxed query access.'
                     }
                 />
@@ -787,8 +794,8 @@ export default function QueryRequestCreate({
                                                             unavailable because
                                                             at least one
                                                             selected connection
-                                                            does not grant write
-                                                            access.
+                                                            permits read-only
+                                                            Query Access.
                                                         </p>
                                                     )}
                                                 {selectedConnectionIds.length >
@@ -1265,16 +1272,34 @@ export default function QueryRequestCreate({
                                                 Cancel
                                             </Link>
                                         </Button>
-                                        <Button disabled={processing}>
+                                        {requestKind === 'single_execution' &&
+                                            (!isEditing || isDraft) && (
+                                                <Button
+                                                    name="intent"
+                                                    value="draft"
+                                                    variant="outline"
+                                                    disabled={processing}
+                                                >
+                                                    <FileCode2 />
+                                                    Save draft
+                                                </Button>
+                                            )}
+                                        <Button
+                                            name="intent"
+                                            value="submit"
+                                            disabled={processing}
+                                        >
                                             <Check />
                                             {processing
                                                 ? 'Saving...'
-                                                : isEditing &&
-                                                    query_request?.was_approved
-                                                  ? 'Save & request review'
-                                                  : isEditing
-                                                    ? 'Save changes'
-                                                    : 'Submit request'}
+                                                : isDraft
+                                                  ? 'Submit for review'
+                                                  : isEditing &&
+                                                      query_request?.was_approved
+                                                    ? 'Save & request review'
+                                                    : isEditing
+                                                      ? 'Save changes'
+                                                      : 'Submit request'}
                                         </Button>
                                     </div>
                                 </div>

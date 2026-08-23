@@ -110,21 +110,21 @@ class QueryRequestController extends Controller
 
     public function store(StoreQueryRequestRequest $request, QueryRequestWorkflow $workflow): RedirectResponse
     {
-        $data = [
-            'database_connection_id' => $request->integer('database_connection_id'),
-            'database_connection_ids' => $request->validated('database_connection_ids', []),
-            'request_kind' => $request->string('request_kind')->toString(),
-            'requested_access_mode' => $request->filled('requested_access_mode') ? $request->string('requested_access_mode')->toString() : null,
-            'title' => $request->string('title')->toString(),
-            'description' => $request->filled('description') ? $request->string('description')->toString() : null,
-            'statements' => $request->validated('statements', []),
-            'scheduled_at' => $request->filled('scheduled_at') ? $request->string('scheduled_at')->toString() : null,
-            'access_duration_minutes' => $request->filled('access_duration_minutes') ? $request->integer('access_duration_minutes') : null,
-        ];
+        $data = $this->requestData($request);
 
         $this->authorizeRequestedConnections($request->user(), $data);
 
-        $queryRequest = $workflow->create($request->user(), $data);
+        $isDraft = $request->string('intent')->toString() === 'draft';
+        $queryRequest = $isDraft
+            ? $workflow->createDraft($request->user(), $data)
+            : $workflow->create($request->user(), $data);
+
+        if ($isDraft) {
+            Inertia::flash('toast', [
+                'type' => 'success',
+                'message' => 'Deployment batch saved as a draft.',
+            ]);
+        }
 
         return redirect()->route('query-requests.show', $queryRequest);
     }
@@ -322,6 +322,22 @@ class QueryRequestController extends Controller
         Inertia::flash('toast', $dispatched
             ? ['type' => 'success', 'message' => 'Deployment batch queued for execution.']
             : ['type' => 'error', 'message' => 'Deployment batch is blocked by its latest preflight checks.']);
+
+        return back();
+    }
+
+    public function preflight(QueryRequest $queryRequest, QueryRequestWorkflow $workflow): RedirectResponse
+    {
+        Gate::authorize('update', $queryRequest);
+
+        $queryRequest = $workflow->runPreflight($queryRequest, request()->user());
+
+        Inertia::flash('toast', [
+            'type' => $queryRequest->preflight_status->value === 'blocked' ? 'error' : 'success',
+            'message' => $queryRequest->preflight_status->value === 'blocked'
+                ? 'Preflight found blocked statements.'
+                : 'Preflight completed.',
+        ]);
 
         return back();
     }
@@ -526,13 +542,41 @@ class QueryRequestController extends Controller
                 'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
                 'access_duration_minutes' => $queryRequest->access_duration_minutes,
                 'was_approved' => in_array($queryRequest->status, [QueryRequestStatus::Approved, QueryRequestStatus::Scheduled], true),
+                'is_draft' => $queryRequest->status === QueryRequestStatus::Draft,
             ],
         ]);
     }
 
     public function update(UpdateQueryRequestRequest $request, QueryRequest $queryRequest, QueryRequestWorkflow $workflow): RedirectResponse
     {
-        $data = [
+        $data = $this->requestData($request);
+
+        $this->authorizeRequestedConnections($request->user(), $data);
+
+        $isDraft = $request->string('intent')->toString() === 'draft';
+        $submittingDraft = ! $isDraft && $queryRequest->status === QueryRequestStatus::Draft;
+        $queryRequest = $isDraft
+            ? $workflow->updateDraft($queryRequest, $request->user(), $data)
+            : $workflow->update($queryRequest, $request->user(), $data);
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $isDraft
+                ? 'Deployment batch draft saved.'
+                : ($submittingDraft
+                    ? 'Deployment batch submitted for workflow processing.'
+                    : 'Query request updated and returned for approval.'),
+        ]);
+
+        return redirect()->route('query-requests.show', $queryRequest);
+    }
+
+    /**
+     * @return array{database_connection_id:int,database_connection_ids:array<int, int>,request_kind:string,requested_access_mode:string|null,title:string,description:string|null,statements:array<int, array{sql:string,database_connection_id:int}>,scheduled_at:string|null,access_duration_minutes:int|null}
+     */
+    private function requestData(StoreQueryRequestRequest|UpdateQueryRequestRequest $request): array
+    {
+        return [
             'database_connection_id' => $request->integer('database_connection_id'),
             'database_connection_ids' => $request->validated('database_connection_ids', []),
             'request_kind' => $request->string('request_kind')->toString(),
@@ -543,21 +587,10 @@ class QueryRequestController extends Controller
             'scheduled_at' => $request->filled('scheduled_at') ? $request->string('scheduled_at')->toString() : null,
             'access_duration_minutes' => $request->filled('access_duration_minutes') ? $request->integer('access_duration_minutes') : null,
         ];
-
-        $this->authorizeRequestedConnections($request->user(), $data);
-
-        $queryRequest = $workflow->update($queryRequest, $request->user(), $data);
-
-        Inertia::flash('toast', [
-            'type' => 'success',
-            'message' => 'Query request updated and returned for approval.',
-        ]);
-
-        return redirect()->route('query-requests.show', $queryRequest);
     }
 
     /**
-     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
+     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, can_query_access_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
      */
     private function connectionOptions(User $user): array
     {
@@ -569,12 +602,14 @@ class QueryRequestController extends Controller
             ->map(function (DatabaseConnection $connection) use ($user): array {
                 $readPermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Read);
                 $writePermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Write);
+                $queryAccessPermission = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write);
 
                 return [
                     'id' => $connection->id,
                     'name' => $connection->name,
                     'driver' => $connection->driver->value,
                     'can_write' => $writePermission['access_mode']->allows(QueryType::Write),
+                    'can_query_access_write' => $queryAccessPermission['query_access_mode']->allows(QueryType::Write),
                     'read_requires_approval' => $readPermission['read_requires_approval'],
                     'write_requires_approval' => $writePermission['write_requires_approval'],
                     'max_write_session_minutes' => $writePermission['max_write_session_minutes'],

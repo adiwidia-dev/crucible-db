@@ -28,6 +28,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Validation\ValidationException;
 use Inertia\Testing\AssertableInertia as Assert;
 use RuntimeException;
 use Tests\TestCase;
@@ -124,6 +125,214 @@ class QueryRequestBatchWorkflowTest extends TestCase
         ])->assertSessionHasErrors('statements.1.sql');
 
         $this->assertDatabaseCount('query_requests', 0);
+    }
+
+    public function test_blocked_deployment_batch_can_be_saved_as_a_draft(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+
+        $response = $this->actingAs($admin)->post(route('query-requests.store'), [
+            'intent' => 'draft',
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Create reporting view',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'CREATE VIEW active_customers AS SELECT * FROM customers',
+            ]],
+        ]);
+
+        $queryRequest = QueryRequest::query()->firstOrFail();
+
+        $response->assertRedirect(route('query-requests.show', $queryRequest));
+        $this->assertSame(QueryRequestStatus::Draft, $queryRequest->status);
+        $this->assertSame(QueryType::Write, $queryRequest->query_type);
+        $this->assertSame(PreflightStatus::Blocked, $queryRequest->preflight_status);
+        $this->assertSame(
+            'CREATE VIEW active_customers AS SELECT * FROM customers',
+            $queryRequest->statements()->sole()->sql,
+        );
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'query_request.draft_saved',
+            'auditable_id' => $queryRequest->id,
+        ]);
+    }
+
+    public function test_draft_submission_requires_strict_validation_before_it_can_enter_the_workflow(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+
+        $this->actingAs($admin)->post(route('query-requests.store'), [
+            'intent' => 'draft',
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Create reporting view',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'CREATE VIEW active_customers AS SELECT * FROM customers',
+            ]],
+        ]);
+
+        $queryRequest = QueryRequest::query()->firstOrFail();
+
+        $this->actingAs($admin)
+            ->patch(route('query-requests.update', $queryRequest), [
+                'intent' => 'submit',
+                'request_kind' => QueryRequestKind::SingleExecution->value,
+                'title' => $queryRequest->title,
+                'statements' => [[
+                    'database_connection_id' => $connection->id,
+                    'sql' => 'CREATE VIEW active_customers AS SELECT * FROM customers',
+                ]],
+            ])
+            ->assertSessionHasErrors('statements.0.sql');
+
+        $this->assertSame(QueryRequestStatus::Draft, $queryRequest->refresh()->status);
+
+        $this->actingAs($admin)
+            ->patch(route('query-requests.update', $queryRequest), [
+                'intent' => 'submit',
+                'request_kind' => QueryRequestKind::SingleExecution->value,
+                'title' => $queryRequest->title,
+                'statements' => [[
+                    'database_connection_id' => $connection->id,
+                    'sql' => 'SELECT * FROM customers LIMIT 10',
+                ]],
+            ])
+            ->assertRedirect(route('query-requests.show', $queryRequest));
+
+        $this->assertSame(QueryRequestStatus::Approved, $queryRequest->refresh()->status);
+        $this->assertFalse($queryRequest->requires_approval);
+    }
+
+    public function test_draft_submission_stays_blocked_when_fresh_preflight_fails(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+
+        $this->actingAs($admin)->post(route('query-requests.store'), [
+            'intent' => 'draft',
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Create reporting view',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'CREATE VIEW active_customers AS SELECT * FROM customers',
+            ]],
+        ]);
+
+        $queryRequest = QueryRequest::query()->firstOrFail();
+        $connection->update(['is_active' => false]);
+
+        try {
+            app(QueryRequestWorkflow::class)->update($queryRequest, $admin, [
+                'request_kind' => QueryRequestKind::SingleExecution->value,
+                'title' => $queryRequest->title,
+                'statements' => [[
+                    'database_connection_id' => $connection->id,
+                    'sql' => 'SELECT * FROM customers LIMIT 10',
+                ]],
+            ]);
+            $this->fail('A draft with a blocked fresh preflight must not be submitted.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'This deployment batch is blocked by its latest preflight checks.',
+                $exception->errors()['statements'][0],
+            );
+        }
+
+        $this->assertSame(QueryRequestStatus::Draft, $queryRequest->refresh()->status);
+    }
+
+    public function test_draft_owner_can_run_preflight_again_without_submitting_the_batch(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+
+        $this->actingAs($admin)->post(route('query-requests.store'), [
+            'intent' => 'draft',
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Create reporting view',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'CREATE VIEW active_customers AS SELECT * FROM customers',
+            ]],
+        ]);
+
+        $queryRequest = QueryRequest::query()->firstOrFail();
+
+        $this->actingAs($admin)
+            ->from(route('query-requests.show', $queryRequest))
+            ->post(route('query-requests.preflight', $queryRequest))
+            ->assertRedirect(route('query-requests.show', $queryRequest));
+
+        $this->assertSame(QueryRequestStatus::Draft, $queryRequest->refresh()->status);
+        $this->assertSame(PreflightStatus::Blocked, $queryRequest->preflight_status);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'query_request.preflight_requested',
+            'auditable_id' => $queryRequest->id,
+        ]);
+    }
+
+    public function test_draft_owner_can_cancel_a_deployment_batch_draft(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+
+        $this->actingAs($admin)->post(route('query-requests.store'), [
+            'intent' => 'draft',
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Create reporting view',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'CREATE VIEW active_customers AS SELECT * FROM customers',
+            ]],
+        ]);
+
+        $queryRequest = QueryRequest::query()->firstOrFail();
+
+        $this->actingAs($admin)
+            ->from(route('query-requests.show', $queryRequest))
+            ->post(route('query-requests.cancel', $queryRequest), [
+                'reason' => 'The draft is no longer needed.',
+            ])
+            ->assertRedirect(route('query-requests.show', $queryRequest));
+
+        $this->assertSame(QueryRequestStatus::Cancelled, $queryRequest->refresh()->status);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'query_request.cancelled',
+            'auditable_id' => $queryRequest->id,
+        ]);
+    }
+
+    public function test_non_owner_cannot_save_another_users_draft(): void
+    {
+        $owner = $this->adminUser();
+        $otherUser = User::factory()->create();
+        $connection = DatabaseConnection::factory()->create();
+
+        $this->actingAs($owner)->post(route('query-requests.store'), [
+            'intent' => 'draft',
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Create reporting view',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'CREATE VIEW active_customers AS SELECT * FROM customers',
+            ]],
+        ]);
+
+        $queryRequest = QueryRequest::query()->firstOrFail();
+
+        $this->actingAs($otherUser)
+            ->patch(route('query-requests.update', $queryRequest), [
+                'intent' => 'draft',
+                'request_kind' => QueryRequestKind::SingleExecution->value,
+                'title' => 'Changed by another user',
+                'statements' => [[
+                    'database_connection_id' => $connection->id,
+                    'sql' => 'CREATE VIEW active_customers AS SELECT * FROM customers',
+                ]],
+            ])
+            ->assertForbidden();
     }
 
     public function test_deployment_batch_persists_a_per_statement_preflight_report(): void

@@ -46,6 +46,7 @@ type RoleFormData = {
         string,
         {
             access_mode: AccessMode;
+            query_access_mode: AccessMode;
             can_review: boolean;
             read_requires_approval: boolean;
             write_requires_approval: boolean;
@@ -56,6 +57,7 @@ type RoleFormData = {
         string,
         {
             access_mode: AccessMode;
+            query_access_mode: AccessMode;
             can_review: boolean;
             read_requires_approval: boolean;
             write_requires_approval: boolean;
@@ -91,6 +93,7 @@ type ConnectionGroup = {
 type PolicyDraft = {
     database_connection_id: number;
     access_mode: AccessMode;
+    query_access_mode: AccessMode;
     can_review: boolean;
     read_requires_approval: boolean;
     write_requires_approval: boolean;
@@ -100,11 +103,49 @@ type PolicyDraft = {
 type GroupPolicyDraft = {
     connection_group_id: number;
     access_mode: AccessMode;
+    query_access_mode: AccessMode;
     can_review: boolean;
     read_requires_approval: boolean;
     write_requires_approval: boolean;
     max_write_session_minutes: number | null;
 };
+
+function QueryAccessModeField({
+    name,
+    accessMode,
+    queryAccessMode,
+    onChange,
+}: {
+    name: string;
+    accessMode: AccessMode;
+    queryAccessMode: AccessMode;
+    onChange: (queryAccessMode: AccessMode) => void;
+}) {
+    return (
+        <>
+            <input
+                type="hidden"
+                name={name}
+                value={accessMode === 'write' ? queryAccessMode : 'read'}
+            />
+            {accessMode === 'write' && (
+                <>
+                    <Label>Query Access</Label>
+                    <select
+                        value={queryAccessMode}
+                        onChange={(event) =>
+                            onChange(event.target.value as AccessMode)
+                        }
+                        className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                        <option value="read">Read-only</option>
+                        <option value="write">Read + write</option>
+                    </select>
+                </>
+            )}
+        </>
+    );
+}
 
 export default function RoleForm({
     role,
@@ -121,6 +162,7 @@ export default function RoleForm({
             ? Object.entries(role.policies).map(([connectionId, policy]) => ({
                   database_connection_id: Number(connectionId),
                   access_mode: policy.access_mode,
+                  query_access_mode: policy.query_access_mode,
                   can_review: policy.can_review,
                   read_requires_approval: policy.read_requires_approval,
                   write_requires_approval: policy.write_requires_approval,
@@ -139,6 +181,7 @@ export default function RoleForm({
                       ([connectionGroupId, policy]) => ({
                           connection_group_id: Number(connectionGroupId),
                           access_mode: policy.access_mode,
+                          query_access_mode: policy.query_access_mode,
                           can_review: policy.can_review,
                           read_requires_approval: policy.read_requires_approval,
                           write_requires_approval:
@@ -166,6 +209,7 @@ export default function RoleForm({
             {
                 database_connection_id: connectionId,
                 access_mode: 'read',
+                query_access_mode: 'read',
                 can_review: false,
                 read_requires_approval: false,
                 write_requires_approval: false,
@@ -201,6 +245,7 @@ export default function RoleForm({
             {
                 connection_group_id: connectionGroupId,
                 access_mode: 'read',
+                query_access_mode: 'read',
                 can_review: false,
                 read_requires_approval: false,
                 write_requires_approval: false,
@@ -427,7 +472,7 @@ export default function RoleForm({
                                                                                 Remove
                                                                             </Button>
                                                                         </div>
-                                                                        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                                                                        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
                                                                             <div className="grid gap-2">
                                                                                 <Label>
                                                                                     Maximum
@@ -451,6 +496,11 @@ export default function RoleForm({
                                                                                             {
                                                                                                 access_mode:
                                                                                                     accessMode,
+                                                                                                query_access_mode:
+                                                                                                    accessMode ===
+                                                                                                    'write'
+                                                                                                        ? policy.query_access_mode
+                                                                                                        : 'read',
                                                                                                 write_requires_approval:
                                                                                                     accessMode ===
                                                                                                     'write',
@@ -487,6 +537,28 @@ export default function RoleForm({
                                                                                         ),
                                                                                     )}
                                                                                 </select>
+                                                                            </div>
+                                                                            <div className="grid gap-2">
+                                                                                <QueryAccessModeField
+                                                                                    name={`group_policies[${index}][query_access_mode]`}
+                                                                                    accessMode={
+                                                                                        policy.access_mode
+                                                                                    }
+                                                                                    queryAccessMode={
+                                                                                        policy.query_access_mode
+                                                                                    }
+                                                                                    onChange={(
+                                                                                        queryAccessMode,
+                                                                                    ) =>
+                                                                                        updateGroupPolicy(
+                                                                                            index,
+                                                                                            {
+                                                                                                query_access_mode:
+                                                                                                    queryAccessMode,
+                                                                                            },
+                                                                                        )
+                                                                                    }
+                                                                                />
                                                                             </div>
                                                                             <div className="grid gap-2">
                                                                                 <Label>
@@ -713,6 +785,10 @@ export default function RoleForm({
                                                                                     Reviewer
                                                                                 </th>
                                                                                 <th className="py-2.5 pr-4 font-medium">
+                                                                                    Query
+                                                                                    Access
+                                                                                </th>
+                                                                                <th className="py-2.5 pr-4 font-medium">
                                                                                     Read
                                                                                     approval
                                                                                 </th>
@@ -755,7 +831,7 @@ export default function RoleForm({
                                                                                             key={
                                                                                                 connection.id
                                                                                             }
-                                                                                            className="relative mb-3 grid grid-cols-1 gap-4 rounded-md border bg-muted/10 p-4 text-left transition-colors last:mb-0 hover:bg-muted/20 sm:grid-cols-2 xl:grid-cols-5"
+                                                                                            className="relative mb-3 grid grid-cols-1 gap-4 rounded-md border bg-muted/10 p-4 text-left transition-colors last:mb-0 hover:bg-muted/20 sm:grid-cols-2 xl:grid-cols-6"
                                                                                         >
                                                                                             <td className="col-span-full min-w-0 border-b pr-12 pb-3">
                                                                                                 <input
@@ -837,6 +913,11 @@ export default function RoleForm({
                                                                                                             {
                                                                                                                 access_mode:
                                                                                                                     accessMode,
+                                                                                                                query_access_mode:
+                                                                                                                    accessMode ===
+                                                                                                                    'write'
+                                                                                                                        ? policy.query_access_mode
+                                                                                                                        : 'read',
                                                                                                                 write_requires_approval:
                                                                                                                     accessMode ===
                                                                                                                     'write',
@@ -874,6 +955,28 @@ export default function RoleForm({
                                                                                                         errors[
                                                                                                             `policies.${index}.access_mode`
                                                                                                         ]
+                                                                                                    }
+                                                                                                />
+                                                                                            </td>
+                                                                                            <td className="grid gap-2">
+                                                                                                <QueryAccessModeField
+                                                                                                    name={`policies[${index}][query_access_mode]`}
+                                                                                                    accessMode={
+                                                                                                        policy.access_mode
+                                                                                                    }
+                                                                                                    queryAccessMode={
+                                                                                                        policy.query_access_mode
+                                                                                                    }
+                                                                                                    onChange={(
+                                                                                                        queryAccessMode,
+                                                                                                    ) =>
+                                                                                                        updatePolicy(
+                                                                                                            index,
+                                                                                                            {
+                                                                                                                query_access_mode:
+                                                                                                                    queryAccessMode,
+                                                                                                            },
+                                                                                                        )
                                                                                                     }
                                                                                                 />
                                                                                             </td>

@@ -91,17 +91,13 @@ class QueryRequestWorkflow
             }
 
             if ($requestKind === QueryRequestKind::QueryAccess) {
-                foreach ($databaseConnections as $connection) {
-                    if (! $requestedAccessMode instanceof AccessMode
-                        || ! $requester->effectiveDatabasePermissionFor(
-                            $connection,
-                            $this->queryTypeForAccessMode($requestedAccessMode),
-                        )['access_mode']->allows($this->queryTypeForAccessMode($requestedAccessMode))) {
-                        throw ValidationException::withMessages([
-                            'database_connection_ids' => 'Your role is not allowed to request the selected session access level for every selected database.',
-                        ]);
-                    }
+                if (! $requestedAccessMode instanceof AccessMode) {
+                    throw ValidationException::withMessages([
+                        'requested_access_mode' => 'Choose read-only or read + write access for this session.',
+                    ]);
                 }
+
+                $this->ensureCanRequestQueryAccess($requester, $databaseConnections, $requestedAccessMode);
             }
         }
 
@@ -190,6 +186,59 @@ class QueryRequestWorkflow
      *
      * @throws ValidationException
      */
+    public function createDraft(User $requester, array $data): QueryRequest
+    {
+        $this->ensureDeploymentBatch($data);
+
+        $statements = $this->draftStatements($this->statementInput($data));
+        $databaseConnections = $this->databaseConnectionsForStatements($statements);
+        $databaseConnection = $databaseConnections->get($statements[0]['database_connection_id']);
+
+        if (! $databaseConnection instanceof DatabaseConnection) {
+            throw ValidationException::withMessages([
+                'database_connection_id' => 'Select a valid database connection.',
+            ]);
+        }
+
+        $scheduledAt = filled($data['scheduled_at'] ?? null)
+            ? Carbon::parse($data['scheduled_at'])
+            : null;
+
+        return DB::transaction(function () use ($requester, $data, $statements, $databaseConnection, $scheduledAt): QueryRequest {
+            $queryRequest = QueryRequest::query()->create([
+                'requester_id' => $requester->id,
+                'database_connection_id' => $databaseConnection->id,
+                'title' => $data['title'],
+                'description' => $data['description'] ?? null,
+                'sql' => $statements[0]['sql'],
+                'query_type' => QueryType::Write,
+                'request_kind' => QueryRequestKind::SingleExecution,
+                'status' => QueryRequestStatus::Draft,
+                'requires_approval' => true,
+                'scheduled_at' => $scheduledAt,
+            ]);
+
+            $this->replaceStatements($queryRequest, $statements);
+            $this->refreshDeploymentPreflight($queryRequest);
+
+            $this->auditLogger->log('query_request.draft_saved', $requester, $queryRequest, [
+                'statement_count' => count($statements),
+                'database_connection_ids' => collect($statements)
+                    ->pluck('database_connection_id')
+                    ->unique()
+                    ->values()
+                    ->all(),
+            ]);
+
+            return $queryRequest;
+        });
+    }
+
+    /**
+     * @param  array{database_connection_id?:int,database_connection_ids?:array<int, int>,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}  $data
+     *
+     * @throws ValidationException
+     */
     public function update(QueryRequest $queryRequest, User $actor, array $data): QueryRequest
     {
         $requestKind = QueryRequestKind::from($data['request_kind']);
@@ -235,17 +284,13 @@ class QueryRequestWorkflow
             }
 
             if ($requestKind === QueryRequestKind::QueryAccess) {
-                foreach ($databaseConnections as $connection) {
-                    if (! $requestedAccessMode instanceof AccessMode
-                        || ! $actor->effectiveDatabasePermissionFor(
-                            $connection,
-                            $this->queryTypeForAccessMode($requestedAccessMode),
-                        )['access_mode']->allows($this->queryTypeForAccessMode($requestedAccessMode))) {
-                        throw ValidationException::withMessages([
-                            'database_connection_ids' => 'Your role is not allowed to request the selected session access level for every selected database.',
-                        ]);
-                    }
+                if (! $requestedAccessMode instanceof AccessMode) {
+                    throw ValidationException::withMessages([
+                        'requested_access_mode' => 'Choose read-only or read + write access for this session.',
+                    ]);
                 }
+
+                $this->ensureCanRequestQueryAccess($actor, $databaseConnections, $requestedAccessMode);
             }
         }
 
@@ -260,7 +305,14 @@ class QueryRequestWorkflow
             $this->ensureWriteSessionDurationIsAllowed($actor, $databaseConnections, $accessDurationMinutes ?? 60);
         }
 
-        return DB::transaction(function () use ($queryRequest, $actor, $databaseConnection, $databaseConnections, $data, $requestKind, $statements, $usesEmergencySqlFallback, $queryType, $requestedAccessMode, $scheduledAt, $accessDurationMinutes): QueryRequest {
+        $requiresApproval = $this->requiresApproval(
+            $actor,
+            $databaseConnections,
+            $statements,
+            $requestedAccessMode,
+        );
+
+        return DB::transaction(function () use ($queryRequest, $actor, $databaseConnection, $databaseConnections, $data, $requestKind, $statements, $usesEmergencySqlFallback, $queryType, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
             $lockedQueryRequest = QueryRequest::query()->lockForUpdate()->findOrFail($queryRequest->id);
 
             if (! $lockedQueryRequest->isEditable()) {
@@ -270,6 +322,12 @@ class QueryRequestWorkflow
             }
 
             $previousStatus = $lockedQueryRequest->status;
+            $submittingDraft = $previousStatus === QueryRequestStatus::Draft;
+            $status = $submittingDraft
+                ? (! $requiresApproval
+                    ? ($scheduledAt?->isFuture() ? QueryRequestStatus::Scheduled : QueryRequestStatus::Approved)
+                    : QueryRequestStatus::PendingReview)
+                : QueryRequestStatus::PendingReview;
 
             $lockedQueryRequest->forceFill([
                 'database_connection_id' => $databaseConnection->id,
@@ -279,12 +337,12 @@ class QueryRequestWorkflow
                 'query_type' => $queryType,
                 'request_kind' => $requestKind,
                 'requested_access_mode' => $requestedAccessMode,
-                'status' => QueryRequestStatus::PendingReview,
-                'requires_approval' => true,
+                'status' => $status,
+                'requires_approval' => $submittingDraft ? $requiresApproval : true,
                 'scheduled_at' => $scheduledAt,
                 'access_duration_minutes' => $accessDurationMinutes,
-                'approved_by_id' => null,
-                'approved_at' => null,
+                'approved_by_id' => $submittingDraft && ! $requiresApproval ? $actor->id : null,
+                'approved_at' => $submittingDraft && ! $requiresApproval ? now() : null,
                 'dispatched_by_id' => null,
                 'dispatched_at' => null,
                 'completed_at' => null,
@@ -300,7 +358,13 @@ class QueryRequestWorkflow
             );
 
             if ($requestKind === QueryRequestKind::SingleExecution) {
-                $this->refreshDeploymentPreflight($lockedQueryRequest);
+                $report = $this->refreshDeploymentPreflight($lockedQueryRequest);
+
+                if ($submittingDraft && $report['status'] === PreflightStatus::Blocked) {
+                    throw ValidationException::withMessages([
+                        'statements' => 'This deployment batch is blocked by its latest preflight checks.',
+                    ]);
+                }
             }
 
             $this->auditLogger->log('query_request.updated', $actor, $lockedQueryRequest, [
@@ -325,7 +389,103 @@ class QueryRequestWorkflow
                 ]);
             }
 
-            $this->notificationDispatcher->reapprovalRequired($lockedQueryRequest);
+            if ($submittingDraft && $requiresApproval) {
+                $this->notificationDispatcher->requestSubmitted($lockedQueryRequest);
+            } elseif (! $submittingDraft) {
+                $this->notificationDispatcher->reapprovalRequired($lockedQueryRequest);
+            }
+
+            return $lockedQueryRequest->refresh();
+        });
+    }
+
+    /**
+     * @param  array{database_connection_id?:int,database_connection_ids?:array<int, int>,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}  $data
+     *
+     * @throws ValidationException
+     */
+    public function updateDraft(QueryRequest $queryRequest, User $actor, array $data): QueryRequest
+    {
+        $this->ensureDeploymentBatch($data);
+
+        $statements = $this->draftStatements($this->statementInput($data));
+        $databaseConnections = $this->databaseConnectionsForStatements($statements);
+        $databaseConnection = $databaseConnections->get($statements[0]['database_connection_id']);
+
+        if (! $databaseConnection instanceof DatabaseConnection) {
+            throw ValidationException::withMessages([
+                'database_connection_id' => 'Select a valid database connection.',
+            ]);
+        }
+
+        $scheduledAt = filled($data['scheduled_at'] ?? null)
+            ? Carbon::parse($data['scheduled_at'])
+            : null;
+
+        return DB::transaction(function () use ($queryRequest, $actor, $data, $statements, $databaseConnection, $scheduledAt): QueryRequest {
+            $lockedQueryRequest = QueryRequest::query()->lockForUpdate()->findOrFail($queryRequest->id);
+
+            if ($lockedQueryRequest->status !== QueryRequestStatus::Draft) {
+                throw ValidationException::withMessages([
+                    'query_request' => 'Only deployment drafts can be saved as drafts.',
+                ]);
+            }
+
+            $lockedQueryRequest->forceFill([
+                'database_connection_id' => $databaseConnection->id,
+                'title' => $data['title'],
+                'description' => $data['description'] ?? null,
+                'sql' => $statements[0]['sql'],
+                'query_type' => QueryType::Write,
+                'scheduled_at' => $scheduledAt,
+                'requires_approval' => true,
+                'approved_by_id' => null,
+                'approved_at' => null,
+                'dispatched_by_id' => null,
+                'dispatched_at' => null,
+                'completed_at' => null,
+                'result_summary' => null,
+                'last_error' => null,
+            ])->save();
+
+            $this->replaceStatements($lockedQueryRequest, $statements);
+            $this->refreshDeploymentPreflight($lockedQueryRequest);
+
+            $this->auditLogger->log('query_request.draft_saved', $actor, $lockedQueryRequest, [
+                'statement_count' => count($statements),
+                'database_connection_ids' => collect($statements)
+                    ->pluck('database_connection_id')
+                    ->unique()
+                    ->values()
+                    ->all(),
+            ]);
+
+            return $lockedQueryRequest->refresh();
+        });
+    }
+
+    /**
+     * @throws ValidationException
+     */
+    public function runPreflight(QueryRequest $queryRequest, User $actor): QueryRequest
+    {
+        return DB::transaction(function () use ($queryRequest, $actor): QueryRequest {
+            $lockedQueryRequest = QueryRequest::query()->lockForUpdate()->findOrFail($queryRequest->id);
+
+            if ($lockedQueryRequest->request_kind !== QueryRequestKind::SingleExecution
+                || ! $lockedQueryRequest->isEditable()) {
+                throw ValidationException::withMessages([
+                    'query_request' => 'Only editable deployment batches can run preflight.',
+                ]);
+            }
+
+            $report = $this->refreshDeploymentPreflight($lockedQueryRequest);
+
+            $this->auditLogger->log('query_request.preflight_requested', $actor, $lockedQueryRequest, [
+                'status' => $report['status']->value,
+                'blocker_count' => $report['summary']['blocker_count'],
+                'warning_count' => $report['summary']['warning_count'],
+            ]);
 
             return $lockedQueryRequest->refresh();
         });
@@ -456,6 +616,7 @@ class QueryRequestWorkflow
                 ->findOrFail($queryRequest->id);
 
             $canCancel = in_array($lockedQueryRequest->status, [
+                QueryRequestStatus::Draft,
                 QueryRequestStatus::PendingReview,
                 QueryRequestStatus::Approved,
                 QueryRequestStatus::Scheduled,
@@ -731,10 +892,11 @@ class QueryRequestWorkflow
             return;
         }
 
-        $queryType = $this->queryTypeForAccessMode($requestedAccessMode);
-
         foreach ($databaseConnections as $connection) {
-            if (! $user->effectiveDatabasePermissionFor($connection, $queryType)['access_mode']->allows($queryType)) {
+            $queryType = $this->queryTypeForAccessMode($requestedAccessMode);
+            $permission = $user->effectiveQueryAccessPermissionFor($connection, $queryType);
+
+            if (! $permission['query_access_mode']->allows($queryType)) {
                 throw ValidationException::withMessages([
                     'database_connection_ids' => 'Your role is not allowed to request the selected session access level for every selected database.',
                 ]);
@@ -779,7 +941,7 @@ class QueryRequestWorkflow
             $queryType = $this->queryTypeForAccessMode($requestedAccessMode);
 
             return $databaseConnections->contains(function (DatabaseConnection $connection) use ($user, $queryType): bool {
-                $permission = $user->effectiveDatabasePermissionFor($connection, $queryType);
+                $permission = $user->effectiveQueryAccessPermissionFor($connection, $queryType);
 
                 return $queryType === QueryType::Read
                     ? $permission['read_requires_approval']
@@ -815,7 +977,7 @@ class QueryRequestWorkflow
         }
 
         foreach ($databaseConnections as $connection) {
-            $maximumDuration = $user->effectiveDatabasePermissionFor($connection, QueryType::Write)['max_write_session_minutes'];
+            $maximumDuration = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write)['max_write_session_minutes'];
 
             if ($maximumDuration !== null && $durationMinutes > $maximumDuration) {
                 throw ValidationException::withMessages([
@@ -823,6 +985,64 @@ class QueryRequestWorkflow
                 ]);
             }
         }
+    }
+
+    /**
+     * @param  array{request_kind:string}  $data
+     *
+     * @throws ValidationException
+     */
+    private function ensureDeploymentBatch(array $data): void
+    {
+        if (($data['request_kind'] ?? null) !== QueryRequestKind::SingleExecution->value) {
+            throw ValidationException::withMessages([
+                'request_kind' => 'Only deployment batches can be saved as drafts.',
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<int, array{sql?:string,database_connection_id?:int}>  $statements
+     * @return array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int}>
+     *
+     * @throws ValidationException
+     */
+    private function draftStatements(array $statements): array
+    {
+        if ($statements === []) {
+            throw ValidationException::withMessages([
+                'statements' => 'At least one SQL statement is required.',
+            ]);
+        }
+
+        $drafts = [];
+
+        foreach (array_values($statements) as $index => $statement) {
+            $databaseConnectionId = (int) ($statement['database_connection_id'] ?? 0);
+
+            if ($databaseConnectionId < 1) {
+                throw ValidationException::withMessages([
+                    "statements.{$index}.database_connection_id" => 'Select a connection for this statement.',
+                ]);
+            }
+
+            $sql = (string) ($statement['sql'] ?? '');
+
+            if (blank($sql)) {
+                throw ValidationException::withMessages([
+                    "statements.{$index}.sql" => 'The SQL statement is required.',
+                ]);
+            }
+
+            $drafts[] = [
+                'position' => $index + 1,
+                'database_connection_id' => $databaseConnectionId,
+                'sql' => $sql,
+                'query_type' => QueryType::Write,
+            ];
+        }
+
+        return $drafts;
     }
 
     /**

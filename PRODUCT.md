@@ -23,7 +23,7 @@ Do not resemble a generic CRUD admin template, a decorative SaaS dashboard, a Cl
 - **Proximity creates confidence.** Put the next action, its consequences, and its feedback beside the object it affects.
 - **Dense, never crowded.** Optimize repeated desktop workflows with compact structure, strong hierarchy, and progressive disclosure.
 - **Friction follows risk.** Routine navigation stays fast; destructive or production-impacting actions receive explicit context and confirmation.
-- **Access is explicit.** A query-access session declares its permitted level before it starts, and the application enforces that level for every query.
+- **Access is explicit.** A query-access session declares its permitted level before it starts, and the application enforces that level for every query. Deployment write authority and interactive Query Access write capability are separate permissions, with read-only as the default for write-capable roles.
 - **Warnings guide; blocks protect.** Conservative preflight warnings inform requesters and reviewers, while definite safety failures prevent approval or execution.
 - **Policy is deliberate.** Workspace administrators decide which governed SQL statement families are available. Emergency fallback is a separately enabled, audited Deployment Batch escape hatch for one otherwise unsupported statement; it never applies to Query Access and does not permit administrative, file-access, security-management, procedural, or transaction-control SQL.
 

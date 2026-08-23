@@ -15,13 +15,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $role_id
  * @property int $connection_group_id
  * @property AccessMode $access_mode
+ * @property AccessMode $query_access_mode
  * @property bool $can_review
  * @property bool $requires_approval
  * @property bool $read_requires_approval
  * @property bool $write_requires_approval
  * @property int|null $max_write_session_minutes
  */
-#[Fillable(['role_id', 'connection_group_id', 'access_mode', 'can_review', 'requires_approval', 'read_requires_approval', 'write_requires_approval', 'max_write_session_minutes'])]
+#[Fillable(['role_id', 'connection_group_id', 'access_mode', 'query_access_mode', 'can_review', 'requires_approval', 'read_requires_approval', 'write_requires_approval', 'max_write_session_minutes'])]
 class RoleConnectionGroupPolicy extends Model
 {
     /** @use HasFactory<RoleConnectionGroupPolicyFactory> */
@@ -31,6 +32,7 @@ class RoleConnectionGroupPolicy extends Model
     {
         return [
             'access_mode' => AccessMode::class,
+            'query_access_mode' => AccessMode::class,
             'can_review' => 'boolean',
             'requires_approval' => 'boolean',
             'read_requires_approval' => 'boolean',

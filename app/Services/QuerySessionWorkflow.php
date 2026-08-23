@@ -51,7 +51,7 @@ class QuerySessionWorkflow
         $sessionQueryType = $sessionAccessMode === AccessMode::Write ? QueryType::Write : QueryType::Read;
 
         if (! $user->isAdmin() && $databaseConnections->contains(
-            fn (DatabaseConnection $connection): bool => ! $user->effectiveDatabasePermissionFor($connection, $sessionQueryType)['access_mode']->allows($sessionQueryType),
+            fn (DatabaseConnection $connection): bool => ! $user->effectiveQueryAccessPermissionFor($connection, $sessionQueryType)['query_access_mode']->allows($sessionQueryType),
         )) {
             throw ValidationException::withMessages([
                 'query_request' => 'You no longer have the approved session access level on every selected database.',
@@ -122,9 +122,9 @@ class QuerySessionWorkflow
             ]);
         }
 
-        $permission = $user->effectiveDatabasePermissionFor($databaseConnection, $queryType);
+        $permission = $user->effectiveQueryAccessPermissionFor($databaseConnection, $queryType);
 
-        if (! $user->isAdmin() && ! $permission['access_mode']->allows($queryType)) {
+        if (! $user->isAdmin() && ! $permission['query_access_mode']->allows($queryType)) {
             throw ValidationException::withMessages([
                 'sql' => 'Your current roles are not allowed to run this query type on the selected database.',
             ]);

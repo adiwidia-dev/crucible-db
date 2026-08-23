@@ -24,6 +24,7 @@ class RoleConnectionGroupPolicyFactory extends Factory
             'role_id' => Role::factory(),
             'connection_group_id' => ConnectionGroup::factory(),
             'access_mode' => AccessMode::Read,
+            'query_access_mode' => AccessMode::Read,
             'can_review' => false,
             'requires_approval' => true,
             'read_requires_approval' => true,

@@ -225,6 +225,7 @@ class QueryRequest extends Model
     {
         return $this->dispatched_at === null
             && in_array($this->status, [
+                QueryRequestStatus::Draft,
                 QueryRequestStatus::PendingReview,
                 QueryRequestStatus::Approved,
                 QueryRequestStatus::Rejected,

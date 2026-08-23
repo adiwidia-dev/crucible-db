@@ -22,7 +22,7 @@ Crucible DB gives engineering teams a safer path to production database work wit
 - **Deployment batches** — submit one or more ordered SQL statements, each scoped to its own target connection, for review, scheduling, and asynchronous execution.
 - **Time-bounded database access** — request read-only or read + write query sessions across one or more approved connections; sessions automatically expire and enforce their granted access level.
 - **Clear accountability** — record requests, reviews, executions, session activity, and administrative actions.
-- **Role-scoped access** — grant users the maximum read/write access, reviewer authority, approval requirements, and optional write-session duration through reusable connection groups, with individual connection exceptions where needed.
+- **Role-scoped access** — grant users the maximum deployment read/write access, reviewer authority, approval requirements, and optional write-session duration through reusable connection groups, with individual connection exceptions where needed. Write-capable policies default Query Access to read-only until an administrator explicitly permits read + write sessions.
 - **Controlled SQL surface** — administrators can enable each governed statement family or allow all of them. An audited emergency fallback can admit one otherwise unsupported Deployment Batch statement as write access, while administrative, file-access, security-management, procedural, transaction-control, and EXPLAIN ANALYZE SQL remain blocked.
 - **Operational guardrails** — show conservative per-statement preflight findings, require fresh preflight immediately before a deployment runs, and block definite safety violations.
 - **Follow-up and visibility** — cancel eligible work, create linked retries with fresh policy evaluation, watch important requests or connections, and receive in-app or optional email notifications.
@@ -56,6 +56,8 @@ Common-table expressions are classified by their top-level executable statement,
 The optional **Emergency SQL fallback** applies only to Deployment Batches. It treats an otherwise unsupported, single statement as write access, still checks every target role and approval policy, records an explicit preflight warning, and writes audit events. Query Access sessions cannot use this fallback.
 
 Query Access executes exactly one SQL statement at a time. In the SQL editor, **Run** submits the whole editor and requires it to contain one statement. Selecting a statement changes the action to **Run selected**; `Cmd+Enter` on macOS or `Ctrl+Enter` elsewhere executes that selection.
+
+Deployment Batches can be saved as non-executable drafts, including when preflight is blocked. Drafts preserve their latest preflight report but do not create review work, notifications, schedules, or execution jobs. **Run preflight** rechecks a saved editable batch on demand; submission always repeats strict validation and requires a fresh non-blocked server preflight.
 
 ## Quick start for contributors
 

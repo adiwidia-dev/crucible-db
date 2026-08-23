@@ -80,6 +80,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('query-requests.reviews.store');
     Route::post('query-requests/{query_request}/dispatch', [QueryRequestController::class, 'dispatch'])
         ->name('query-requests.dispatch');
+    Route::post('query-requests/{query_request}/preflight', [QueryRequestController::class, 'preflight'])
+        ->name('query-requests.preflight');
     Route::post('query-requests/{query_request}/cancel', [QueryRequestController::class, 'cancel'])
         ->name('query-requests.cancel');
     Route::post('query-requests/{query_request}/retry', [QueryRequestController::class, 'retry'])

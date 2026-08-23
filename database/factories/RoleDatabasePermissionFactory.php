@@ -24,6 +24,7 @@ class RoleDatabasePermissionFactory extends Factory
             'role_id' => Role::factory(),
             'database_connection_id' => DatabaseConnection::factory(),
             'access_mode' => AccessMode::Read,
+            'query_access_mode' => AccessMode::Read,
             'can_review' => false,
             'requires_approval' => true,
         ];
@@ -33,6 +34,14 @@ class RoleDatabasePermissionFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'access_mode' => AccessMode::Write,
+        ]);
+    }
+
+    public function queryAccessWrite(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::Write,
         ]);
     }
 

@@ -913,6 +913,11 @@ export default function QueryRequestShow({
                                                     <InputError
                                                         message={errors.reason}
                                                     />
+                                                    <InputError
+                                                        message={
+                                                            errors.query_request
+                                                        }
+                                                    />
                                                     <DialogFooter className="mt-2">
                                                         <DialogClose asChild>
                                                             <Button variant="outline">
@@ -1213,20 +1218,45 @@ export default function QueryRequestShow({
                                     execution.
                                 </p>
                             </div>
-                            <span
-                                className={`w-fit rounded-md border px-2 py-1 text-xs font-medium ${
-                                    query_request.preflight.status === 'blocked'
-                                        ? 'border-red-200 bg-red-50 text-red-800 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300'
-                                        : query_request.preflight.status ===
-                                            'passed_with_warnings'
-                                          ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200'
-                                          : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300'
-                                }`}
-                            >
-                                {preflightLabel}
-                                {query_request.preflight.warning_count > 0 &&
-                                    ` · ${query_request.preflight.warning_count} warning${query_request.preflight.warning_count === 1 ? '' : 's'}`}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                    className={`w-fit rounded-md border px-2 py-1 text-xs font-medium ${
+                                        query_request.preflight.status ===
+                                        'blocked'
+                                            ? 'border-red-200 bg-red-50 text-red-800 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300'
+                                            : query_request.preflight.status ===
+                                                'passed_with_warnings'
+                                              ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200'
+                                              : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                    }`}
+                                >
+                                    {preflightLabel}
+                                    {query_request.preflight.warning_count >
+                                        0 &&
+                                        ` · ${query_request.preflight.warning_count} warning${query_request.preflight.warning_count === 1 ? '' : 's'}`}
+                                </span>
+                                {can_update && (
+                                    <Form
+                                        {...QueryRequestController.preflight.form(
+                                            query_request.id,
+                                        )}
+                                    >
+                                        {({ processing }) => (
+                                            <Button
+                                                type="submit"
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={processing}
+                                            >
+                                                <RefreshCw />
+                                                {processing
+                                                    ? 'Running preflight...'
+                                                    : 'Run preflight'}
+                                            </Button>
+                                        )}
+                                    </Form>
+                                )}
+                            </div>
                         </div>
                         {query_request.preflight.status === 'not_run' ||
                         query_request.preflight.status === 'stale' ? (

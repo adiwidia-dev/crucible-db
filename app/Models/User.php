@@ -141,13 +141,14 @@ class User extends Authenticatable implements PasskeyUser
     }
 
     /**
-     * @return array{access_mode: AccessMode, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
+     * @return array{access_mode: AccessMode, query_access_mode: AccessMode, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
      */
     public function effectiveDatabasePermission(DatabaseConnection $databaseConnection): array
     {
         if ($this->isAdmin()) {
             return [
                 'access_mode' => AccessMode::Write,
+                'query_access_mode' => AccessMode::Write,
                 'can_review' => true,
                 'read_requires_approval' => false,
                 'write_requires_approval' => false,
@@ -169,13 +170,14 @@ class User extends Authenticatable implements PasskeyUser
     /**
      * Resolve the first ordered role policy that grants the requested query type.
      *
-     * @return array{access_mode: AccessMode, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
+     * @return array{access_mode: AccessMode, query_access_mode: AccessMode, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
      */
     public function effectiveDatabasePermissionFor(DatabaseConnection $databaseConnection, QueryType $queryType): array
     {
         if ($this->isAdmin()) {
             return [
                 'access_mode' => AccessMode::Write,
+                'query_access_mode' => AccessMode::Write,
                 'read_requires_approval' => false,
                 'write_requires_approval' => false,
                 'max_write_session_minutes' => null,
@@ -186,6 +188,34 @@ class User extends Authenticatable implements PasskeyUser
             $permission = $this->permissionForRole($role, $databaseConnection);
 
             if ($permission !== null && $permission['access_mode']->allows($queryType)) {
+                return $permission;
+            }
+        }
+
+        return $this->noDatabasePermission();
+    }
+
+    /**
+     * Resolve the first ordered role policy that grants the requested Query Access capability.
+     *
+     * @return array{access_mode: AccessMode, query_access_mode: AccessMode, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
+     */
+    public function effectiveQueryAccessPermissionFor(DatabaseConnection $databaseConnection, QueryType $queryType): array
+    {
+        if ($this->isAdmin()) {
+            return [
+                'access_mode' => AccessMode::Write,
+                'query_access_mode' => AccessMode::Write,
+                'read_requires_approval' => false,
+                'write_requires_approval' => false,
+                'max_write_session_minutes' => null,
+            ];
+        }
+
+        foreach ($this->authorizationRoles() as $role) {
+            $permission = $this->permissionForRole($role, $databaseConnection);
+
+            if ($permission !== null && $permission['query_access_mode']->allows($queryType)) {
                 return $permission;
             }
         }
@@ -267,7 +297,7 @@ class User extends Authenticatable implements PasskeyUser
     }
 
     /**
-     * @return array{access_mode: AccessMode, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}|null
+     * @return array{access_mode: AccessMode, query_access_mode: AccessMode, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}|null
      */
     private function permissionForRole(Role $role, DatabaseConnection $databaseConnection): ?array
     {
@@ -292,7 +322,7 @@ class User extends Authenticatable implements PasskeyUser
 
     /**
      * @param  Collection<int, RoleConnectionGroupPolicy>  $policies
-     * @return array{access_mode: AccessMode, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
+     * @return array{access_mode: AccessMode, query_access_mode: AccessMode, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
      */
     private function mostRestrictiveGroupPermission(Collection $policies): array
     {
@@ -309,9 +339,21 @@ class User extends Authenticatable implements PasskeyUser
             ->pluck('max_write_session_minutes')
             ->filter(fn (?int $minutes): bool => $minutes !== null)
             ->min();
+        $queryAccessMode = $policies
+            ->pluck('query_access_mode')
+            ->sortBy(fn (AccessMode $mode): int => match ($mode) {
+                AccessMode::None => 0,
+                AccessMode::Read => 1,
+                AccessMode::Write => 2,
+            })
+            ->first();
+        $resolvedAccessMode = $accessMode instanceof AccessMode ? $accessMode : AccessMode::None;
 
         return [
-            'access_mode' => $accessMode instanceof AccessMode ? $accessMode : AccessMode::None,
+            'access_mode' => $resolvedAccessMode,
+            'query_access_mode' => $resolvedAccessMode === AccessMode::Write
+                ? ($queryAccessMode instanceof AccessMode ? $queryAccessMode : AccessMode::Read)
+                : $resolvedAccessMode,
             'can_review' => $policies->contains(fn (RoleConnectionGroupPolicy $policy): bool => $policy->can_review),
             'read_requires_approval' => $policies->contains(fn (RoleConnectionGroupPolicy $policy): bool => $policy->read_requires_approval),
             'write_requires_approval' => $policies->contains(fn (RoleConnectionGroupPolicy $policy): bool => $policy->write_requires_approval),
@@ -320,12 +362,15 @@ class User extends Authenticatable implements PasskeyUser
     }
 
     /**
-     * @return array{access_mode: AccessMode, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
+     * @return array{access_mode: AccessMode, query_access_mode: AccessMode, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
      */
     private function permissionAttributes(RoleDatabasePermission|RoleConnectionGroupPolicy $permission): array
     {
         return [
             'access_mode' => $permission->access_mode,
+            'query_access_mode' => $permission->access_mode === AccessMode::Write
+                ? $permission->query_access_mode
+                : $permission->access_mode,
             'can_review' => $permission->can_review,
             'read_requires_approval' => $permission->read_requires_approval,
             'write_requires_approval' => $permission->write_requires_approval,
@@ -363,12 +408,13 @@ class User extends Authenticatable implements PasskeyUser
     }
 
     /**
-     * @return array{access_mode: AccessMode, can_review: false, read_requires_approval: true, write_requires_approval: true, max_write_session_minutes: null}
+     * @return array{access_mode: AccessMode, query_access_mode: AccessMode, can_review: false, read_requires_approval: true, write_requires_approval: true, max_write_session_minutes: null}
      */
     private function noDatabasePermission(): array
     {
         return [
             'access_mode' => AccessMode::None,
+            'query_access_mode' => AccessMode::None,
             'can_review' => false,
             'read_requires_approval' => true,
             'write_requires_approval' => true,

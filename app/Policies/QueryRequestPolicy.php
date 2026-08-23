@@ -83,6 +83,7 @@ class QueryRequestPolicy
     public function cancel(User $user, QueryRequest $queryRequest): bool
     {
         $canCancel = in_array($queryRequest->status, [
+            QueryRequestStatus::Draft,
             QueryRequestStatus::PendingReview,
             QueryRequestStatus::Approved,
             QueryRequestStatus::Scheduled,

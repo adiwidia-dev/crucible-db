@@ -33,22 +33,23 @@ export default function AuthSimpleLayout({
             </header>
 
             <main className="flex flex-1 items-center justify-center px-6 py-12 md:px-10">
-                <div className="w-full max-w-md">
-                    <div className="grid gap-8">
-                        <div className="space-y-2">
-                            <p className="text-xs font-medium tracking-[0.08em] text-muted-foreground uppercase">
-                                Secure sign in
-                            </p>
-                            <h1 className="text-2xl font-semibold tracking-tight">
-                                {title}
-                            </h1>
-                            <p className="max-w-sm text-sm leading-6 text-muted-foreground">
-                                {description}
-                            </p>
-                        </div>
-                        <div className="border-t pt-6">{children}</div>
+                <section
+                    aria-labelledby="auth-title"
+                    className="w-full max-w-md overflow-hidden border bg-background sm:rounded-lg"
+                >
+                    <div className="border-b px-5 py-5 sm:px-8">
+                        <h1
+                            id="auth-title"
+                            className="text-2xl font-semibold tracking-tight"
+                        >
+                            {title}
+                        </h1>
+                        <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                            {description}
+                        </p>
                     </div>
-                </div>
+                    <div className="px-5 py-6 sm:px-8 sm:py-7">{children}</div>
+                </section>
             </main>
         </div>
     );
