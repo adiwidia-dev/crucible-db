@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
  * @phpstan-type RequestQueueItem array{
  *     id: int,
  *     title: string,
- *     status: 'approved'|'cancelled'|'completed'|'failed'|'pending_review'|'rejected'|'running'|'scheduled',
+ *     status: 'approved'|'cancelled'|'completed'|'draft'|'failed'|'pending_review'|'rejected'|'running'|'scheduled',
  *     request_kind: 'query_access'|'single_execution',
  *     query_type: 'read'|'write',
  *     requested_access_mode: 'none'|'read'|'write'|null,

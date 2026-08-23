@@ -988,7 +988,7 @@ class QueryRequestWorkflow
     }
 
     /**
-     * @param  array{request_kind:string}  $data
+     * @param  array{request_kind?:string}  $data
      *
      * @throws ValidationException
      */
