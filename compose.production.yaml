@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${CRUCIBLE_IMAGE:-hephaestus/crucible-db:alpha}
+    image: ${CRUCIBLE_IMAGE:-hephaestus/crucible-db:0.1.0}
     pull_policy: always
     env_file:
       - ${CRUCIBLE_ENV_FILE:-.env.production}
@@ -20,6 +20,12 @@ services:
     init: true
     restart: unless-stopped
     stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
     ports:
       - "8000:8000"
     volumes:

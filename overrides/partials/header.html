@@ -57,6 +57,25 @@
       {% endif %}
     {% endif %}
     <a
+      href="{{ config.extra.release_url }}"
+      title="Crucible DB {{ config.extra.release_version }} release notes"
+      aria-label="Crucible DB {{ config.extra.release_version }} release notes"
+      class="crucible-header-release"
+    >
+      {{ config.extra.release_version }}
+    </a>
+    <a
+      href="{{ config.extra.github_star_url }}"
+      target="_blank"
+      rel="noopener"
+      title="Star Crucible DB on GitHub"
+      aria-label="Star Crucible DB on GitHub"
+      class="crucible-header-star"
+    >
+      {% include ".icons/material/star-outline.svg" %}
+      <span>Star</span>
+    </a>
+    <a
       href="{{ config.extra.github_url }}"
       target="_blank"
       rel="noopener"

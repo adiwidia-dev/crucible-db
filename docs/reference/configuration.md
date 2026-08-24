@@ -6,7 +6,7 @@ Production loads its configuration from `.env.production` through `compose.produ
 
 | Value | Purpose |
 | --- | --- |
-| `CRUCIBLE_IMAGE` | Overrides the application image. Defaults to `hephaestus/crucible-db:alpha`. |
+| `CRUCIBLE_IMAGE` | Overrides the application image. The release Compose file defaults to `hephaestus/crucible-db:0.1.0`. Set it in the shell or a Compose `.env` file, because service `env_file` values do not control Compose interpolation. |
 | `CRUCIBLE_ENV_FILE` | Selects the environment file. Defaults to `.env.production`. |
 | `APP_ENV` | Set by Compose to `production`. |
 | `APP_DEBUG` | Set by Compose to `false`. |
@@ -28,7 +28,7 @@ The production environment file supplies the application key, public URL, mail d
 | `APP_LOCALE`, `APP_FALLBACK_LOCALE` | Application localization defaults. |
 | `BCRYPT_ROUNDS` | Password hashing work factor. |
 | `LOG_CHANNEL`, `LOG_LEVEL` | Container log destination and minimum severity. |
-| `SESSION_LIFETIME`, `SESSION_ENCRYPT`, `SESSION_DOMAIN` | Browser session duration, encryption, and cookie scope. |
+| `SESSION_LIFETIME`, `SESSION_ENCRYPT`, `SESSION_SECURE_COOKIE`, `SESSION_DOMAIN` | Browser session duration, encryption, HTTPS-only transport, and cookie scope. Keep `SESSION_SECURE_COOKIE=true` when `APP_URL` uses HTTPS. |
 | `REDIS_PASSWORD`, `REDIS_PORT` | Redis client settings; Compose supplies the internal host. |
 | `MAIL_*` | SMTP transport, credential, encryption, and sender identity. |
 | `OCTANE_WORKERS` | FrankenPHP request-worker count. Defaults to `2`. |

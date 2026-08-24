@@ -131,6 +131,41 @@
     color 150ms ease-out;
 }
 
+.crucible-header-release,
+.crucible-header-star {
+  align-items: center;
+  border: 1px solid var(--crucible-border);
+  border-radius: 0.4rem;
+  color: var(--crucible-muted-foreground);
+  display: inline-flex;
+  font-size: 0.6rem;
+  font-weight: 600;
+  gap: 0.25rem;
+  height: 1.65rem;
+  line-height: 1;
+  margin-left: 0.35rem;
+  padding-inline: 0.45rem;
+  transition:
+    background-color 150ms ease-out,
+    border-color 150ms ease-out,
+    color 150ms ease-out;
+}
+
+.crucible-header-star svg {
+  fill: currentcolor;
+  height: 0.8rem;
+  width: 0.8rem;
+}
+
+.crucible-header-release:focus,
+.crucible-header-release:hover,
+.crucible-header-star:focus,
+.crucible-header-star:hover {
+  background-color: var(--crucible-muted);
+  border-color: var(--crucible-muted-foreground);
+  color: var(--crucible-foreground);
+}
+
 .crucible-header-github:focus,
 .crucible-header-github:hover {
   background-color: var(--crucible-muted);
@@ -257,7 +292,31 @@
 
 @media (prefers-reduced-motion: reduce) {
   .crucible-header-github,
+  .crucible-header-release,
+  .crucible-header-star,
   .md-tabs__link {
     transition: none;
+  }
+}
+
+@media screen and (max-width: 44.984375em) {
+  .crucible-header-release {
+    display: none;
+  }
+
+  .crucible-header-star {
+    border: 0;
+    height: auto;
+    margin-left: 0;
+    padding: 0.55rem;
+  }
+
+  .crucible-header-star span {
+    display: none;
+  }
+
+  .crucible-header-star svg {
+    height: 1.2rem;
+    width: 1.2rem;
   }
 }

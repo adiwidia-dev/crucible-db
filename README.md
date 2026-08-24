@@ -9,7 +9,15 @@
 </p>
 
 <p align="center">
+  <a href="https://adiwidia-dev.github.io/crucible-db/"><strong>Read the documentation</strong></a>
+  ·
+  <a href="https://github.com/adiwidia-dev/crucible-db/releases/latest"><strong>View the latest release</strong></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/adiwidia-dev/crucible-db/actions/workflows/tests.yml"><img src="https://github.com/adiwidia-dev/crucible-db/actions/workflows/tests.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.1.0"><img src="https://img.shields.io/badge/release-v0.1.0-2563EB" alt="Crucible DB v0.1.0"></a>
+  <a href="https://adiwidia-dev.github.io/crucible-db/"><img src="https://img.shields.io/badge/docs-read-2563EB?logo=readthedocs&logoColor=white" alt="Read the documentation"></a>
   <img src="https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php&logoColor=white" alt="PHP 8.3 or later">
   <img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license">
@@ -101,7 +109,7 @@ Redis
 └─ cache
 ```
 
-Production builds must use `Dockerfile.production`, and the published application image is `hephaestus/crucible-db:alpha`. A deployment directory needs `compose.production.yaml`, `.env.production.example`, and a secure `.env.production` file—there is no need to clone the complete source repository or build the image on the server.
+Production builds must use `Dockerfile.production`. Release `v0.1.0` is published as the immutable image `hephaestus/crucible-db:0.1.0`; `hephaestus/crucible-db:alpha` remains a moving convenience tag for existing alpha deployments. A deployment directory needs `compose.production.yaml`, `.env.production.example`, and a secure `.env.production` file—there is no need to clone the complete source repository or build the image on the server.
 
 ```bash
 cp .env.production.example .env.production
@@ -166,4 +174,6 @@ Issues and pull requests are welcome. Please keep changes focused, add or update
 
 ## License
 
-Crucible DB is licensed under the MIT License.
+Crucible DB is licensed under the [MIT License](LICENSE).
+
+Security issues should be reported privately through the [security policy](SECURITY.md), not through a public issue.

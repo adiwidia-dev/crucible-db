@@ -49,6 +49,18 @@ FROM dunglas/frankenphp:1-php8.4 AS production
 
 WORKDIR /app
 
+ARG CRUCIBLE_VERSION=0.1.0
+ARG CRUCIBLE_REVISION=unknown
+
+LABEL org.opencontainers.image.title="Crucible DB" \
+    org.opencontainers.image.description="A governed control plane for reviewed, scheduled, and auditable database access." \
+    org.opencontainers.image.source="https://github.com/adiwidia-dev/crucible-db" \
+    org.opencontainers.image.url="https://adiwidia-dev.github.io/crucible-db/" \
+    org.opencontainers.image.documentation="https://adiwidia-dev.github.io/crucible-db/" \
+    org.opencontainers.image.version="${CRUCIBLE_VERSION}" \
+    org.opencontainers.image.revision="${CRUCIBLE_REVISION}" \
+    org.opencontainers.image.licenses="MIT"
+
 RUN install-php-extensions \
     pcntl \
     pdo_mysql \
