@@ -1,0 +1,139 @@
+site_name: Crucible DB
+site_description: Governed database operations, documented for the people who request, review, and operate them.
+site_url: https://adiwidia-dev.github.io/crucible-db/
+copyright: Copyright &copy; 2026 Crucible DB contributors
+
+exclude_docs: |
+  archive/
+  architecture/
+  product/
+
+theme:
+  name: material
+  custom_dir: overrides
+  language: en
+  logo: assets/brand/crucible-mark.svg
+  favicon: assets/brand/crucible-mark.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Use dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Use light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - toc.follow
+
+plugins:
+  - search
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      effect: fade
+      slide_effect: none
+      zoomable: true
+      draggable: true
+      auto_themed: true
+      auto_caption: true
+      caption_position: bottom
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra:
+  github_url: https://github.com/adiwidia-dev/crucible-db
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Overview: index.md
+  - Getting started:
+      - Learn Crucible DB: getting-started/overview.md
+      - Roles and navigation: getting-started/roles-and-navigation.md
+      - Sign in and secure your account: getting-started/account-security.md
+      - First-time workspace setup: getting-started/first-workspace.md
+  - End-user guide:
+      - Overview dashboard: user-guide/overview.md
+      - Query Requests menu: user-guide/query-requests.md
+      - Connections menu: user-guide/connections.md
+      - Notifications: user-guide/notifications.md
+      - Profile: user-guide/profile.md
+      - Preferences: user-guide/preferences.md
+      - Security: user-guide/security.md
+  - Reviewer guide:
+      - Reviewer workspace: reviewer-guide/workspace.md
+      - Approval flow: reviewer-guide/approval-flow.md
+  - Administrator guide:
+      - Administrator navigation: admin-guide/navigation.md
+      - Manage connections: admin-guide/connections.md
+      - Connection groups: admin-guide/connection-groups.md
+      - People: admin-guide/people.md
+      - Access roles: admin-guide/access-roles.md
+      - Authentication: admin-guide/authentication.md
+      - Application settings: admin-guide/application.md
+      - Notification policy: admin-guide/notification-policy.md
+      - SQL policy: admin-guide/sql-policy.md
+      - Audit log: admin-guide/audit-log.md
+  - Workflows:
+      - Deployment batches: guides/deployment-batches.md
+      - Save and work with drafts: guides/deployment-drafts.md
+      - Request Query Access: guides/query-access.md
+      - Run SQL in a Query Access session: guides/query-session-editor.md
+      - Review requests: guides/review-requests.md
+      - Track work and notifications: guides/track-work.md
+  - Governance:
+      - Roles, groups, and connections: concepts/access-policy.md
+      - SQL statement policy: concepts/sql-policy.md
+      - Preflight, approvals, and audit: concepts/governance-flow.md
+  - Operate Crucible DB:
+      - Architecture: operations/architecture.md
+      - Queues, workers, and schedules: operations/queues-and-workers.md
+      - Production deployment and upgrades: operations/production.md
+      - Backup, recovery, and troubleshooting: operations/operations.md
+  - Reference:
+      - Status and state reference: reference/statuses.md
+      - Supported SQL: reference/supported-sql.md
+      - Configuration reference: reference/configuration.md
+      - Contributing to docs: contributing.md
+      - Capture documentation screenshots: capture/README.md

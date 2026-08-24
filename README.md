@@ -152,6 +152,8 @@ This runs frontend linting, formatting, TypeScript checks, PHP formatting, PHPSt
 
 ## Documentation
 
+- [Read the documentation](https://adiwidia-dev.github.io/crucible-db/)
+- [Documentation site source](docs/index.md)
 - [Product overview](docs/product/overview.md)
 - [Design direction](docs/product/design.md)
 - [Architecture decisions](docs/architecture/decisions.md)

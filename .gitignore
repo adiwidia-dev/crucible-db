@@ -30,6 +30,8 @@ yarn-error.log
 /.zed
 /graphify-out/
 /.codex/
+/.venv-docs/
+/site/
 
 **/caddy
 frankenphp
