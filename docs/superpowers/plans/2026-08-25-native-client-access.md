@@ -160,12 +160,12 @@ $this->assertFalse($connection->native_proxy_enabled);
 $permission = RoleDatabasePermission::factory()->create([
     'access_mode' => AccessMode::Write,
     'query_access_mode' => AccessMode::Write,
-    'native_proxy_allowed' => true,
+    'native_proxy_access_mode' => AccessMode::Read,
 ]);
-$this->assertTrue($permission->native_proxy_allowed);
+$this->assertSame(AccessMode::Read, $permission->native_proxy_access_mode);
 ```
 
-Also prove direct policy precedence and most-restrictive group resolution include `native_proxy_allowed`, with any applicable denying group producing false. Add controller/request tests proving an administrator can enable/disable the native transport on direct and group policy rows, non-admins cannot, and native permission is rejected when Query Access mode is `none`.
+Also prove direct policy precedence and most-restrictive group resolution include `native_proxy_access_mode`. Test `none`, `read`, and `write`; cap the effective native mode by Maximum access; and prove native mode is independent from `query_access_mode`. Add controller/request tests proving an administrator can set native mode on direct and group policy rows and non-admins cannot.
 
 - [ ] **Step 2: Run tests and verify RED**
 
@@ -181,12 +181,12 @@ Migration requirements:
 ```php
 $table->string('access_transport', 32)->default('browser')->index();
 $table->boolean('native_proxy_enabled')->default(false);
-$table->boolean('native_proxy_allowed')->default(false);
+$table->string('native_proxy_access_mode', 16)->default('none');
 ```
 
-Add enum casts/fillable attributes and return `native_proxy_allowed` from `User::effectiveDatabasePermission*`. Admin resolution returns true; native permission never increases `query_access_mode`.
+Add enum casts/fillable attributes and return `native_proxy_access_mode` from `User::effectiveDatabasePermission*`. Add `effectiveNativeProxyPermissionFor(DatabaseConnection $connection, QueryType $queryType)` using the existing ordered-role rules, direct-over-group precedence, most-restrictive group resolution, and Maximum access cap. Admin resolution returns `AccessMode::Write`; native mode never changes `query_access_mode` or `access_mode`.
 
-Extend role Form Request rules and `RoleController` serialization/persistence for both direct and connection-group policies. In `resources/js/pages/roles/form.tsx`, show **Allow Native Client Access** only when Query Access mode is read or write, preserve its value while editing, submit false when Query Access is disabled, and explain that native SQL is not known before approval.
+Extend role Form Request rules and `RoleController` serialization/persistence for both direct and connection-group policies. In `resources/js/pages/roles/form.tsx`, add a **Native Client Access** dropdown beside **Query Access** with **Disabled**, **Read-only**, and **Read + write**. Disable options broader than Maximum access, preserve its value while editing, reduce it when Maximum access is lowered, and explain that native SQL is not known before approval. Keep Query Access and Native Client Access independently configurable.
 
 - [ ] **Step 4: Verify GREEN and formatting**
 
@@ -267,7 +267,7 @@ Prove:
 - native transport is valid only with `request_kind=query_access`;
 - exactly one connection is required;
 - connection must be active and `native_proxy_enabled`;
-- current role must resolve `native_proxy_allowed=true` at requested level;
+- current role's effective `native_proxy_access_mode` must allow the requested read/write level;
 - transport cannot change after creation;
 - retry/renewal preserves transport but creates a fresh session later;
 - browser Query Access still accepts up to ten targets;
@@ -308,7 +308,7 @@ git commit -m "feat: validate native client access requests"
 
 - [ ] **Step 1: Write failing Inertia response assertions**
 
-Assert create props expose `native_proxy_enabled` and resolved native permission per connection; list/show props expose `access_transport`; native request details contain one target and no deployment preflight controls.
+Assert create props expose `native_proxy_enabled` and resolved `native_proxy_access_mode` per connection; list/show props expose `access_transport`; native request details contain one target, `requested_access_mode`, and no deployment preflight controls.
 
 - [ ] **Step 2: Run and verify RED**
 
@@ -317,7 +317,7 @@ Expected: FAIL for missing props.
 
 - [ ] **Step 3: Implement the React choice model**
 
-Use a stable three-option selector with labels **Deployment Batch**, **Query Access**, and **Native Client Access**. Persist native choice as hidden `request_kind=query_access` and `access_transport=native_proxy`. Native form shows one connection, access level, duration, title, and reason only. Use existing buttons, connection combobox, status badges, focus treatment, spacing, dark mode, and responsive structure.
+Use a stable three-option selector with labels **Deployment Batch**, **Query Access**, and **Native Client Access**. Persist native choice as hidden `request_kind=query_access` and `access_transport=native_proxy`. Native form shows one connection, duration, title, reason, and a **Session access level** section matching the existing Query Access radio-card control. **Read-only** is available when effective native mode allows read; **Read + write** is enabled only when it allows write. Explain why write is unavailable, preserve the selected level only while valid, and submit `requested_access_mode`. Use existing buttons, connection combobox, status badges, focus treatment, spacing, dark mode, and responsive structure.
 
 - [ ] **Step 4: Add review/list transport copy**
 

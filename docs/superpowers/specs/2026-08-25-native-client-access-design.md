@@ -68,11 +68,13 @@ The create page presents three stable choices:
 Native Client Access asks for:
 
 - one active connection with native proxy enabled;
-- read-only or read + write access;
+- a **Session access level** choice using the same two-option control as Query Access: **Read-only** or **Read + write**;
 - duration;
 - reason/title and description.
 
-It does not show an SQL editor, statement builder, batch preflight, schedule controls, or multiple-target selector. The selected transport is immutable after submission; changing it requires a new request and approval.
+Read + write is disabled when the selected connection's effective Native Client Access mode does not permit write. If the role's effective native mode is disabled, that connection is not selectable for Native Client Access. The selected access level is enforced for the complete proxy session and is shown unchanged to the reviewer.
+
+It does not show an SQL editor, statement builder, batch preflight, schedule controls, or multiple-target selector. The selected transport and access level are immutable after submission; changing either requires a new request and approval.
 
 ### 5.2 Review
 
@@ -196,9 +198,13 @@ access_transport = native_proxy
 Add two gates:
 
 - Connection: `native_proxy_enabled`.
-- Direct/group role policy: `native_proxy_allowed`.
+- Direct/group role policy: `native_proxy_access_mode` with `none`, `read`, or `write`.
 
-Administrators have implicit policy authority but still use an auditable Query Access request/session. Direct connection policy continues to override group policy for the same role. Multiple group policies remain most restrictive. Ordered roles continue to select the first applicable policy. `native_proxy_allowed` never grants a higher `query_access_mode`; it only permits the native transport at the already resolved read/write level.
+Administrators resolve Native Client Access as `write` but still use an auditable Query Access request/session. Direct connection policy continues to override group policy for the same role. Multiple group policies resolve the most restrictive native mode. Ordered roles continue to select the first applicable policy that grants the requested native query type.
+
+`native_proxy_access_mode` is independent from `query_access_mode` and is capped by `access_mode`: maximum access `none` always resolves native mode `none`; maximum access `read` can resolve only `none` or `read`; maximum access `write` can resolve `none`, `read`, or `write`. Native mode never grants Deployment Batch or browser Query Access capability.
+
+The role editor shows a separate **Native Client Access** dropdown beside **Query Access**. Its choices are **Disabled**, **Read-only**, and **Read + write**, with choices broader than Maximum access disabled. This explicit opt-in is required because native clients create a larger operational surface than the in-app editor.
 
 Approval remains evaluated across selected targets, but Native Client Access always selects one target. Write Native Client Access uses the existing write approval and maximum write-session duration. Read Native Client Access uses the existing read approval rule.
 
@@ -217,7 +223,7 @@ Approval remains evaluated across selected targets, but Native Client Access alw
 
 `role_database_permissions` and `role_connection_group_policies`:
 
-- `native_proxy_allowed` boolean, default false.
+- `native_proxy_access_mode` enum-like string, default `none`.
 
 `query_session_queries`:
 
@@ -608,7 +614,7 @@ The feature is complete only when all of the following are true:
 
 1. The UI presents exactly Deployment Batch, Query Access, and Native Client Access.
 2. Native Client Access persists as Query Access with `native_proxy` transport and exactly one target.
-3. Connection and role policy must both permit native proxy use.
+3. The connection must enable native proxy use, and the effective role `native_proxy_access_mode` must allow the request's selected Session access level.
 4. PostgreSQL and MySQL temporary credentials work through `crucible connect` with supported clients.
 5. The target account requires no user/role creation privilege.
 6. Read-only and read + write modes enforce current Crucible policy before every statement.
