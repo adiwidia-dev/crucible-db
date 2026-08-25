@@ -7,6 +7,7 @@ exclude_docs: |
   archive/
   architecture/
   product/
+  superpowers/
 
 theme:
   name: material

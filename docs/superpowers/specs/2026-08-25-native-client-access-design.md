@@ -1,8 +1,8 @@
 # Native Client Access Design
 
-**Status:** Approved for implementation planning  
-**Date:** 2026-08-25  
-**Product name:** Native Client Access  
+**Status:** Approved for implementation planning
+**Date:** 2026-08-25
+**Product name:** Native Client Access
 **Backend workflow:** Query Access with `native_proxy` transport
 
 ## 1. Executive decision
@@ -44,16 +44,16 @@ The target database credential does not need `CREATE USER`, `CREATE ROLE`, or ac
 
 ## 4. Terminology
 
-| Term | Meaning |
-| --- | --- |
-| Native Client Access | User-facing Query Access transport used by desktop and command-line database clients. |
-| Query Session | Existing approved, time-bounded Crucible access window. |
-| Proxy lease | One target-specific authorization and synthetic database credential attached to a Query Session. |
-| Device authorization | Browser-assisted CLI authentication modeled on RFC 8628 semantics. |
-| Tunnel token | Short-lived bearer credential held only in CLI memory and accepted by the Go tunnel endpoint. |
-| Synthetic database credential | Temporary username and one-time password authenticated by the Go PostgreSQL/MySQL listener. |
-| Control API | Internal HMAC-authenticated Laravel JSON API used only by `crucible-proxy`. |
-| Statement authorization | Fail-closed Laravel decision made before a native statement is forwarded upstream. |
+| Term                          | Meaning                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------ |
+| Native Client Access          | User-facing Query Access transport used by desktop and command-line database clients.            |
+| Query Session                 | Existing approved, time-bounded Crucible access window.                                          |
+| Proxy lease                   | One target-specific authorization and synthetic database credential attached to a Query Session. |
+| Device authorization          | Browser-assisted CLI authentication modeled on RFC 8628 semantics.                               |
+| Tunnel token                  | Short-lived bearer credential held only in CLI memory and accepted by the Go tunnel endpoint.    |
+| Synthetic database credential | Temporary username and one-time password authenticated by the Go PostgreSQL/MySQL listener.      |
+| Control API                   | Internal HMAC-authenticated Laravel JSON API used only by `crucible-proxy`.                      |
+| Statement authorization       | Fail-closed Laravel decision made before a native statement is forwarded upstream.               |
 
 ## 5. User experience
 
@@ -83,6 +83,8 @@ List and detail pages show a **Native client** transport label next to **Query A
 After approval, the requester starts the Query Session. The detail page then offers **Create temporary credentials**. Credential creation is explicit and audited.
 
 The generated password is shown to the user exactly once. Crucible stores an Argon2id-compatible Laravel password hash plus a separately encrypted, hidden protocol-authentication secret. The encrypted copy is required because PostgreSQL SCRAM and MySQL challenge authentication cannot be served from an Argon2 verifier. It is available only to the HMAC-authenticated Go service during a bounded handshake, is never returned to the browser again, and is erased when the lease is revoked or expires. If the user loses it, **Rotate credentials** revokes the old lease credential, disconnects every active socket, creates a new password, and displays it once.
+
+Plaintext credentials are returned only by a dedicated authenticated, CSRF-protected JSON endpoint with `Cache-Control: no-store`. They are held only in React component memory, excluded from Inertia remembered/history state, never placed in Laravel flash/session storage, and absent from repeat responses.
 
 Exactly one proxy lease exists for a Native Client Query Session. The database enforces a unique `query_session_id`. The first credential-creation request accepts an idempotency key and returns the one-time password in that response. Repeating the same request after a successful response does not create another lease and returns `credentials_already_created`; because plaintext is never persisted, the user must choose **Rotate credentials** if the original response was lost. Rotation updates the existing lease and increments its credential version rather than creating a second lease.
 
@@ -323,12 +325,14 @@ Endpoints:
 - `GET /discovery`: return the public CLI discovery document assembled from validated configuration.
 - `POST /device-authorizations`: create the device/user codes for a Go-forwarded public request.
 - `POST /device-token`: apply RFC 8628 polling semantics and atomically issue a tunnel token.
+- `POST /tunnels/authorize`: before WebSocket upgrade, hash and validate the bearer token, bind it to the URL lease/device authorization/protocol/proxy instance/connection ID, recheck current user/session/connection/role policy and token expiry/revocation, and return a short-lived tunnel context. No upgrade occurs before this succeeds.
 - `POST /leases/auth-material`: resolve a synthetic username only inside the lease already authenticated by the tunnel token and create one 15-second authentication attempt bound to lease, tunnel token/device authorization, proxy instance, credential version, protocol, and connection ID. Cross-lease usernames are rejected with the same generic authentication response. The response is `Cache-Control: no-store`, never contains target host, upstream username/password, or policy authorization, and is rate limited without username-enumeration detail.
 - `POST /connections/authorize`: in one database transaction, atomically consume the single-use authentication attempt, recheck lease state/current user/role/connection policy, enforce lease/user/global limits, create a 15-second connection reservation, and then return target configuration plus decrypted upstream credentials. No upstream credential is released unless a slot has already been reserved.
 - `POST /connections/{connection}/authenticated`: consume the reservation after upstream authentication and mark the connection active. An unconsumed reservation expires after 15 seconds and is excluded from future connection counts after cleanup.
-- `POST /statements/authorize`: validate current lease and policy, create the running `QuerySessionQuery`/`QueryExecution`, and return an allow decision plus statement authorization ID.
+- `POST /statements/validate-template`: validate a prepared statement template without creating a running execution record; blocked templates create a blocked audit event.
+- `POST /statements/authorize-execution`: recheck current lease/policy and create the running `QuerySessionQuery`/`QueryExecution` only when execution is about to be forwarded.
 - `POST /statements/{statement}/complete`: persist success/failure, duration, row count/affected rows, command tag, redacted error code/message, and audit event idempotently.
-- `POST /connections/{connection}/heartbeat`: update activity and return continue/revoke.
+- `POST /connections/{connection}/heartbeat`: re-evaluate current session/user/role/direct/group/connection/workspace policy, update activity, and return continue/revoke within the two-second polling contract.
 - `POST /connections/{connection}/close`: idempotently record closure.
 - `GET /health`: control-plane readiness used only from the internal network.
 
@@ -342,7 +346,9 @@ The CLI presents the bearer token, CLI metadata headers, requested protocol, and
 
 After upgrade, binary frames carry raw database protocol bytes. One WebSocket corresponds to one local TCP client connection. Text frames are not accepted. Compression is disabled to avoid memory-amplification and secret-compression risks. Frame/message limits, idle timeout, ping/pong, total byte limits, backpressure, half-close behavior, and close codes are explicit and tested.
 
-The CLI accepts multiple sequential or concurrent local connections within the lease connection limit by opening one WebSocket per local socket. It binds to loopback by default and rejects non-loopback `--listen` unless the user supplies an explicit `--allow-non-loopback` flag and confirmation. The web UI never generates that unsafe form.
+The CLI accepts multiple sequential or concurrent local connections within the lease connection limit by opening one WebSocket per local socket. It binds only to IPv4 or IPv6 loopback and has no non-loopback override.
+
+The local PostgreSQL/MySQL hop does not negotiate database-protocol TLS: PostgreSQL SSLRequest receives `N`, and MySQL does not advertise `CLIENT_SSL`. This is safe only because the socket is loopback-only and every byte leaving the device is inside the authenticated TLS WebSocket. Generated DBeaver/JDBC/CLI instructions explicitly disable database-protocol TLS for localhost. Go-to-target upstream TLS remains independent and follows the configured connection TLS policy.
 
 ## 13. PostgreSQL proxy engine
 
@@ -351,7 +357,7 @@ Use `github.com/jackc/pgx/v5/pgproto3` from pgx `v5.10.0` or the security-patche
 Required behavior:
 
 - PostgreSQL protocol 3.0 and maintained pgx-supported 3.2 negotiation.
-- SSLRequest handling and TLS support on the private listener for integration testing; the CLI tunnel itself is already TLS protected.
+- SSLRequest handling that returns `N`; database-protocol TLS is not advertised on the loopback-only local hop because the CLI tunnel provides transport TLS.
 - Synthetic credential authentication using SCRAM-SHA-256 with constant-time failure behavior.
 - Exact database-name enforcement from the lease.
 - Capture sanitized `application_name` for audit correlation.
@@ -372,7 +378,7 @@ Use `github.com/go-mysql-org/go-mysql` `v1.16.0` or its security-patched success
 Required behavior:
 
 - MySQL 8.4-compatible initial handshake and capability negotiation.
-- Synthetic credentials using `caching_sha2_password` over TLS/tunnel; compatible clients may negotiate supported safe authentication methods without exposing plaintext outside TLS.
+- Synthetic credentials using `caching_sha2_password` challenge/RSA behavior inside the TLS tunnel; the loopback MySQL server does not advertise `CLIENT_SSL`.
 - Exact database-name enforcement from the lease.
 - Capture sanitized connection attributes and client name/version.
 - Upstream connection using fixed target configuration and TLS verification.
@@ -446,7 +452,7 @@ Audit events cover:
 - statement authorized, blocked, succeeded, and failed;
 - policy-change, user-disable, connection-disable, and operator-shutdown revocations.
 
-Statement records contain normalized SQL template, fingerprint, statement family/query type, protocol command, parameter count/types/formats, timing, status, affected/returned row count when available, command tag, and redacted error code/message. They never contain bound values or result rows.
+Allowed prepared templates are validated without creating execution records. A running statement record is created only immediately before an Execute/COM_STMT_EXECUTE or simple query is forwarded. Statement records contain normalized SQL template, fingerprint, statement family/query type, protocol command, parameter count/types/formats, timing, status, affected/returned row count when available, command tag, and redacted error code/message. They never contain bound values or result rows.
 
 Logging uses structured fields and a central redaction helper. SQL text is recorded only in the application audit tables according to existing Crucible behavior, not emitted to container logs. Metrics use bounded labels and never include user id, email, lease id, database name, SQL fingerprint, or connection id.
 
@@ -509,6 +515,8 @@ Health endpoints:
 - `/metrics`: internal Prometheus format.
 
 Backups require no Go-local state. Laravel's existing storage backup contains leases/audits. Redis loss causes fail-closed connection shutdown and is recoverable from Laravel state.
+
+Scheduled pruning removes expired device authorizations, tunnel-token hashes, consumed/expired authentication attempts, and abandoned reservations after 30 days. Connection and statement audit records follow the workspace audit-retention policy and are never pruned by the transient-state command.
 
 ## 21. CLI distribution
 
