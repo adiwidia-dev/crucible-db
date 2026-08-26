@@ -39,6 +39,7 @@ class StoreInitialConnectionRequest extends FormRequest
             'tls_client_certificate' => ['nullable', 'string', 'max:65535'],
             'tls_client_key' => ['nullable', 'string', 'max:65535'],
             'tls_skip_verify' => ['prohibited'],
+            'ssl_mode' => ['prohibited'],
         ];
     }
 

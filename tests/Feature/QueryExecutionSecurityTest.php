@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Mockery;
 use Pdo\Mysql;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -190,135 +191,100 @@ SQL;
         );
     }
 
-    public function test_tls_postgresql_passes_normalized_certificates_and_key_to_the_connector(): void
+    #[DataProvider('tlsModes')]
+    public function test_query_executor_configures_every_postgresql_tls_mode_with_temporary_material_files(DatabaseTlsMode $tlsMode): void
     {
         $connection = Mockery::mock(ConnectionInterface::class);
         $connection->shouldReceive('beginTransaction')->once()->ordered();
         $connection->shouldReceive('statement')->with('SET TRANSACTION READ ONLY')->once()->ordered()->andReturnTrue();
         $connection->shouldReceive('cursor')->with('select 1 as value')->once()->ordered()->andReturn($this->rows());
         $connection->shouldReceive('rollBack')->once()->ordered();
+        $temporaryPaths = [];
+        $connectionId = $this->tlsModeConnectionId($tlsMode, 1000);
 
-        $this->mockDatabaseFacade($connection, 904, function (): void {
-            $configuration = config('database.connections.crucible_runtime_904');
+        $this->mockDatabaseFacade($connection, $connectionId, function () use ($connectionId, $tlsMode, &$temporaryPaths): void {
+            $configuration = config("database.connections.crucible_runtime_{$connectionId}");
 
-            $this->assertSame('verify-full', $configuration['sslmode']);
-            $this->assertSame('ca certificate', $configuration['sslrootcert']);
-            $this->assertSame('client certificate', $configuration['sslcert']);
-            $this->assertSame('client private key', $configuration['sslkey']);
-            $this->assertPostgreSqlTlsOptionsAreIncludedInLaravelConnectorDsn($configuration);
+            $this->assertSame($tlsMode->postgreSqlSslMode(), $configuration['sslmode']);
+            $temporaryPaths = $this->assertPostgreSqlTlsConfiguration($configuration, $tlsMode);
         });
 
         app(DatabaseQueryExecutor::class)->execute(
-            $this->databaseConnection(904, DatabaseDriver::PostgreSql, DatabaseTlsMode::VerifyIdentity),
+            $this->databaseConnection($connectionId, DatabaseDriver::PostgreSql, $tlsMode),
             'select 1 as value',
             QueryType::Read,
         );
+
+        $this->assertTemporaryTlsFilesWereCleaned($temporaryPaths);
     }
 
-    public function test_disabled_postgresql_tls_omits_certificates_and_key_from_the_query_connector(): void
-    {
-        $connection = Mockery::mock(ConnectionInterface::class);
-        $connection->shouldReceive('beginTransaction')->once()->ordered();
-        $connection->shouldReceive('statement')->with('SET TRANSACTION READ ONLY')->once()->ordered()->andReturnTrue();
-        $connection->shouldReceive('cursor')->with('select 1 as value')->once()->ordered()->andReturn($this->rows());
-        $connection->shouldReceive('rollBack')->once()->ordered();
-
-        $this->mockDatabaseFacade($connection, 908, function (): void {
-            $configuration = config('database.connections.crucible_runtime_908');
-
-            $this->assertSame('disable', $configuration['sslmode']);
-            $this->assertArrayNotHasKey('sslrootcert', $configuration);
-            $this->assertArrayNotHasKey('sslcert', $configuration);
-            $this->assertArrayNotHasKey('sslkey', $configuration);
-        });
-
-        app(DatabaseQueryExecutor::class)->execute(
-            $this->databaseConnection(908, DatabaseDriver::PostgreSql, DatabaseTlsMode::Disabled),
-            'select 1 as value',
-            QueryType::Read,
-        );
-    }
-
-    public function test_tls_mysql_applies_trusted_ca_certificate_and_key_pdo_options_without_disabling_verification(): void
+    #[DataProvider('tlsModes')]
+    public function test_query_executor_configures_every_mysql_tls_mode_with_temporary_material_files(DatabaseTlsMode $tlsMode): void
     {
         $connection = Mockery::mock(ConnectionInterface::class);
         $connection->shouldReceive('statement')->with('SET TRANSACTION READ ONLY')->once()->ordered()->andReturnTrue();
         $connection->shouldReceive('beginTransaction')->once()->ordered();
         $connection->shouldReceive('cursor')->with('select 1 as value')->once()->ordered()->andReturn($this->rows());
         $connection->shouldReceive('rollBack')->once()->ordered();
+        $temporaryPaths = [];
+        $connectionId = $this->tlsModeConnectionId($tlsMode, 1100);
 
-        $this->mockDatabaseFacade($connection, 905, function (): void {
-            $options = config('database.connections.crucible_runtime_905.options');
+        $this->mockDatabaseFacade($connection, $connectionId, function () use ($connectionId, $tlsMode, &$temporaryPaths): void {
+            $configuration = config("database.connections.crucible_runtime_{$connectionId}");
 
-            $this->assertSame('ca certificate', $options[Mysql::ATTR_SSL_CA]);
-            $this->assertSame('client certificate', $options[Mysql::ATTR_SSL_CERT]);
-            $this->assertSame('client private key', $options[Mysql::ATTR_SSL_KEY]);
-            $this->assertTrue($options[Mysql::ATTR_SSL_VERIFY_SERVER_CERT]);
+            $temporaryPaths = $this->assertMySqlTlsConfiguration($configuration['options'], $tlsMode);
         });
 
         app(DatabaseQueryExecutor::class)->execute(
-            $this->databaseConnection(905, DatabaseDriver::MySql, DatabaseTlsMode::VerifyIdentity),
+            $this->databaseConnection($connectionId, DatabaseDriver::MySql, $tlsMode),
             'select 1 as value',
             QueryType::Read,
         );
+
+        $this->assertTemporaryTlsFilesWereCleaned($temporaryPaths);
     }
 
-    public function test_schema_browser_passes_normalized_postgresql_certificates_and_key_to_the_connector(): void
+    #[DataProvider('tlsModes')]
+    public function test_schema_browser_configures_every_postgresql_tls_mode_with_temporary_material_files(DatabaseTlsMode $tlsMode): void
     {
         $connection = Mockery::mock(ConnectionInterface::class);
         $connection->shouldReceive('select')->once()->andReturn([]);
+        $temporaryPaths = [];
+        $connectionId = $this->tlsModeConnectionId($tlsMode, 1200);
 
-        $this->mockSchemaBrowserDatabaseFacade($connection, 906, function (): void {
-            $configuration = config('database.connections.crucible_schema_906');
+        $this->mockSchemaBrowserDatabaseFacade($connection, $connectionId, function () use ($connectionId, $tlsMode, &$temporaryPaths): void {
+            $configuration = config("database.connections.crucible_schema_{$connectionId}");
 
-            $this->assertSame('verify-full', $configuration['sslmode']);
-            $this->assertSame('ca certificate', $configuration['sslrootcert']);
-            $this->assertSame('client certificate', $configuration['sslcert']);
-            $this->assertSame('client private key', $configuration['sslkey']);
-            $this->assertPostgreSqlTlsOptionsAreIncludedInLaravelConnectorDsn($configuration);
+            $this->assertSame($tlsMode->postgreSqlSslMode(), $configuration['sslmode']);
+            $temporaryPaths = $this->assertPostgreSqlTlsConfiguration($configuration, $tlsMode);
         });
 
         app(DatabaseSchemaBrowser::class)->tables(
-            $this->databaseConnection(906, DatabaseDriver::PostgreSql, DatabaseTlsMode::VerifyIdentity),
+            $this->databaseConnection($connectionId, DatabaseDriver::PostgreSql, $tlsMode),
         );
+
+        $this->assertTemporaryTlsFilesWereCleaned($temporaryPaths);
     }
 
-    public function test_disabled_postgresql_tls_omits_certificates_and_key_from_the_schema_connector(): void
+    #[DataProvider('tlsModes')]
+    public function test_schema_browser_configures_every_mysql_tls_mode_with_temporary_material_files(DatabaseTlsMode $tlsMode): void
     {
         $connection = Mockery::mock(ConnectionInterface::class);
         $connection->shouldReceive('select')->once()->andReturn([]);
+        $temporaryPaths = [];
+        $connectionId = $this->tlsModeConnectionId($tlsMode, 1300);
 
-        $this->mockSchemaBrowserDatabaseFacade($connection, 909, function (): void {
-            $configuration = config('database.connections.crucible_schema_909');
+        $this->mockSchemaBrowserDatabaseFacade($connection, $connectionId, function () use ($connectionId, $tlsMode, &$temporaryPaths): void {
+            $configuration = config("database.connections.crucible_schema_{$connectionId}");
 
-            $this->assertSame('disable', $configuration['sslmode']);
-            $this->assertArrayNotHasKey('sslrootcert', $configuration);
-            $this->assertArrayNotHasKey('sslcert', $configuration);
-            $this->assertArrayNotHasKey('sslkey', $configuration);
+            $temporaryPaths = $this->assertMySqlTlsConfiguration($configuration['options'], $tlsMode);
         });
 
         app(DatabaseSchemaBrowser::class)->tables(
-            $this->databaseConnection(909, DatabaseDriver::PostgreSql, DatabaseTlsMode::Disabled),
+            $this->databaseConnection($connectionId, DatabaseDriver::MySql, $tlsMode),
         );
-    }
 
-    public function test_schema_browser_applies_mysql_tls_pdo_options(): void
-    {
-        $connection = Mockery::mock(ConnectionInterface::class);
-        $connection->shouldReceive('select')->once()->andReturn([]);
-
-        $this->mockSchemaBrowserDatabaseFacade($connection, 907, function (): void {
-            $options = config('database.connections.crucible_schema_907.options');
-
-            $this->assertSame('ca certificate', $options[Mysql::ATTR_SSL_CA]);
-            $this->assertSame('client certificate', $options[Mysql::ATTR_SSL_CERT]);
-            $this->assertSame('client private key', $options[Mysql::ATTR_SSL_KEY]);
-            $this->assertTrue($options[Mysql::ATTR_SSL_VERIFY_SERVER_CERT]);
-        });
-
-        app(DatabaseSchemaBrowser::class)->tables(
-            $this->databaseConnection(907, DatabaseDriver::MySql, DatabaseTlsMode::VerifyIdentity),
-        );
+        $this->assertTemporaryTlsFilesWereCleaned($temporaryPaths);
     }
 
     private function mockDatabaseFacade(ConnectionInterface $connection, int $connectionId, ?Closure $assertConfiguration = null): void
@@ -349,6 +315,7 @@ SQL;
 
     private function databaseConnection(int $id, DatabaseDriver $driver, DatabaseTlsMode $tlsMode = DatabaseTlsMode::Preferred): DatabaseConnection
     {
+        $hasTlsMaterial = $tlsMode !== DatabaseTlsMode::Disabled;
         $databaseConnection = new DatabaseConnection;
         $databaseConnection->forceFill([
             'id' => $id,
@@ -359,9 +326,9 @@ SQL;
             'username' => 'crucible',
             'password' => 'secret',
             'tls_mode' => $tlsMode,
-            'tls_ca_certificate' => $tlsMode === DatabaseTlsMode::VerifyIdentity ? 'ca certificate' : null,
-            'tls_client_certificate' => $tlsMode === DatabaseTlsMode::VerifyIdentity ? 'client certificate' : null,
-            'tls_client_key' => $tlsMode === DatabaseTlsMode::VerifyIdentity ? 'client private key' : null,
+            'tls_ca_certificate' => $hasTlsMaterial ? 'ca certificate' : null,
+            'tls_client_certificate' => $hasTlsMaterial ? 'client certificate' : null,
+            'tls_client_key' => $hasTlsMaterial ? 'client private key' : null,
             'is_active' => true,
         ]);
 
@@ -369,10 +336,44 @@ SQL;
     }
 
     /**
-     * @param  array<string, mixed>  $configuration
+     * @return array<string, array{0: DatabaseTlsMode}>
      */
-    private function assertPostgreSqlTlsOptionsAreIncludedInLaravelConnectorDsn(array $configuration): void
+    public static function tlsModes(): array
     {
+        return array_reduce(DatabaseTlsMode::cases(), function (array $datasets, DatabaseTlsMode $tlsMode): array {
+            $datasets[$tlsMode->value] = [$tlsMode];
+
+            return $datasets;
+        }, []);
+    }
+
+    private function tlsModeConnectionId(DatabaseTlsMode $tlsMode, int $offset): int
+    {
+        return $offset + array_search($tlsMode, DatabaseTlsMode::cases(), true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $configuration
+     * @return array<int, string>
+     */
+    private function assertPostgreSqlTlsConfiguration(array $configuration, DatabaseTlsMode $tlsMode): array
+    {
+        if ($tlsMode === DatabaseTlsMode::Disabled) {
+            $this->assertArrayNotHasKey('sslrootcert', $configuration);
+            $this->assertArrayNotHasKey('sslcert', $configuration);
+            $this->assertArrayNotHasKey('sslkey', $configuration);
+
+            return [];
+        }
+
+        $paths = [
+            $configuration['sslrootcert'],
+            $configuration['sslcert'],
+            $configuration['sslkey'],
+        ];
+
+        $this->assertSame(['ca certificate', 'client certificate', 'client private key'], array_map('file_get_contents', $paths));
+
         $connector = new class extends PostgresConnector
         {
             /**
@@ -386,10 +387,54 @@ SQL;
 
         $dsn = $connector->dsn($configuration);
 
-        $this->assertStringContainsString(';sslmode=verify-full', $dsn);
-        $this->assertStringContainsString(';sslrootcert=ca certificate', $dsn);
-        $this->assertStringContainsString(';sslcert=client certificate', $dsn);
-        $this->assertStringContainsString(';sslkey=client private key', $dsn);
+        $this->assertStringContainsString(';sslmode='.$tlsMode->postgreSqlSslMode(), $dsn);
+        $this->assertStringContainsString(';sslrootcert='.$configuration['sslrootcert'], $dsn);
+        $this->assertStringContainsString(';sslcert='.$configuration['sslcert'], $dsn);
+        $this->assertStringContainsString(';sslkey='.$configuration['sslkey'], $dsn);
+
+        return $paths;
+    }
+
+    /**
+     * @param  array<int, bool|string>  $options
+     * @return array<int, string>
+     */
+    private function assertMySqlTlsConfiguration(array $options, DatabaseTlsMode $tlsMode): array
+    {
+        if ($tlsMode === DatabaseTlsMode::Disabled) {
+            $this->assertArrayNotHasKey(Mysql::ATTR_SSL_CA, $options);
+            $this->assertArrayNotHasKey(Mysql::ATTR_SSL_CERT, $options);
+            $this->assertArrayNotHasKey(Mysql::ATTR_SSL_KEY, $options);
+            $this->assertArrayNotHasKey(Mysql::ATTR_SSL_VERIFY_SERVER_CERT, $options);
+
+            return [];
+        }
+
+        $paths = [
+            $options[Mysql::ATTR_SSL_CA],
+            $options[Mysql::ATTR_SSL_CERT],
+            $options[Mysql::ATTR_SSL_KEY],
+        ];
+
+        $this->assertSame(['ca certificate', 'client certificate', 'client private key'], array_map('file_get_contents', $paths));
+
+        if ($tlsMode->verifiesServerCertificate()) {
+            $this->assertTrue($options[Mysql::ATTR_SSL_VERIFY_SERVER_CERT]);
+        } else {
+            $this->assertArrayNotHasKey(Mysql::ATTR_SSL_VERIFY_SERVER_CERT, $options);
+        }
+
+        return $paths;
+    }
+
+    /**
+     * @param  array<int, string>  $paths
+     */
+    private function assertTemporaryTlsFilesWereCleaned(array $paths): void
+    {
+        foreach ($paths as $path) {
+            $this->assertFileDoesNotExist($path);
+        }
     }
 
     /**

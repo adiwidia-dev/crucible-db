@@ -114,8 +114,9 @@ class DatabaseConnectionController extends Controller
                 'database' => $databaseConnection->database,
                 'username' => $databaseConnection->username,
                 'tls_mode' => $databaseConnection->tls_mode->value,
-                'tls_ca_certificate' => $databaseConnection->tls_ca_certificate,
-                'tls_client_certificate' => $databaseConnection->tls_client_certificate,
+                'has_tls_ca_certificate' => filled($databaseConnection->tls_ca_certificate),
+                'has_tls_client_certificate' => filled($databaseConnection->tls_client_certificate),
+                'has_tls_client_key' => filled($databaseConnection->tls_client_key),
                 'is_active' => $databaseConnection->is_active,
                 'permissions' => $databaseConnection->rolePermissions->map(fn ($permission): array => [
                     'id' => $permission->id,
@@ -148,8 +149,9 @@ class DatabaseConnectionController extends Controller
                 'database' => $databaseConnection->database,
                 'username' => $databaseConnection->username,
                 'tls_mode' => $databaseConnection->tls_mode->value,
-                'tls_ca_certificate' => $databaseConnection->tls_ca_certificate,
+                'has_tls_ca_certificate' => filled($databaseConnection->tls_ca_certificate),
                 'has_tls_client_certificate' => filled($databaseConnection->tls_client_certificate),
+                'has_tls_client_key' => filled($databaseConnection->tls_client_key),
                 'is_active' => $databaseConnection->is_active,
             ],
             'drivers' => $this->drivers(),
@@ -159,15 +161,29 @@ class DatabaseConnectionController extends Controller
     public function update(UpdateDatabaseConnectionRequest $request, DatabaseConnection $databaseConnection, AuditLogger $auditLogger): RedirectResponse
     {
         $data = $request->validated();
+        $tlsMaterialAction = $data['tls_material_action'];
+        unset($data['tls_material_action']);
 
         if (blank($data['password'] ?? null)) {
             unset($data['password']);
         }
 
-        foreach (['tls_ca_certificate', 'tls_client_certificate', 'tls_client_key'] as $attribute) {
-            if (blank($data[$attribute] ?? null)) {
-                unset($data[$attribute]);
+        if ($tlsMaterialAction === 'retain') {
+            unset($data['tls_ca_certificate'], $data['tls_client_certificate'], $data['tls_client_key']);
+        }
+
+        if ($tlsMaterialAction === 'replace') {
+            foreach (['tls_ca_certificate', 'tls_client_certificate', 'tls_client_key'] as $attribute) {
+                if (blank($data[$attribute] ?? null)) {
+                    unset($data[$attribute]);
+                }
             }
+        }
+
+        if ($tlsMaterialAction === 'clear') {
+            $data['tls_ca_certificate'] = null;
+            $data['tls_client_certificate'] = null;
+            $data['tls_client_key'] = null;
         }
 
         $data['is_active'] = $request->boolean('is_active');

@@ -98,4 +98,27 @@ class InitialSetupTest extends TestCase
         $this->assertSame(DatabaseTlsMode::VerifyIdentity, $connection->tls_mode);
         $this->assertSame('ca certificate', $connection->tls_ca_certificate);
     }
+
+    public function test_initial_connection_rejects_legacy_ssl_mode_input(): void
+    {
+        $role = Role::factory()->admin()->create();
+        $user = User::factory()->withRole($role)->create();
+
+        $this->actingAs($user)
+            ->withSession(['setup.owner_id' => $user->id])
+            ->post(route('setup.connection.store'), [
+                'name' => 'Initial PostgreSQL',
+                'driver' => DatabaseDriver::PostgreSql->value,
+                'host' => 'database.example.test',
+                'port' => 5432,
+                'database' => 'application',
+                'username' => 'crucible',
+                'password' => 'secret-password',
+                'tls_mode' => DatabaseTlsMode::Disabled->value,
+                'ssl_mode' => 'verify-full',
+            ])
+            ->assertSessionHasErrors('ssl_mode');
+
+        $this->assertDatabaseCount('database_connections', 0);
+    }
 }

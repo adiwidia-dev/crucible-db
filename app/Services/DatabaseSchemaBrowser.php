@@ -11,27 +11,30 @@ use Pdo\Mysql;
 
 class DatabaseSchemaBrowser
 {
+    public function __construct(private DatabaseTlsMaterializer $tlsMaterializer) {}
+
     /**
      * @return array<int, array{name:string, columns:array<int, array{name:string, type:string|null, nullable:bool|null}>}>
      */
     public function tables(DatabaseConnection $databaseConnection): array
     {
         $connectionName = 'crucible_schema_'.$databaseConnection->id;
-
-        Config::set("database.connections.{$connectionName}", [
-            'driver' => $databaseConnection->driver->value,
-            'host' => $databaseConnection->host,
-            'port' => $databaseConnection->port,
-            'database' => $databaseConnection->database,
-            'username' => $databaseConnection->username,
-            'password' => $databaseConnection->password,
-            'prefix' => '',
-            ...$this->driverOptions($databaseConnection),
-        ]);
-
-        DB::purge($connectionName);
+        $tlsMaterial = $this->tlsMaterializer->materialize($databaseConnection);
 
         try {
+            Config::set("database.connections.{$connectionName}", [
+                'driver' => $databaseConnection->driver->value,
+                'host' => $databaseConnection->host,
+                'port' => $databaseConnection->port,
+                'database' => $databaseConnection->database,
+                'username' => $databaseConnection->username,
+                'password' => $databaseConnection->password,
+                'prefix' => '',
+                ...$this->driverOptions($databaseConnection, $tlsMaterial),
+            ]);
+
+            DB::purge($connectionName);
+
             $rows = match ($databaseConnection->driver) {
                 DatabaseDriver::PostgreSql => DB::connection($connectionName)->select(
                     "select tables.table_name, columns.column_name, columns.data_type, columns.is_nullable
@@ -87,25 +90,26 @@ class DatabaseSchemaBrowser
         } finally {
             DB::disconnect($connectionName);
             DB::purge($connectionName);
+            $this->tlsMaterializer->cleanup();
         }
     }
 
     /**
      * @return array<string, array<int, bool|string>|bool|string>
      */
-    private function driverOptions(DatabaseConnection $databaseConnection): array
+    private function driverOptions(DatabaseConnection $databaseConnection, array $tlsMaterial): array
     {
         return match ($databaseConnection->driver) {
             DatabaseDriver::PostgreSql => [
                 'charset' => 'utf8',
-                ...$this->postgreSqlTlsOptions($databaseConnection),
+                ...$this->postgreSqlTlsOptions($databaseConnection, $tlsMaterial),
             ],
             DatabaseDriver::MySql => [
                 'charset' => 'utf8mb4',
                 'collation' => 'utf8mb4_unicode_ci',
                 'prefix_indexes' => true,
                 'strict' => true,
-                'options' => $this->mySqlPdoOptions($databaseConnection),
+                'options' => $this->mySqlPdoOptions($databaseConnection, $tlsMaterial),
             ],
         };
     }
@@ -113,29 +117,29 @@ class DatabaseSchemaBrowser
     /**
      * @return array<string, string>
      */
-    private function postgreSqlTlsOptions(DatabaseConnection $databaseConnection): array
+    private function postgreSqlTlsOptions(DatabaseConnection $databaseConnection, array $tlsMaterial): array
     {
         $tlsIsDisabled = $databaseConnection->tls_mode === DatabaseTlsMode::Disabled;
 
         return array_filter([
             'sslmode' => $databaseConnection->tls_mode->postgreSqlSslMode(),
-            'sslrootcert' => $tlsIsDisabled ? null : $databaseConnection->tls_ca_certificate,
-            'sslcert' => $tlsIsDisabled ? null : $databaseConnection->tls_client_certificate,
-            'sslkey' => $tlsIsDisabled ? null : $databaseConnection->tls_client_key,
+            'sslrootcert' => $tlsIsDisabled ? null : $tlsMaterial['ca'],
+            'sslcert' => $tlsIsDisabled ? null : $tlsMaterial['client_certificate'],
+            'sslkey' => $tlsIsDisabled ? null : $tlsMaterial['client_key'],
         ], static fn (mixed $value): bool => $value !== null);
     }
 
     /**
      * @return array<int, bool|string>
      */
-    private function mySqlPdoOptions(DatabaseConnection $databaseConnection): array
+    private function mySqlPdoOptions(DatabaseConnection $databaseConnection, array $tlsMaterial): array
     {
         $tlsIsDisabled = $databaseConnection->tls_mode === DatabaseTlsMode::Disabled;
 
         $options = [
-            Mysql::ATTR_SSL_CA => $tlsIsDisabled ? null : $databaseConnection->tls_ca_certificate,
-            Mysql::ATTR_SSL_CERT => $tlsIsDisabled ? null : $databaseConnection->tls_client_certificate,
-            Mysql::ATTR_SSL_KEY => $tlsIsDisabled ? null : $databaseConnection->tls_client_key,
+            Mysql::ATTR_SSL_CA => $tlsIsDisabled ? null : $tlsMaterial['ca'],
+            Mysql::ATTR_SSL_CERT => $tlsIsDisabled ? null : $tlsMaterial['client_certificate'],
+            Mysql::ATTR_SSL_KEY => $tlsIsDisabled ? null : $tlsMaterial['client_key'],
             Mysql::ATTR_SSL_VERIFY_SERVER_CERT => $databaseConnection->tls_mode->verifiesServerCertificate()
                 ? true
                 : null,

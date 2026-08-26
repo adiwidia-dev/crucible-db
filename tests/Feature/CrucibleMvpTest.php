@@ -21,6 +21,7 @@ use App\Models\RoleDatabasePermission;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
+use App\Services\DatabaseTlsMaterializer;
 use App\Services\DeploymentPreflight;
 use App\Services\NotificationDispatcher;
 use App\Services\QueryGuard;
@@ -69,7 +70,7 @@ class CrucibleMvpTest extends TestCase
         ]);
     }
 
-    public function test_connection_tls_modes_are_persisted_and_client_keys_are_encrypted_and_hidden(): void
+    public function test_connection_tls_modes_are_persisted_and_tls_material_is_not_serialized_to_inertia(): void
     {
         $admin = $this->adminUser();
 
@@ -102,16 +103,119 @@ class CrucibleMvpTest extends TestCase
                     DB::table('database_connections')->whereKey($connection->id)->value('tls_client_key'),
                 );
                 $this->assertSame('client private key', $connection->tls_client_key);
+                $this->assertArrayNotHasKey('tls_ca_certificate', $connection->toArray());
+                $this->assertArrayNotHasKey('tls_client_certificate', $connection->toArray());
                 $this->assertArrayNotHasKey('tls_client_key', $connection->toArray());
 
                 $this->actingAs($admin)
                     ->get(route('connections.edit', $connection))
                     ->assertOk()
                     ->assertInertia(fn (Assert $page) => $page
+                        ->where('connection.has_tls_ca_certificate', false)
                         ->where('connection.has_tls_client_certificate', true)
+                        ->where('connection.has_tls_client_key', true)
+                        ->missing('connection.tls_ca_certificate')
+                        ->missing('connection.tls_client_certificate')
+                        ->missing('connection.tls_client_key'));
+
+                $this->actingAs($admin)
+                    ->get(route('connections.show', $connection))
+                    ->assertOk()
+                    ->assertInertia(fn (Assert $page) => $page
+                        ->where('connection.has_tls_ca_certificate', false)
+                        ->where('connection.has_tls_client_certificate', true)
+                        ->where('connection.has_tls_client_key', true)
+                        ->missing('connection.tls_ca_certificate')
+                        ->missing('connection.tls_client_certificate')
                         ->missing('connection.tls_client_key'));
             }
         }
+    }
+
+    public function test_connection_tls_material_update_can_retain_replace_or_explicitly_clear_existing_pem_values(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create([
+            'driver' => DatabaseDriver::PostgreSql,
+            'tls_mode' => DatabaseTlsMode::VerifyIdentity,
+            'tls_ca_certificate' => 'existing ca',
+            'tls_client_certificate' => 'existing certificate',
+            'tls_client_key' => 'existing key',
+        ]);
+        $baseData = [
+            'name' => $connection->name,
+            'driver' => DatabaseDriver::PostgreSql->value,
+            'host' => $connection->host,
+            'port' => $connection->port,
+            'database' => $connection->database,
+            'username' => $connection->username,
+            'tls_mode' => DatabaseTlsMode::VerifyIdentity->value,
+            'is_active' => '1',
+        ];
+
+        $this->actingAs($admin)
+            ->patch(route('connections.update', $connection), [
+                ...$baseData,
+                'tls_material_action' => 'retain',
+            ])
+            ->assertRedirect(route('connections.show', $connection));
+
+        $connection->refresh();
+        $this->assertSame('existing ca', $connection->tls_ca_certificate);
+        $this->assertSame('existing certificate', $connection->tls_client_certificate);
+        $this->assertSame('existing key', $connection->tls_client_key);
+
+        $this->actingAs($admin)
+            ->patch(route('connections.update', $connection), [
+                ...$baseData,
+                'tls_material_action' => 'replace',
+                'tls_ca_certificate' => 'replacement ca',
+                'tls_client_certificate' => 'replacement certificate',
+                'tls_client_key' => 'replacement key',
+            ])
+            ->assertRedirect(route('connections.show', $connection));
+
+        $connection->refresh();
+        $this->assertSame('replacement ca', $connection->tls_ca_certificate);
+        $this->assertSame('replacement certificate', $connection->tls_client_certificate);
+        $this->assertSame('replacement key', $connection->tls_client_key);
+
+        $this->actingAs($admin)
+            ->patch(route('connections.update', $connection), [
+                ...$baseData,
+                'tls_mode' => DatabaseTlsMode::Disabled->value,
+                'tls_material_action' => 'clear',
+            ])
+            ->assertRedirect(route('connections.show', $connection));
+
+        $connection->refresh();
+        $this->assertNull($connection->tls_ca_certificate);
+        $this->assertNull($connection->tls_client_certificate);
+        $this->assertNull($connection->tls_client_key);
+    }
+
+    public function test_connection_tls_material_replacement_requires_a_complete_client_certificate_and_key_pair(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create([
+            'driver' => DatabaseDriver::PostgreSql,
+            'tls_mode' => DatabaseTlsMode::Required,
+        ]);
+
+        $this->actingAs($admin)
+            ->patch(route('connections.update', $connection), [
+                'name' => $connection->name,
+                'driver' => DatabaseDriver::PostgreSql->value,
+                'host' => $connection->host,
+                'port' => $connection->port,
+                'database' => $connection->database,
+                'username' => $connection->username,
+                'tls_mode' => DatabaseTlsMode::Required->value,
+                'tls_material_action' => 'replace',
+                'tls_client_certificate' => 'replacement certificate',
+                'is_active' => '1',
+            ])
+            ->assertSessionHasErrors('tls_client_key');
     }
 
     public function test_connection_tls_certificate_and_key_must_be_provided_together_and_verify_identity_requires_a_ca(): void
@@ -143,6 +247,7 @@ class CrucibleMvpTest extends TestCase
                 ...$baseData,
                 'name' => $connection->name,
                 'tls_mode' => DatabaseTlsMode::VerifyIdentity->value,
+                'tls_material_action' => 'retain',
             ])
             ->assertSessionHasErrors('tls_ca_certificate');
     }
@@ -292,7 +397,7 @@ class CrucibleMvpTest extends TestCase
         $admin = $this->adminUser();
         $connection = DatabaseConnection::factory()->create();
 
-        $this->app->bind(DatabaseQueryExecutor::class, fn () => new class extends DatabaseQueryExecutor
+        $this->app->bind(DatabaseQueryExecutor::class, fn () => new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             public function execute(DatabaseConnection $databaseConnection, string $sql, QueryType $queryType): array
             {
@@ -326,7 +431,7 @@ class CrucibleMvpTest extends TestCase
         $admin = $this->adminUser();
         $connection = DatabaseConnection::factory()->create();
 
-        $this->app->bind(DatabaseQueryExecutor::class, fn () => new class extends DatabaseQueryExecutor
+        $this->app->bind(DatabaseQueryExecutor::class, fn () => new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             public function execute(DatabaseConnection $databaseConnection, string $sql, QueryType $queryType): array
             {
@@ -1140,7 +1245,7 @@ SQL;
             'requires_approval' => false,
         ]);
 
-        $this->app->bind(DatabaseQueryExecutor::class, fn () => new class extends DatabaseQueryExecutor
+        $this->app->bind(DatabaseQueryExecutor::class, fn () => new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             public function execute(DatabaseConnection $connection, string $sql, QueryType $queryType): array
             {
@@ -1212,7 +1317,7 @@ SQL;
             'requires_approval' => false,
         ]);
 
-        $this->app->bind(DatabaseQueryExecutor::class, fn () => new class extends DatabaseQueryExecutor
+        $this->app->bind(DatabaseQueryExecutor::class, fn () => new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             public function execute(DatabaseConnection $connection, string $sql, QueryType $queryType): array
             {
@@ -1362,7 +1467,7 @@ SQL;
     public function test_execution_job_records_result_summary_and_audit_log(): void
     {
         $admin = $this->adminUser();
-        $this->app->bind(DatabaseQueryExecutor::class, fn () => new class extends DatabaseQueryExecutor
+        $this->app->bind(DatabaseQueryExecutor::class, fn () => new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             public function execute(DatabaseConnection $connection, string $sql, QueryType $queryType): array
             {

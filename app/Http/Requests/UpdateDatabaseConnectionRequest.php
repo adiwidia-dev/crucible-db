@@ -39,9 +39,18 @@ class UpdateDatabaseConnectionRequest extends FormRequest
             'tls_ca_certificate' => ['nullable', 'string', 'max:65535'],
             'tls_client_certificate' => ['nullable', 'string', 'max:65535'],
             'tls_client_key' => ['nullable', 'string', 'max:65535'],
+            'tls_material_action' => ['required', Rule::in(['retain', 'replace', 'clear'])],
             'tls_skip_verify' => ['prohibited'],
+            'ssl_mode' => ['prohibited'],
             'is_active' => ['sometimes', 'boolean'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if (! $this->has('tls_material_action')) {
+            $this->merge(['tls_material_action' => 'retain']);
+        }
     }
 
     /**
@@ -53,16 +62,38 @@ class UpdateDatabaseConnectionRequest extends FormRequest
             $tlsMode = DatabaseTlsMode::tryFrom($this->string('tls_mode')->toString());
             /** @var DatabaseConnection $databaseConnection */
             $databaseConnection = $this->route('database_connection');
-            $caCertificate = filled($this->input('tls_ca_certificate'))
-                ? $this->input('tls_ca_certificate')
-                : $databaseConnection->tls_ca_certificate;
+            $tlsMaterialAction = $this->string('tls_material_action')->toString();
+            $replacesMaterial = $tlsMaterialAction === 'replace';
+            $clearsMaterial = $tlsMaterialAction === 'clear';
+
+            if ($tlsMaterialAction === 'retain' && (
+                $this->exists('tls_ca_certificate')
+                || $this->exists('tls_client_certificate')
+                || $this->exists('tls_client_key')
+            )) {
+                $validator->errors()->add('tls_material_action', 'Select replace or clear to change TLS material.');
+            }
+
+            $caCertificate = $clearsMaterial
+                ? null
+                : ($replacesMaterial && filled($this->input('tls_ca_certificate'))
+                    ? $this->input('tls_ca_certificate')
+                    : $databaseConnection->tls_ca_certificate);
 
             if ($tlsMode?->requiresCaCertificate() && blank($caCertificate)) {
                 $validator->errors()->add('tls_ca_certificate', 'A CA certificate is required when TLS verifies the server.');
             }
 
-            $hasClientCertificate = filled($this->input('tls_client_certificate'));
-            $hasClientKey = filled($this->input('tls_client_key'));
+            $hasClientCertificate = $clearsMaterial
+                ? false
+                : ($replacesMaterial
+                    ? filled($this->input('tls_client_certificate'))
+                    : filled($databaseConnection->tls_client_certificate));
+            $hasClientKey = $clearsMaterial
+                ? false
+                : ($replacesMaterial
+                    ? filled($this->input('tls_client_key'))
+                    : filled($databaseConnection->tls_client_key));
 
             if ($hasClientCertificate && ! $hasClientKey) {
                 $validator->errors()->add('tls_client_key', 'A client key is required with a client certificate.');

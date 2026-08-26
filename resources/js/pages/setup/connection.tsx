@@ -59,6 +59,11 @@ export default function SetupConnection({ drivers }: Props) {
                     {...SetupController.storeConnection.form()}
                     disableWhileProcessing
                     className="grid gap-4"
+                    resetOnError={[
+                        'tls_ca_certificate',
+                        'tls_client_certificate',
+                        'tls_client_key',
+                    ]}
                 >
                     {({ processing, errors }) => (
                         <>
@@ -192,9 +197,7 @@ export default function SetupConnection({ drivers }: Props) {
                                             className="min-h-24 rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                                         />
                                         <InputError
-                                            message={
-                                                errors.tls_ca_certificate
-                                            }
+                                            message={errors.tls_ca_certificate}
                                         />
                                     </div>
                                     <div className="grid gap-2">

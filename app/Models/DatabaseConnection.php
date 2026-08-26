@@ -33,7 +33,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  * @property-read User|null $createdBy
  */
 #[Fillable(['created_by_id', 'name', 'driver', 'host', 'port', 'database', 'username', 'password', 'tls_mode', 'tls_ca_certificate', 'tls_client_certificate', 'tls_client_key', 'is_active'])]
-#[Hidden(['password', 'tls_client_key'])]
+#[Hidden(['password', 'tls_ca_certificate', 'tls_client_certificate', 'tls_client_key'])]
 class DatabaseConnection extends Model
 {
     /** @use HasFactory<DatabaseConnectionFactory> */
