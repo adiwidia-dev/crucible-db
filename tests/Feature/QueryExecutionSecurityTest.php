@@ -189,7 +189,7 @@ SQL;
         );
     }
 
-    public function test_tls_postgresql_uses_the_normalized_sslmode(): void
+    public function test_tls_postgresql_passes_normalized_certificates_and_key_to_the_connector(): void
     {
         $connection = Mockery::mock(ConnectionInterface::class);
         $connection->shouldReceive('beginTransaction')->once()->ordered();
@@ -198,14 +198,40 @@ SQL;
         $connection->shouldReceive('rollBack')->once()->ordered();
 
         $this->mockDatabaseFacade($connection, 904, function (): void {
-            $this->assertSame(
-                'verify-full',
-                config('database.connections.crucible_runtime_904.sslmode'),
-            );
+            $configuration = config('database.connections.crucible_runtime_904');
+
+            $this->assertSame('verify-full', $configuration['sslmode']);
+            $this->assertSame('ca certificate', $configuration['sslrootcert']);
+            $this->assertSame('client certificate', $configuration['sslcert']);
+            $this->assertSame('client private key', $configuration['sslkey']);
         });
 
         app(DatabaseQueryExecutor::class)->execute(
             $this->databaseConnection(904, DatabaseDriver::PostgreSql, DatabaseTlsMode::VerifyIdentity),
+            'select 1 as value',
+            QueryType::Read,
+        );
+    }
+
+    public function test_disabled_postgresql_tls_omits_certificates_and_key_from_the_query_connector(): void
+    {
+        $connection = Mockery::mock(ConnectionInterface::class);
+        $connection->shouldReceive('beginTransaction')->once()->ordered();
+        $connection->shouldReceive('statement')->with('SET TRANSACTION READ ONLY')->once()->ordered()->andReturnTrue();
+        $connection->shouldReceive('cursor')->with('select 1 as value')->once()->ordered()->andReturn($this->rows());
+        $connection->shouldReceive('rollBack')->once()->ordered();
+
+        $this->mockDatabaseFacade($connection, 908, function (): void {
+            $configuration = config('database.connections.crucible_runtime_908');
+
+            $this->assertSame('disable', $configuration['sslmode']);
+            $this->assertArrayNotHasKey('sslrootcert', $configuration);
+            $this->assertArrayNotHasKey('sslcert', $configuration);
+            $this->assertArrayNotHasKey('sslkey', $configuration);
+        });
+
+        app(DatabaseQueryExecutor::class)->execute(
+            $this->databaseConnection(908, DatabaseDriver::PostgreSql, DatabaseTlsMode::Disabled),
             'select 1 as value',
             QueryType::Read,
         );
@@ -235,20 +261,41 @@ SQL;
         );
     }
 
-    public function test_schema_browser_uses_the_normalized_postgresql_tls_mode(): void
+    public function test_schema_browser_passes_normalized_postgresql_certificates_and_key_to_the_connector(): void
     {
         $connection = Mockery::mock(ConnectionInterface::class);
         $connection->shouldReceive('select')->once()->andReturn([]);
 
         $this->mockSchemaBrowserDatabaseFacade($connection, 906, function (): void {
-            $this->assertSame(
-                'verify-full',
-                config('database.connections.crucible_schema_906.sslmode'),
-            );
+            $configuration = config('database.connections.crucible_schema_906');
+
+            $this->assertSame('verify-full', $configuration['sslmode']);
+            $this->assertSame('ca certificate', $configuration['sslrootcert']);
+            $this->assertSame('client certificate', $configuration['sslcert']);
+            $this->assertSame('client private key', $configuration['sslkey']);
         });
 
         app(DatabaseSchemaBrowser::class)->tables(
             $this->databaseConnection(906, DatabaseDriver::PostgreSql, DatabaseTlsMode::VerifyIdentity),
+        );
+    }
+
+    public function test_disabled_postgresql_tls_omits_certificates_and_key_from_the_schema_connector(): void
+    {
+        $connection = Mockery::mock(ConnectionInterface::class);
+        $connection->shouldReceive('select')->once()->andReturn([]);
+
+        $this->mockSchemaBrowserDatabaseFacade($connection, 909, function (): void {
+            $configuration = config('database.connections.crucible_schema_909');
+
+            $this->assertSame('disable', $configuration['sslmode']);
+            $this->assertArrayNotHasKey('sslrootcert', $configuration);
+            $this->assertArrayNotHasKey('sslcert', $configuration);
+            $this->assertArrayNotHasKey('sslkey', $configuration);
+        });
+
+        app(DatabaseSchemaBrowser::class)->tables(
+            $this->databaseConnection(909, DatabaseDriver::PostgreSql, DatabaseTlsMode::Disabled),
         );
     }
 

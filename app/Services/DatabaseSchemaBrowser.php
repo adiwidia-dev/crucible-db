@@ -98,7 +98,7 @@ class DatabaseSchemaBrowser
         return match ($databaseConnection->driver) {
             DatabaseDriver::PostgreSql => [
                 'charset' => 'utf8',
-                'sslmode' => $databaseConnection->tls_mode->postgreSqlSslMode(),
+                ...$this->postgreSqlTlsOptions($databaseConnection),
             ],
             DatabaseDriver::MySql => [
                 'charset' => 'utf8mb4',
@@ -108,6 +108,21 @@ class DatabaseSchemaBrowser
                 'options' => $this->mySqlPdoOptions($databaseConnection),
             ],
         };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function postgreSqlTlsOptions(DatabaseConnection $databaseConnection): array
+    {
+        $tlsIsDisabled = $databaseConnection->tls_mode === DatabaseTlsMode::Disabled;
+
+        return array_filter([
+            'sslmode' => $databaseConnection->tls_mode->postgreSqlSslMode(),
+            'sslrootcert' => $tlsIsDisabled ? null : $databaseConnection->tls_ca_certificate,
+            'sslcert' => $tlsIsDisabled ? null : $databaseConnection->tls_client_certificate,
+            'sslkey' => $tlsIsDisabled ? null : $databaseConnection->tls_client_key,
+        ], static fn (mixed $value): bool => $value !== null);
     }
 
     /**

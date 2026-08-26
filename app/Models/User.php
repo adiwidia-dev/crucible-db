@@ -233,6 +233,10 @@ class User extends Authenticatable implements PasskeyUser
      */
     public function effectiveNativeProxyPermissionFor(DatabaseConnection $databaseConnection, QueryType $queryType): array
     {
+        if (! $databaseConnection->is_active) {
+            return $this->noDatabasePermission();
+        }
+
         if ($this->isAdmin()) {
             return [
                 'access_mode' => AccessMode::Write,
