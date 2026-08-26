@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\AccessMode;
 use App\Enums\DatabaseDriver;
+use App\Enums\DatabaseTlsMode;
 use App\Enums\ExecutionStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
@@ -50,7 +51,7 @@ class CrucibleMvpTest extends TestCase
             'database' => 'app',
             'username' => 'app_user',
             'password' => 'secret-password',
-            'ssl_mode' => 'prefer',
+            'tls_mode' => DatabaseTlsMode::Preferred->value,
             'is_active' => '1',
         ]);
 
@@ -66,6 +67,123 @@ class CrucibleMvpTest extends TestCase
             'action' => 'database_connection.created',
             'auditable_id' => $connection->id,
         ]);
+    }
+
+    public function test_connection_tls_modes_are_persisted_and_client_keys_are_encrypted_and_hidden(): void
+    {
+        $admin = $this->adminUser();
+
+        foreach (DatabaseTlsMode::cases() as $tlsMode) {
+            $response = $this->actingAs($admin)->post(route('connections.store'), [
+                'name' => 'TLS '.$tlsMode->value,
+                'driver' => DatabaseDriver::PostgreSql->value,
+                'host' => 'target-postgres',
+                'port' => 5432,
+                'database' => 'app',
+                'username' => 'app_user',
+                'password' => 'secret-password',
+                'tls_mode' => $tlsMode->value,
+                'tls_ca_certificate' => in_array($tlsMode, [DatabaseTlsMode::VerifyCa, DatabaseTlsMode::VerifyIdentity], true)
+                    ? 'ca certificate'
+                    : null,
+                'tls_client_certificate' => $tlsMode === DatabaseTlsMode::Required ? 'client certificate' : null,
+                'tls_client_key' => $tlsMode === DatabaseTlsMode::Required ? 'client private key' : null,
+                'is_active' => '1',
+            ]);
+
+            $connection = DatabaseConnection::query()->where('name', 'TLS '.$tlsMode->value)->firstOrFail();
+
+            $response->assertRedirect(route('connections.show', $connection));
+            $this->assertSame($tlsMode, $connection->tls_mode);
+
+            if ($tlsMode === DatabaseTlsMode::Required) {
+                $this->assertNotSame(
+                    'client private key',
+                    DB::table('database_connections')->whereKey($connection->id)->value('tls_client_key'),
+                );
+                $this->assertSame('client private key', $connection->tls_client_key);
+                $this->assertArrayNotHasKey('tls_client_key', $connection->toArray());
+
+                $this->actingAs($admin)
+                    ->get(route('connections.edit', $connection))
+                    ->assertOk()
+                    ->assertInertia(fn (Assert $page) => $page
+                        ->where('connection.has_tls_client_certificate', true)
+                        ->missing('connection.tls_client_key'));
+            }
+        }
+    }
+
+    public function test_connection_tls_certificate_and_key_must_be_provided_together_and_verify_identity_requires_a_ca(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+
+        $baseData = [
+            'name' => 'TLS validation',
+            'driver' => DatabaseDriver::PostgreSql->value,
+            'host' => 'target-postgres',
+            'port' => 5432,
+            'database' => 'app',
+            'username' => 'app_user',
+            'password' => 'secret-password',
+            'tls_mode' => DatabaseTlsMode::Required->value,
+        ];
+
+        $this->actingAs($admin)
+            ->post(route('connections.store'), [...$baseData, 'tls_client_certificate' => 'client certificate'])
+            ->assertSessionHasErrors('tls_client_key');
+
+        $this->actingAs($admin)
+            ->post(route('connections.store'), [...$baseData, 'name' => 'TLS key validation', 'tls_client_key' => 'client key'])
+            ->assertSessionHasErrors('tls_client_certificate');
+
+        $this->actingAs($admin)
+            ->patch(route('connections.update', $connection), [
+                ...$baseData,
+                'name' => $connection->name,
+                'tls_mode' => DatabaseTlsMode::VerifyIdentity->value,
+            ])
+            ->assertSessionHasErrors('tls_ca_certificate');
+    }
+
+    public function test_connection_tls_configuration_rejects_tls_skip_verify_and_native_client_access_is_admin_only(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+
+        $data = [
+            'name' => 'Native access target',
+            'driver' => DatabaseDriver::MySql->value,
+            'host' => 'target-mysql',
+            'port' => 3306,
+            'database' => 'app',
+            'username' => 'app_user',
+            'password' => 'secret-password',
+            'tls_mode' => DatabaseTlsMode::Disabled->value,
+            'native_proxy_enabled' => '1',
+            'is_active' => '1',
+        ];
+
+        $this->actingAs($admin)
+            ->post(route('connections.store'), [...$data, 'tls_skip_verify' => '1'])
+            ->assertSessionHasErrors('tls_skip_verify');
+
+        $this->actingAs($admin)
+            ->post(route('connections.store'), $data)
+            ->assertRedirect();
+
+        $nativeConnection = DatabaseConnection::query()->where('name', 'Native access target')->firstOrFail();
+        $this->assertTrue($nativeConnection->native_proxy_enabled);
+
+        $nonAdmin = User::factory()->create();
+
+        $this->actingAs($nonAdmin)
+            ->patch(route('connections.update', $nativeConnection), [...$data, 'name' => $nativeConnection->name, 'native_proxy_enabled' => '0'])
+            ->assertForbidden();
+
+        $this->assertTrue($nativeConnection->refresh()->native_proxy_enabled);
+        $this->assertFalse($connection->native_proxy_enabled);
     }
 
     public function test_connections_index_returns_paginated_connections(): void
@@ -153,7 +271,7 @@ class CrucibleMvpTest extends TestCase
             'database' => 'orders',
             'username' => 'orders_user',
             'password' => 'secret-password',
-            'ssl_mode' => 'require',
+            'tls_mode' => DatabaseTlsMode::Required->value,
             'is_active' => '1',
             'create_another' => '1',
         ]);
@@ -162,7 +280,7 @@ class CrucibleMvpTest extends TestCase
             'driver' => DatabaseDriver::PostgreSql->value,
             'host' => 'orders.internal',
             'port' => 5432,
-            'ssl_mode' => 'require',
+            'tls_mode' => DatabaseTlsMode::Required->value,
         ]);
 
         $response->assertRedirect($createAnotherUrl);
@@ -180,7 +298,7 @@ class CrucibleMvpTest extends TestCase
                     'driver' => DatabaseDriver::PostgreSql->value,
                     'host' => 'orders.internal',
                     'port' => 5432,
-                    'ssl_mode' => 'require',
+                    'tls_mode' => DatabaseTlsMode::Required->value,
                 ]));
     }
 

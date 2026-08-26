@@ -9,6 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index, show } from '@/routes/connections';
 
+const tlsModes = [
+    { value: 'disabled', label: 'Disabled' },
+    { value: 'preferred', label: 'Preferred' },
+    { value: 'required', label: 'Required' },
+    { value: 'verify_ca', label: 'Verify CA' },
+    { value: 'verify_identity', label: 'Verify identity' },
+];
+
 type Driver = {
     value: string;
     label: string;
@@ -23,8 +31,11 @@ type ConnectionFormData = {
     port: number;
     database: string;
     username: string;
-    ssl_mode: string | null;
+    tls_mode: string;
+    tls_ca_certificate: string | null;
+    has_tls_client_certificate: boolean;
     is_active: boolean;
+    native_proxy_enabled: boolean;
 } | null;
 
 type Props = {
@@ -34,7 +45,7 @@ type Props = {
         driver: string;
         host: string;
         port: number;
-        ssl_mode: string | null;
+        tls_mode: string;
     };
 };
 
@@ -57,6 +68,12 @@ export default function ConnectionForm({
         5432;
     const [driver, setDriver] = useState(initialDriver);
     const [port, setPort] = useState(initialPort);
+    const [tlsMode, setTlsMode] = useState(
+        connection?.tls_mode ?? defaults?.tls_mode ?? 'preferred',
+    );
+    const tlsIsEnabled = tlsMode !== 'disabled';
+    const tlsVerifiesServer =
+        tlsMode === 'verify_ca' || tlsMode === 'verify_identity';
 
     function changeDriver(value: string) {
         setDriver(value);
@@ -99,8 +116,8 @@ export default function ConnectionForm({
                         {...action}
                         options={{
                             preserveScroll: true,
-                            preserveState: 'errors',
                         }}
+                        resetOnError={['tls_client_key']}
                     >
                         {({ processing, errors }) => (
                             <>
@@ -258,23 +275,124 @@ export default function ConnectionForm({
                                         </div>
 
                                         <div className="grid gap-2 md:col-span-2">
-                                            <Label htmlFor="ssl_mode">
-                                                SSL mode
+                                            <Label htmlFor="tls_mode">
+                                                Target TLS policy
                                             </Label>
-                                            <Input
-                                                id="ssl_mode"
-                                                name="ssl_mode"
-                                                defaultValue={
-                                                    connection?.ssl_mode ??
-                                                    defaults?.ssl_mode ??
-                                                    ''
+                                            <select
+                                                id="tls_mode"
+                                                name="tls_mode"
+                                                value={tlsMode}
+                                                onChange={(event) =>
+                                                    setTlsMode(
+                                                        event.target.value,
+                                                    )
                                                 }
-                                                placeholder="prefer"
-                                            />
+                                                className="h-9 rounded-md border border-input bg-card px-3 text-sm transition-[color,border-color,box-shadow] duration-150 ease-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-reduce:transition-none"
+                                                required
+                                            >
+                                                {tlsModes.map((mode) => (
+                                                    <option
+                                                        key={mode.value}
+                                                        value={mode.value}
+                                                    >
+                                                        {mode.label}
+                                                    </option>
+                                                ))}
+                                            </select>
                                             <InputError
-                                                message={errors.ssl_mode}
+                                                message={errors.tls_mode}
                                             />
                                         </div>
+
+                                        {tlsIsEnabled && (
+                                            <div className="grid gap-4 rounded-md border bg-muted/20 p-4 md:col-span-2">
+                                                <div>
+                                                    <p className="text-sm font-medium">
+                                                        Target TLS material
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        This controls the
+                                                        app-to-database
+                                                        connection only. It does
+                                                        not configure TLS for
+                                                        Native Client Access.
+                                                    </p>
+                                                </div>
+
+                                                <div className="grid gap-4 md:grid-cols-2">
+                                                    <div className="grid gap-2 md:col-span-2">
+                                                        <Label htmlFor="tls_ca_certificate">
+                                                            CA certificate
+                                                            {tlsVerifiesServer &&
+                                                                ' (required)'}
+                                                        </Label>
+                                                        <textarea
+                                                            id="tls_ca_certificate"
+                                                            name="tls_ca_certificate"
+                                                            defaultValue={
+                                                                connection?.tls_ca_certificate ??
+                                                                ''
+                                                            }
+                                                            className="min-h-28 rounded-md border border-input bg-card px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                                                            required={
+                                                                tlsVerifiesServer
+                                                            }
+                                                        />
+                                                        <InputError
+                                                            message={
+                                                                errors.tls_ca_certificate
+                                                            }
+                                                        />
+                                                    </div>
+
+                                                    <div className="grid gap-2">
+                                                        <Label htmlFor="tls_client_certificate">
+                                                            Client certificate
+                                                        </Label>
+                                                        <textarea
+                                                            id="tls_client_certificate"
+                                                            name="tls_client_certificate"
+                                                            placeholder={
+                                                                connection?.has_tls_client_certificate
+                                                                    ? 'A certificate is already configured. Paste both files to replace it.'
+                                                                    : 'Optional PEM certificate'
+                                                            }
+                                                            className="min-h-28 rounded-md border border-input bg-card px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                                                        />
+                                                        <InputError
+                                                            message={
+                                                                errors.tls_client_certificate
+                                                            }
+                                                        />
+                                                    </div>
+
+                                                    <div className="grid gap-2">
+                                                        <Label htmlFor="tls_client_key">
+                                                            Client private key
+                                                        </Label>
+                                                        <textarea
+                                                            id="tls_client_key"
+                                                            name="tls_client_key"
+                                                            placeholder="Optional PEM private key"
+                                                            autoComplete="new-password"
+                                                            className="min-h-28 rounded-md border border-input bg-card px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                                                        />
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Never shown again.
+                                                            Paste the
+                                                            certificate and key
+                                                            together to
+                                                            configure mTLS.
+                                                        </p>
+                                                        <InputError
+                                                            message={
+                                                                errors.tls_client_key
+                                                            }
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </section>
 
@@ -353,6 +471,38 @@ export default function ConnectionForm({
                                                     Allow this connection to
                                                     receive query requests
                                                     immediately.
+                                                </span>
+                                            </span>
+                                        </label>
+
+                                        <label className="flex min-h-12 items-center gap-3 rounded-md border bg-card px-3 text-sm md:col-span-2">
+                                            <input
+                                                type="hidden"
+                                                name="native_proxy_enabled"
+                                                value="0"
+                                            />
+                                            <input
+                                                id="native_proxy_enabled"
+                                                name="native_proxy_enabled"
+                                                type="checkbox"
+                                                value="1"
+                                                defaultChecked={
+                                                    connection?.native_proxy_enabled ??
+                                                    false
+                                                }
+                                                className="size-4 rounded border-input"
+                                            />
+                                            <span>
+                                                <span className="font-medium">
+                                                    Enable Native Client Access
+                                                </span>
+                                                <span className="mt-0.5 block text-xs text-muted-foreground">
+                                                    Opt in before this target
+                                                    can be exposed through the
+                                                    native proxy. User policy
+                                                    still controls access, and
+                                                    this does not change the
+                                                    target TLS policy above.
                                                 </span>
                                             </span>
                                         </label>

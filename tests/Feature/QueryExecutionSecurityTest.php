@@ -3,16 +3,19 @@
 namespace Tests\Feature;
 
 use App\Enums\DatabaseDriver;
+use App\Enums\DatabaseTlsMode;
 use App\Enums\QueryType;
 use App\Models\DatabaseConnection;
 use App\Services\ApplicationSettings;
 use App\Services\DatabaseQueryExecutor;
 use App\Services\QueryGuard;
+use Closure;
 use Generator;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Mockery;
+use Pdo\Mysql;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -185,16 +188,66 @@ SQL;
         );
     }
 
-    private function mockDatabaseFacade(ConnectionInterface $connection, int $connectionId): void
+    public function test_tls_postgresql_uses_the_normalized_sslmode(): void
+    {
+        $connection = Mockery::mock(ConnectionInterface::class);
+        $connection->shouldReceive('beginTransaction')->once()->ordered();
+        $connection->shouldReceive('statement')->with('SET TRANSACTION READ ONLY')->once()->ordered()->andReturnTrue();
+        $connection->shouldReceive('cursor')->with('select 1 as value')->once()->ordered()->andReturn($this->rows());
+        $connection->shouldReceive('rollBack')->once()->ordered();
+
+        $this->mockDatabaseFacade($connection, 904, function (): void {
+            $this->assertSame(
+                'verify-full',
+                config('database.connections.crucible_runtime_904.sslmode'),
+            );
+        });
+
+        app(DatabaseQueryExecutor::class)->execute(
+            $this->databaseConnection(904, DatabaseDriver::PostgreSql, DatabaseTlsMode::VerifyIdentity),
+            'select 1 as value',
+            QueryType::Read,
+        );
+    }
+
+    public function test_tls_mysql_applies_trusted_ca_certificate_and_key_pdo_options_without_disabling_verification(): void
+    {
+        $connection = Mockery::mock(ConnectionInterface::class);
+        $connection->shouldReceive('statement')->with('SET TRANSACTION READ ONLY')->once()->ordered()->andReturnTrue();
+        $connection->shouldReceive('beginTransaction')->once()->ordered();
+        $connection->shouldReceive('cursor')->with('select 1 as value')->once()->ordered()->andReturn($this->rows());
+        $connection->shouldReceive('rollBack')->once()->ordered();
+
+        $this->mockDatabaseFacade($connection, 905, function (): void {
+            $options = config('database.connections.crucible_runtime_905.options');
+
+            $this->assertSame('ca certificate', $options[Mysql::ATTR_SSL_CA]);
+            $this->assertSame('client certificate', $options[Mysql::ATTR_SSL_CERT]);
+            $this->assertSame('client private key', $options[Mysql::ATTR_SSL_KEY]);
+            $this->assertTrue($options[Mysql::ATTR_SSL_VERIFY_SERVER_CERT]);
+        });
+
+        app(DatabaseQueryExecutor::class)->execute(
+            $this->databaseConnection(905, DatabaseDriver::MySql, DatabaseTlsMode::VerifyIdentity),
+            'select 1 as value',
+            QueryType::Read,
+        );
+    }
+
+    private function mockDatabaseFacade(ConnectionInterface $connection, int $connectionId, ?Closure $assertConfiguration = null): void
     {
         $connectionName = 'crucible_runtime_'.$connectionId;
 
         DB::shouldReceive('purge')->with($connectionName)->twice();
-        DB::shouldReceive('connection')->with($connectionName)->once()->andReturn($connection);
+        DB::shouldReceive('connection')->with($connectionName)->once()->andReturnUsing(function () use ($connection, $assertConfiguration): ConnectionInterface {
+            $assertConfiguration?->__invoke();
+
+            return $connection;
+        });
         DB::shouldReceive('disconnect')->with($connectionName)->once();
     }
 
-    private function databaseConnection(int $id, DatabaseDriver $driver): DatabaseConnection
+    private function databaseConnection(int $id, DatabaseDriver $driver, DatabaseTlsMode $tlsMode = DatabaseTlsMode::Preferred): DatabaseConnection
     {
         $databaseConnection = new DatabaseConnection;
         $databaseConnection->forceFill([
@@ -205,7 +258,10 @@ SQL;
             'database' => 'application',
             'username' => 'crucible',
             'password' => 'secret',
-            'ssl_mode' => $driver === DatabaseDriver::PostgreSql ? 'prefer' : null,
+            'tls_mode' => $tlsMode,
+            'tls_ca_certificate' => $tlsMode === DatabaseTlsMode::VerifyIdentity ? 'ca certificate' : null,
+            'tls_client_certificate' => $tlsMode === DatabaseTlsMode::VerifyIdentity ? 'client certificate' : null,
+            'tls_client_key' => $tlsMode === DatabaseTlsMode::VerifyIdentity ? 'client private key' : null,
             'is_active' => true,
         ]);
 

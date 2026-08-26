@@ -77,6 +77,7 @@ class DatabaseConnectionController extends Controller
             ...$data,
             'created_by_id' => $request->user()->id,
             'is_active' => $request->boolean('is_active', true),
+            'native_proxy_enabled' => $request->boolean('native_proxy_enabled'),
         ]);
 
         $auditLogger->log('database_connection.created', $request->user(), $connection);
@@ -91,7 +92,7 @@ class DatabaseConnectionController extends Controller
                 'driver' => $connection->driver->value,
                 'host' => $connection->host,
                 'port' => $connection->port,
-                'ssl_mode' => $connection->ssl_mode,
+                'tls_mode' => $connection->tls_mode->value,
             ]);
         }
 
@@ -113,7 +114,11 @@ class DatabaseConnectionController extends Controller
                 'port' => $databaseConnection->port,
                 'database' => $databaseConnection->database,
                 'username' => $databaseConnection->username,
-                'ssl_mode' => $databaseConnection->ssl_mode,
+                'tls_mode' => $databaseConnection->tls_mode->value,
+                'ssl_mode' => $databaseConnection->tls_mode->postgreSqlSslMode(),
+                'tls_ca_certificate' => $databaseConnection->tls_ca_certificate,
+                'tls_client_certificate' => $databaseConnection->tls_client_certificate,
+                'native_proxy_enabled' => $databaseConnection->native_proxy_enabled,
                 'is_active' => $databaseConnection->is_active,
                 'permissions' => $databaseConnection->rolePermissions->map(fn ($permission): array => [
                     'id' => $permission->id,
@@ -145,8 +150,11 @@ class DatabaseConnectionController extends Controller
                 'port' => $databaseConnection->port,
                 'database' => $databaseConnection->database,
                 'username' => $databaseConnection->username,
-                'ssl_mode' => $databaseConnection->ssl_mode,
+                'tls_mode' => $databaseConnection->tls_mode->value,
+                'tls_ca_certificate' => $databaseConnection->tls_ca_certificate,
+                'has_tls_client_certificate' => filled($databaseConnection->tls_client_certificate),
                 'is_active' => $databaseConnection->is_active,
+                'native_proxy_enabled' => $databaseConnection->native_proxy_enabled,
             ],
             'drivers' => $this->drivers(),
         ]);
@@ -160,7 +168,14 @@ class DatabaseConnectionController extends Controller
             unset($data['password']);
         }
 
+        foreach (['tls_ca_certificate', 'tls_client_certificate', 'tls_client_key'] as $attribute) {
+            if (blank($data[$attribute] ?? null)) {
+                unset($data[$attribute]);
+            }
+        }
+
         $data['is_active'] = $request->boolean('is_active');
+        $data['native_proxy_enabled'] = $request->boolean('native_proxy_enabled');
 
         $databaseConnection->update($data);
         $auditLogger->log('database_connection.updated', $request->user(), $databaseConnection);
@@ -257,7 +272,7 @@ class DatabaseConnectionController extends Controller
     }
 
     /**
-     * @return array{driver: string, host: string, port: int, ssl_mode: string|null}
+     * @return array{driver: string, host: string, port: int, tls_mode: string}
      */
     private function createDefaults(Request $request): array
     {
@@ -268,7 +283,7 @@ class DatabaseConnectionController extends Controller
             'driver' => $driver->value,
             'host' => $request->string('host')->trim()->substr(0, 255)->toString(),
             'port' => $port >= 1 && $port <= 65535 ? $port : $driver->defaultPort(),
-            'ssl_mode' => $request->string('ssl_mode')->trim()->substr(0, 50)->toString() ?: null,
+            'tls_mode' => $request->string('tls_mode')->trim()->substr(0, 32)->toString() ?: 'preferred',
         ];
     }
 }
