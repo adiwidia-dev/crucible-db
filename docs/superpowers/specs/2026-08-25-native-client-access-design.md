@@ -67,7 +67,7 @@ The create page presents three stable choices:
 
 Native Client Access asks for:
 
-- one active connection with native proxy enabled;
+- one active connection whose effective Native Client Access role policy permits the selected level;
 - a **Session access level** choice using the same two-option control as Query Access: **Read-only** or **Read + write**;
 - duration;
 - reason/title and description.
@@ -197,10 +197,7 @@ request_kind = query_access
 access_transport = native_proxy
 ```
 
-Add two gates:
-
-- Connection: `native_proxy_enabled`.
-- Direct/group role policy: `native_proxy_access_mode` with `none`, `read`, or `write`.
+Native Client Access has one eligibility gate: direct/group role policy `native_proxy_access_mode` with `none`, `read`, or `write`.
 
 Administrators resolve Native Client Access as `write` but still use an auditable Query Access request/session. Direct connection policy continues to override group policy for the same role. Multiple group policies resolve the most restrictive native mode. Ordered roles continue to select the first applicable policy that grants the requested native query type.
 
@@ -220,10 +217,8 @@ Approval remains evaluated across selected targets, but Native Client Access alw
 
 `database_connections`:
 
-- `native_proxy_enabled` boolean, default false.
 - normalized upstream TLS fields used by both browser execution and native proxy: `tls_mode`, `tls_ca_certificate`, `tls_client_certificate`, encrypted/hidden `tls_client_key`.
 - Every Laravel target-connection consumer, including initial setup, schema browsing, and query execution, resolves upstream TLS exclusively from these normalized fields. Legacy `ssl_mode` is migration input only and must not affect a new or existing runtime connection after normalization.
-- `native_proxy_enabled` is an authorization gate, not merely a form setting: effective Native Client Access permission resolution must return no access when it is false, including for administrators. Later request and connection-admission checks repeat this gate in depth.
 
 `role_database_permissions` and `role_connection_group_policies`:
 
@@ -620,7 +615,7 @@ The feature is complete only when all of the following are true:
 
 1. The UI presents exactly Deployment Batch, Query Access, and Native Client Access.
 2. Native Client Access persists as Query Access with `native_proxy` transport and exactly one target.
-3. The connection must enable native proxy use, and the effective role `native_proxy_access_mode` must allow the request's selected Session access level.
+3. The connection must be active, and the effective role `native_proxy_access_mode` must allow the request's selected Session access level.
 4. PostgreSQL and MySQL temporary credentials work through `crucible connect` with supported clients.
 5. The target account requires no user/role creation privilege.
 6. Read-only and read + write modes enforce current Crucible policy before every statement.

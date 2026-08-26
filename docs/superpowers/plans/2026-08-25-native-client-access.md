@@ -155,9 +155,6 @@ Add PHPUnit tests proving:
 $request = QueryRequest::factory()->create();
 $this->assertSame(AccessTransport::Browser, $request->access_transport);
 
-$connection = DatabaseConnection::factory()->create();
-$this->assertFalse($connection->native_proxy_enabled);
-
 $permission = RoleDatabasePermission::factory()->create([
     'access_mode' => AccessMode::Write,
     'query_access_mode' => AccessMode::Write,
@@ -181,7 +178,6 @@ Migration requirements:
 
 ```php
 $table->string('access_transport', 32)->default('browser')->index();
-$table->boolean('native_proxy_enabled')->default(false);
 $table->string('native_proxy_access_mode', 16)->default('none');
 ```
 
@@ -224,7 +220,7 @@ git commit -m "feat: add native query access policy gates"
 
 - [ ] **Step 1: Write failing TLS validation and driver-option tests**
 
-Cover disabled/preferred/required/verify-ca/verify-identity, certificate/key pairing, encrypted hidden client key, PostgreSQL `sslmode`, and MySQL PDO CA/certificate/key options in both query execution and schema browsing. Prove `verify-identity` rejects a missing CA. Add administrator/non-admin tests for `native_proxy_enabled` and prove the native effective-permission boundary denies disabled connections, including administrators. Prove initial setup accepts normalized TLS input and cannot silently persist a legacy `ssl_mode` value as a different runtime TLS mode.
+Cover disabled/preferred/required/verify-ca/verify-identity, certificate/key pairing, encrypted hidden client key, PostgreSQL `sslmode`, and MySQL PDO CA/certificate/key options in both query execution and schema browsing. Prove `verify-identity` rejects a missing CA. Prove initial setup accepts normalized TLS input and cannot silently persist a legacy `ssl_mode` value as a different runtime TLS mode.
 
 - [ ] **Step 2: Run narrow tests and verify RED**
 
@@ -238,7 +234,7 @@ Use `DatabaseTlsMode` values `disabled`, `preferred`, `required`, `verify_ca`, `
 
 - [ ] **Step 4: Update the connection form using existing Crucible controls**
 
-Show TLS fields progressively, keep certificate/key text out of Inertia history, never echo the stored key, and use Wayfinder actions already generated for connection store/update. Add a **Native Client Access** connection toggle with clear exposure/credential implications and serialize/persist it through both store/update Form Requests and `DatabaseConnectionController`.
+Show TLS fields progressively, keep certificate/key text out of Inertia history, never echo the stored key, and use Wayfinder actions already generated for connection store/update. Native Client Access eligibility is configured only in role policy; do not add a connection-level toggle.
 
 - [ ] **Step 5: Verify**
 
@@ -272,7 +268,7 @@ Prove:
 
 - native transport is valid only with `request_kind=query_access`;
 - exactly one connection is required;
-- connection must be active and `native_proxy_enabled`;
+- connection must be active;
 - current role's effective `native_proxy_access_mode` must allow the requested read/write level;
 - transport cannot change after creation;
 - retry/renewal preserves transport but creates a fresh session later;
@@ -314,7 +310,7 @@ git commit -m "feat: validate native client access requests"
 
 - [ ] **Step 1: Write failing Inertia response assertions**
 
-Assert create props expose `native_proxy_enabled` and resolved `native_proxy_access_mode` per connection; list/show props expose `access_transport`; native request details contain one target, `requested_access_mode`, and no deployment preflight controls.
+Assert create props expose resolved `native_proxy_access_mode` per connection; list/show props expose `access_transport`; native request details contain one target, `requested_access_mode`, and no deployment preflight controls.
 
 - [ ] **Step 2: Run and verify RED**
 
