@@ -147,11 +147,9 @@ class CrucibleMvpTest extends TestCase
             ->assertSessionHasErrors('tls_ca_certificate');
     }
 
-    public function test_connection_tls_configuration_rejects_tls_skip_verify_and_native_client_access_is_admin_only(): void
+    public function test_connection_tls_configuration_rejects_tls_skip_verify(): void
     {
         $admin = $this->adminUser();
-        $connection = DatabaseConnection::factory()->create();
-
         $data = [
             'name' => 'Native access target',
             'driver' => DatabaseDriver::MySql->value,
@@ -161,7 +159,6 @@ class CrucibleMvpTest extends TestCase
             'username' => 'app_user',
             'password' => 'secret-password',
             'tls_mode' => DatabaseTlsMode::Disabled->value,
-            'native_proxy_enabled' => '1',
             'is_active' => '1',
         ];
 
@@ -172,18 +169,6 @@ class CrucibleMvpTest extends TestCase
         $this->actingAs($admin)
             ->post(route('connections.store'), $data)
             ->assertRedirect();
-
-        $nativeConnection = DatabaseConnection::query()->where('name', 'Native access target')->firstOrFail();
-        $this->assertTrue($nativeConnection->native_proxy_enabled);
-
-        $nonAdmin = User::factory()->create();
-
-        $this->actingAs($nonAdmin)
-            ->patch(route('connections.update', $nativeConnection), [...$data, 'name' => $nativeConnection->name, 'native_proxy_enabled' => '0'])
-            ->assertForbidden();
-
-        $this->assertTrue($nativeConnection->refresh()->native_proxy_enabled);
-        $this->assertFalse($connection->native_proxy_enabled);
     }
 
     public function test_connections_index_returns_paginated_connections(): void

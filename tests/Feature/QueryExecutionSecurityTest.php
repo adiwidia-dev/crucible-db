@@ -8,6 +8,7 @@ use App\Enums\QueryType;
 use App\Models\DatabaseConnection;
 use App\Services\ApplicationSettings;
 use App\Services\DatabaseQueryExecutor;
+use App\Services\DatabaseSchemaBrowser;
 use App\Services\QueryGuard;
 use Closure;
 use Generator;
@@ -234,6 +235,42 @@ SQL;
         );
     }
 
+    public function test_schema_browser_uses_the_normalized_postgresql_tls_mode(): void
+    {
+        $connection = Mockery::mock(ConnectionInterface::class);
+        $connection->shouldReceive('select')->once()->andReturn([]);
+
+        $this->mockSchemaBrowserDatabaseFacade($connection, 906, function (): void {
+            $this->assertSame(
+                'verify-full',
+                config('database.connections.crucible_schema_906.sslmode'),
+            );
+        });
+
+        app(DatabaseSchemaBrowser::class)->tables(
+            $this->databaseConnection(906, DatabaseDriver::PostgreSql, DatabaseTlsMode::VerifyIdentity),
+        );
+    }
+
+    public function test_schema_browser_applies_mysql_tls_pdo_options(): void
+    {
+        $connection = Mockery::mock(ConnectionInterface::class);
+        $connection->shouldReceive('select')->once()->andReturn([]);
+
+        $this->mockSchemaBrowserDatabaseFacade($connection, 907, function (): void {
+            $options = config('database.connections.crucible_schema_907.options');
+
+            $this->assertSame('ca certificate', $options[Mysql::ATTR_SSL_CA]);
+            $this->assertSame('client certificate', $options[Mysql::ATTR_SSL_CERT]);
+            $this->assertSame('client private key', $options[Mysql::ATTR_SSL_KEY]);
+            $this->assertTrue($options[Mysql::ATTR_SSL_VERIFY_SERVER_CERT]);
+        });
+
+        app(DatabaseSchemaBrowser::class)->tables(
+            $this->databaseConnection(907, DatabaseDriver::MySql, DatabaseTlsMode::VerifyIdentity),
+        );
+    }
+
     private function mockDatabaseFacade(ConnectionInterface $connection, int $connectionId, ?Closure $assertConfiguration = null): void
     {
         $connectionName = 'crucible_runtime_'.$connectionId;
@@ -241,6 +278,19 @@ SQL;
         DB::shouldReceive('purge')->with($connectionName)->twice();
         DB::shouldReceive('connection')->with($connectionName)->once()->andReturnUsing(function () use ($connection, $assertConfiguration): ConnectionInterface {
             $assertConfiguration?->__invoke();
+
+            return $connection;
+        });
+        DB::shouldReceive('disconnect')->with($connectionName)->once();
+    }
+
+    private function mockSchemaBrowserDatabaseFacade(ConnectionInterface $connection, int $connectionId, Closure $assertConfiguration): void
+    {
+        $connectionName = 'crucible_schema_'.$connectionId;
+
+        DB::shouldReceive('purge')->with($connectionName)->twice();
+        DB::shouldReceive('connection')->with($connectionName)->once()->andReturnUsing(function () use ($connection, $assertConfiguration): ConnectionInterface {
+            $assertConfiguration();
 
             return $connection;
         });

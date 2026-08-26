@@ -43,7 +43,7 @@ type Connection = {
     port: number;
     database: string;
     username: string;
-    ssl_mode: string | null;
+    tls_mode: string;
     is_active: boolean;
     permissions: Array<{
         id: number;
@@ -208,8 +208,8 @@ export default function ConnectionShow({
                                                     driver: connection.driver,
                                                     host: connection.host,
                                                     port: connection.port,
-                                                    ssl_mode:
-                                                        connection.ssl_mode,
+                                                    tls_mode:
+                                                        connection.tls_mode,
                                                 },
                                             })}
                                         >
@@ -300,10 +300,10 @@ export default function ConnectionShow({
                                 </div>
                                 <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-3">
                                     <dt className="text-muted-foreground">
-                                        SSL mode
+                                        TLS mode
                                     </dt>
                                     <dd className="font-medium">
-                                        {connection.ssl_mode || 'Not set'}
+                                        {connection.tls_mode}
                                     </dd>
                                 </div>
                             </dl>

@@ -25,10 +25,9 @@ class QueryAccessPolicyTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_native_proxy_defaults_and_policy_casts_are_persisted(): void
+    public function test_native_proxy_policy_casts_are_persisted(): void
     {
         $request = QueryRequest::factory()->create();
-        $connection = DatabaseConnection::factory()->create();
         $permission = RoleDatabasePermission::factory()->create([
             'access_mode' => AccessMode::Write,
             'query_access_mode' => AccessMode::Write,
@@ -36,7 +35,6 @@ class QueryAccessPolicyTest extends TestCase
         ]);
 
         $this->assertSame(AccessTransport::Browser, $request->access_transport);
-        $this->assertFalse($connection->native_proxy_enabled);
         $this->assertSame(AccessMode::Read, $permission->native_proxy_access_mode);
     }
 

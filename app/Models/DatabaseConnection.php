@@ -32,16 +32,15 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  * @property bool $is_active
  * @property-read User|null $createdBy
  */
-#[Fillable(['created_by_id', 'name', 'driver', 'host', 'port', 'database', 'username', 'password', 'ssl_mode', 'tls_mode', 'tls_ca_certificate', 'tls_client_certificate', 'tls_client_key', 'is_active', 'native_proxy_enabled'])]
+#[Fillable(['created_by_id', 'name', 'driver', 'host', 'port', 'database', 'username', 'password', 'tls_mode', 'tls_ca_certificate', 'tls_client_certificate', 'tls_client_key', 'is_active'])]
 #[Hidden(['password', 'tls_client_key'])]
 class DatabaseConnection extends Model
 {
     /** @use HasFactory<DatabaseConnectionFactory> */
     use HasFactory;
 
-    /** @var array<string, bool> */
+    /** @var array<string, string> */
     protected $attributes = [
-        'native_proxy_enabled' => false,
         'tls_mode' => DatabaseTlsMode::Preferred->value,
     ];
 
@@ -53,7 +52,6 @@ class DatabaseConnection extends Model
             'password' => 'encrypted',
             'tls_client_key' => 'encrypted',
             'is_active' => 'boolean',
-            'native_proxy_enabled' => 'boolean',
             'port' => 'integer',
         ];
     }

@@ -36,7 +36,6 @@ class StoreDatabaseConnectionRequest extends FormRequest
             'tls_client_key' => ['nullable', 'string', 'max:65535'],
             'tls_skip_verify' => ['prohibited'],
             'is_active' => ['sometimes', 'boolean'],
-            'native_proxy_enabled' => ['sometimes', 'boolean'],
             'create_another' => ['sometimes', 'boolean'],
         ];
     }

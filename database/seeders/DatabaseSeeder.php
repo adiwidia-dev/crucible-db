@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Enums\AccessMode;
 use App\Enums\DatabaseDriver;
+use App\Enums\DatabaseTlsMode;
 use App\Models\DatabaseConnection;
 use App\Models\Role;
 use App\Models\RoleDatabasePermission;
@@ -71,7 +72,7 @@ class DatabaseSeeder extends Seeder
                 'database' => 'crucible_target',
                 'username' => 'crucible',
                 'password' => 'crucible',
-                'ssl_mode' => null,
+                'tls_mode' => DatabaseTlsMode::Preferred,
                 'is_active' => true,
             ],
         );
@@ -86,7 +87,7 @@ class DatabaseSeeder extends Seeder
                 'database' => 'crucible_target',
                 'username' => 'crucible',
                 'password' => 'crucible',
-                'ssl_mode' => null,
+                'tls_mode' => DatabaseTlsMode::Preferred,
                 'is_active' => true,
             ],
         );

@@ -2,7 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Enums\DatabaseDriver;
+use App\Enums\DatabaseTlsMode;
 use App\Models\ApplicationSetting;
+use App\Models\DatabaseConnection;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,5 +71,31 @@ class InitialSetupTest extends TestCase
             ->assertRedirect(route('dashboard'));
 
         $this->assertNull(session('setup.owner_id'));
+    }
+
+    public function test_initial_owner_persists_a_normalized_tls_mode_for_their_first_connection(): void
+    {
+        $role = Role::factory()->admin()->create();
+        $user = User::factory()->withRole($role)->create();
+
+        $this->actingAs($user)
+            ->withSession(['setup.owner_id' => $user->id])
+            ->post(route('setup.connection.store'), [
+                'name' => 'Initial PostgreSQL',
+                'driver' => DatabaseDriver::PostgreSql->value,
+                'host' => 'database.example.test',
+                'port' => 5432,
+                'database' => 'application',
+                'username' => 'crucible',
+                'password' => 'secret-password',
+                'tls_mode' => DatabaseTlsMode::VerifyIdentity->value,
+                'tls_ca_certificate' => 'ca certificate',
+            ])
+            ->assertRedirect(route('dashboard'));
+
+        $connection = DatabaseConnection::query()->where('name', 'Initial PostgreSQL')->firstOrFail();
+
+        $this->assertSame(DatabaseTlsMode::VerifyIdentity, $connection->tls_mode);
+        $this->assertSame('ca certificate', $connection->tls_ca_certificate);
     }
 }

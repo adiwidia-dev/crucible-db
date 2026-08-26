@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Enums\DatabaseDriver;
+use App\Enums\DatabaseTlsMode;
 use App\Models\DatabaseConnection;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
+use Pdo\Mysql;
 
 class DatabaseSchemaBrowser
 {
@@ -89,21 +91,41 @@ class DatabaseSchemaBrowser
     }
 
     /**
-     * @return array<string, bool|string|null>
+     * @return array<string, array<int, bool|string>|bool|string>
      */
     private function driverOptions(DatabaseConnection $databaseConnection): array
     {
         return match ($databaseConnection->driver) {
             DatabaseDriver::PostgreSql => [
                 'charset' => 'utf8',
-                'sslmode' => $databaseConnection->ssl_mode ?? 'prefer',
+                'sslmode' => $databaseConnection->tls_mode->postgreSqlSslMode(),
             ],
             DatabaseDriver::MySql => [
                 'charset' => 'utf8mb4',
                 'collation' => 'utf8mb4_unicode_ci',
                 'prefix_indexes' => true,
                 'strict' => true,
+                'options' => $this->mySqlPdoOptions($databaseConnection),
             ],
         };
+    }
+
+    /**
+     * @return array<int, bool|string>
+     */
+    private function mySqlPdoOptions(DatabaseConnection $databaseConnection): array
+    {
+        $tlsIsDisabled = $databaseConnection->tls_mode === DatabaseTlsMode::Disabled;
+
+        $options = [
+            Mysql::ATTR_SSL_CA => $tlsIsDisabled ? null : $databaseConnection->tls_ca_certificate,
+            Mysql::ATTR_SSL_CERT => $tlsIsDisabled ? null : $databaseConnection->tls_client_certificate,
+            Mysql::ATTR_SSL_KEY => $tlsIsDisabled ? null : $databaseConnection->tls_client_key,
+            Mysql::ATTR_SSL_VERIFY_SERVER_CERT => $databaseConnection->tls_mode->verifiesServerCertificate()
+                ? true
+                : null,
+        ];
+
+        return array_filter($options, static fn (mixed $value): bool => $value !== null);
     }
 }

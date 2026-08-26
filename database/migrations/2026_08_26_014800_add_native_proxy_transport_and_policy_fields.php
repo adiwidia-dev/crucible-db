@@ -15,10 +15,6 @@ return new class extends Migration
             $table->string('access_transport', 32)->default('browser')->index()->after('request_kind');
         });
 
-        Schema::table('database_connections', function (Blueprint $table): void {
-            $table->boolean('native_proxy_enabled')->default(false)->after('is_active');
-        });
-
         Schema::table('role_database_permissions', function (Blueprint $table): void {
             $table->string('native_proxy_access_mode', 16)->default('none')->after('query_access_mode');
         });
@@ -39,10 +35,6 @@ return new class extends Migration
 
         Schema::table('role_database_permissions', function (Blueprint $table): void {
             $table->dropColumn('native_proxy_access_mode');
-        });
-
-        Schema::table('database_connections', function (Blueprint $table): void {
-            $table->dropColumn('native_proxy_enabled');
         });
 
         Schema::table('query_requests', function (Blueprint $table): void {

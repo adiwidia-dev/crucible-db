@@ -3,9 +3,11 @@
 namespace App\Http\Requests;
 
 use App\Enums\DatabaseDriver;
+use App\Enums\DatabaseTlsMode;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreInitialConnectionRequest extends FormRequest
 {
@@ -32,7 +34,36 @@ class StoreInitialConnectionRequest extends FormRequest
             'database' => ['required', 'string', 'max:255'],
             'username' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string', 'max:4096'],
-            'ssl_mode' => ['nullable', 'string', 'max:50'],
+            'tls_mode' => ['required', Rule::enum(DatabaseTlsMode::class)],
+            'tls_ca_certificate' => ['nullable', 'string', 'max:65535'],
+            'tls_client_certificate' => ['nullable', 'string', 'max:65535'],
+            'tls_client_key' => ['nullable', 'string', 'max:65535'],
+            'tls_skip_verify' => ['prohibited'],
         ];
+    }
+
+    /**
+     * @return array<int, callable(Validator): void>
+     */
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            $tlsMode = DatabaseTlsMode::tryFrom($this->string('tls_mode')->toString());
+
+            if ($tlsMode?->requiresCaCertificate() && blank($this->input('tls_ca_certificate'))) {
+                $validator->errors()->add('tls_ca_certificate', 'A CA certificate is required when TLS verifies the server.');
+            }
+
+            $hasClientCertificate = filled($this->input('tls_client_certificate'));
+            $hasClientKey = filled($this->input('tls_client_key'));
+
+            if ($hasClientCertificate && ! $hasClientKey) {
+                $validator->errors()->add('tls_client_key', 'A client key is required with a client certificate.');
+            }
+
+            if ($hasClientKey && ! $hasClientCertificate) {
+                $validator->errors()->add('tls_client_certificate', 'A client certificate is required with a client key.');
+            }
+        }];
     }
 }

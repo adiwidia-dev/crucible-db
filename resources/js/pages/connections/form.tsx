@@ -35,7 +35,6 @@ type ConnectionFormData = {
     tls_ca_certificate: string | null;
     has_tls_client_certificate: boolean;
     is_active: boolean;
-    native_proxy_enabled: boolean;
 } | null;
 
 type Props = {
@@ -475,37 +474,6 @@ export default function ConnectionForm({
                                             </span>
                                         </label>
 
-                                        <label className="flex min-h-12 items-center gap-3 rounded-md border bg-card px-3 text-sm md:col-span-2">
-                                            <input
-                                                type="hidden"
-                                                name="native_proxy_enabled"
-                                                value="0"
-                                            />
-                                            <input
-                                                id="native_proxy_enabled"
-                                                name="native_proxy_enabled"
-                                                type="checkbox"
-                                                value="1"
-                                                defaultChecked={
-                                                    connection?.native_proxy_enabled ??
-                                                    false
-                                                }
-                                                className="size-4 rounded border-input"
-                                            />
-                                            <span>
-                                                <span className="font-medium">
-                                                    Enable Native Client Access
-                                                </span>
-                                                <span className="mt-0.5 block text-xs text-muted-foreground">
-                                                    Opt in before this target
-                                                    can be exposed through the
-                                                    native proxy. User policy
-                                                    still controls access, and
-                                                    this does not change the
-                                                    target TLS policy above.
-                                                </span>
-                                            </span>
-                                        </label>
                                     </div>
                                 </section>
 

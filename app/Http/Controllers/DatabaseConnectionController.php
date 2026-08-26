@@ -77,7 +77,6 @@ class DatabaseConnectionController extends Controller
             ...$data,
             'created_by_id' => $request->user()->id,
             'is_active' => $request->boolean('is_active', true),
-            'native_proxy_enabled' => $request->boolean('native_proxy_enabled'),
         ]);
 
         $auditLogger->log('database_connection.created', $request->user(), $connection);
@@ -115,10 +114,8 @@ class DatabaseConnectionController extends Controller
                 'database' => $databaseConnection->database,
                 'username' => $databaseConnection->username,
                 'tls_mode' => $databaseConnection->tls_mode->value,
-                'ssl_mode' => $databaseConnection->tls_mode->postgreSqlSslMode(),
                 'tls_ca_certificate' => $databaseConnection->tls_ca_certificate,
                 'tls_client_certificate' => $databaseConnection->tls_client_certificate,
-                'native_proxy_enabled' => $databaseConnection->native_proxy_enabled,
                 'is_active' => $databaseConnection->is_active,
                 'permissions' => $databaseConnection->rolePermissions->map(fn ($permission): array => [
                     'id' => $permission->id,
@@ -154,7 +151,6 @@ class DatabaseConnectionController extends Controller
                 'tls_ca_certificate' => $databaseConnection->tls_ca_certificate,
                 'has_tls_client_certificate' => filled($databaseConnection->tls_client_certificate),
                 'is_active' => $databaseConnection->is_active,
-                'native_proxy_enabled' => $databaseConnection->native_proxy_enabled,
             ],
             'drivers' => $this->drivers(),
         ]);
@@ -175,7 +171,6 @@ class DatabaseConnectionController extends Controller
         }
 
         $data['is_active'] = $request->boolean('is_active');
-        $data['native_proxy_enabled'] = $request->boolean('native_proxy_enabled');
 
         $databaseConnection->update($data);
         $auditLogger->log('database_connection.updated', $request->user(), $databaseConnection);
