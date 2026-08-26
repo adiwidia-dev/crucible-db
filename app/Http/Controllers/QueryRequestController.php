@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AccessTransport;
 use App\Enums\DatabaseDriver;
 use App\Enums\ExecutionStatus;
 use App\Enums\QueryRequestKind;
@@ -572,7 +573,7 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return array{database_connection_id:int,database_connection_ids:array<int, int>,request_kind:string,requested_access_mode:string|null,title:string,description:string|null,statements:array<int, array{sql:string,database_connection_id:int}>,scheduled_at:string|null,access_duration_minutes:int|null}
+     * @return array{database_connection_id:int,database_connection_ids:array<int, int>,request_kind:string,access_transport:string,requested_access_mode:string|null,title:string,description:string|null,statements:array<int, array{sql:string,database_connection_id:int}>,scheduled_at:string|null,access_duration_minutes:int|null}
      */
     private function requestData(StoreQueryRequestRequest|UpdateQueryRequestRequest $request): array
     {
@@ -580,6 +581,7 @@ class QueryRequestController extends Controller
             'database_connection_id' => $request->integer('database_connection_id'),
             'database_connection_ids' => $request->validated('database_connection_ids', []),
             'request_kind' => $request->string('request_kind')->toString(),
+            'access_transport' => $request->enum('access_transport', AccessTransport::class, AccessTransport::Browser)->value,
             'requested_access_mode' => $request->filled('requested_access_mode') ? $request->string('requested_access_mode')->toString() : null,
             'title' => $request->string('title')->toString(),
             'description' => $request->filled('description') ? $request->string('description')->toString() : null,

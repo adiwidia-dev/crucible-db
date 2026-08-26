@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AccessMode;
+use App\Enums\AccessTransport;
 use App\Enums\ExecutionStatus;
 use App\Enums\PreflightStatus;
 use App\Enums\QueryRequestKind;
@@ -49,6 +50,8 @@ class QueryRequestWorkflow
         }
 
         $requestKind = QueryRequestKind::from($data['request_kind']);
+        $accessTransport = $this->accessTransport($data);
+        $this->ensureAccessTransportIsValidForRequestKind($accessTransport, $requestKind);
         $statements = $requestKind === QueryRequestKind::SingleExecution
             ? $this->validateStatements($this->statementInput($data))
             : [];
@@ -58,7 +61,7 @@ class QueryRequestWorkflow
             );
         $databaseConnections = $requestKind === QueryRequestKind::SingleExecution
             ? $this->databaseConnectionsForStatements($statements)
-            : $this->databaseConnectionsForAccess($data);
+            : $this->databaseConnectionsForAccess($data, $accessTransport);
         $databaseConnection = $requestKind === QueryRequestKind::SingleExecution
             ? $databaseConnections->get($statements[0]['database_connection_id'])
             : $databaseConnections->first();
@@ -97,7 +100,7 @@ class QueryRequestWorkflow
                     ]);
                 }
 
-                $this->ensureCanRequestQueryAccess($requester, $databaseConnections, $requestedAccessMode);
+                $this->ensureCanRequestAccess($requester, $databaseConnections, $requestedAccessMode, $accessTransport);
             }
         }
 
@@ -106,6 +109,7 @@ class QueryRequestWorkflow
             $databaseConnections,
             $statements,
             $requestedAccessMode,
+            $accessTransport,
         );
         $scheduledAt = $requestKind === QueryRequestKind::SingleExecution && filled($data['scheduled_at'] ?? null)
             ? Carbon::parse($data['scheduled_at'])
@@ -115,10 +119,10 @@ class QueryRequestWorkflow
             : null;
 
         if ($requestedAccessMode === AccessMode::Write) {
-            $this->ensureWriteSessionDurationIsAllowed($requester, $databaseConnections, $accessDurationMinutes ?? 60);
+            $this->ensureWriteSessionDurationIsAllowed($requester, $databaseConnections, $accessDurationMinutes ?? 60, $accessTransport);
         }
 
-        return DB::transaction(function () use ($requester, $databaseConnection, $databaseConnections, $data, $requestKind, $queryType, $statements, $usesEmergencySqlFallback, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
+        return DB::transaction(function () use ($requester, $databaseConnection, $databaseConnections, $data, $requestKind, $accessTransport, $queryType, $statements, $usesEmergencySqlFallback, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
             $status = QueryRequestStatus::PendingReview;
 
             if (! $requiresApproval) {
@@ -133,6 +137,7 @@ class QueryRequestWorkflow
                 'sql' => $statements[0]['sql'] ?? '',
                 'query_type' => $queryType,
                 'request_kind' => $requestKind,
+                'access_transport' => $accessTransport,
                 'requested_access_mode' => $requestedAccessMode,
                 'status' => $status,
                 'requires_approval' => $requiresApproval,
@@ -188,6 +193,10 @@ class QueryRequestWorkflow
      */
     public function createDraft(User $requester, array $data): QueryRequest
     {
+        $this->ensureAccessTransportIsValidForRequestKind(
+            $this->accessTransport($data),
+            QueryRequestKind::from($data['request_kind']),
+        );
         $this->ensureDeploymentBatch($data);
 
         $statements = $this->draftStatements($this->statementInput($data));
@@ -242,6 +251,8 @@ class QueryRequestWorkflow
     public function update(QueryRequest $queryRequest, User $actor, array $data): QueryRequest
     {
         $requestKind = QueryRequestKind::from($data['request_kind']);
+        $accessTransport = $this->accessTransport($data);
+        $this->ensureAccessTransportIsValidForRequestKind($accessTransport, $requestKind);
         $statements = $requestKind === QueryRequestKind::SingleExecution
             ? $this->validateStatements($this->statementInput($data))
             : [];
@@ -251,7 +262,7 @@ class QueryRequestWorkflow
             );
         $databaseConnections = $requestKind === QueryRequestKind::SingleExecution
             ? $this->databaseConnectionsForStatements($statements)
-            : $this->databaseConnectionsForAccess($data);
+            : $this->databaseConnectionsForAccess($data, $accessTransport);
         $databaseConnection = $requestKind === QueryRequestKind::SingleExecution
             ? $databaseConnections->get($statements[0]['database_connection_id'])
             : $databaseConnections->first();
@@ -290,7 +301,7 @@ class QueryRequestWorkflow
                     ]);
                 }
 
-                $this->ensureCanRequestQueryAccess($actor, $databaseConnections, $requestedAccessMode);
+                $this->ensureCanRequestAccess($actor, $databaseConnections, $requestedAccessMode, $accessTransport);
             }
         }
 
@@ -302,7 +313,7 @@ class QueryRequestWorkflow
             : null;
 
         if ($requestedAccessMode === AccessMode::Write) {
-            $this->ensureWriteSessionDurationIsAllowed($actor, $databaseConnections, $accessDurationMinutes ?? 60);
+            $this->ensureWriteSessionDurationIsAllowed($actor, $databaseConnections, $accessDurationMinutes ?? 60, $accessTransport);
         }
 
         $requiresApproval = $this->requiresApproval(
@@ -310,14 +321,27 @@ class QueryRequestWorkflow
             $databaseConnections,
             $statements,
             $requestedAccessMode,
+            $accessTransport,
         );
 
-        return DB::transaction(function () use ($queryRequest, $actor, $databaseConnection, $databaseConnections, $data, $requestKind, $statements, $usesEmergencySqlFallback, $queryType, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
+        return DB::transaction(function () use ($queryRequest, $actor, $databaseConnection, $databaseConnections, $data, $requestKind, $accessTransport, $statements, $usesEmergencySqlFallback, $queryType, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
             $lockedQueryRequest = QueryRequest::query()->lockForUpdate()->findOrFail($queryRequest->id);
 
             if (! $lockedQueryRequest->isEditable()) {
                 throw ValidationException::withMessages([
                     'query_request' => 'This query request can no longer be edited.',
+                ]);
+            }
+
+            if ($lockedQueryRequest->access_transport !== $accessTransport) {
+                throw ValidationException::withMessages([
+                    'access_transport' => 'The request transport cannot be changed after creation.',
+                ]);
+            }
+
+            if ($lockedQueryRequest->request_kind !== $requestKind) {
+                throw ValidationException::withMessages([
+                    'request_kind' => 'The request type cannot be changed after creation.',
                 ]);
             }
 
@@ -336,6 +360,7 @@ class QueryRequestWorkflow
                 'sql' => $statements[0]['sql'] ?? '',
                 'query_type' => $queryType,
                 'request_kind' => $requestKind,
+                'access_transport' => $accessTransport,
                 'requested_access_mode' => $requestedAccessMode,
                 'status' => $status,
                 'requires_approval' => $submittingDraft ? $requiresApproval : true,
@@ -373,6 +398,7 @@ class QueryRequestWorkflow
                 'status' => $lockedQueryRequest->status->value,
                 'query_type' => $lockedQueryRequest->query_type->value,
                 'request_kind' => $lockedQueryRequest->request_kind->value,
+                'access_transport' => $lockedQueryRequest->access_transport->value,
                 'requested_access_mode' => $lockedQueryRequest->requested_access_mode?->value,
                 'database_connection_ids' => $databaseConnections->pluck('id')->values()->all(),
                 'statement_count' => count($statements),
@@ -406,6 +432,10 @@ class QueryRequestWorkflow
      */
     public function updateDraft(QueryRequest $queryRequest, User $actor, array $data): QueryRequest
     {
+        $this->ensureAccessTransportIsValidForRequestKind(
+            $this->accessTransport($data),
+            QueryRequestKind::from($data['request_kind']),
+        );
         $this->ensureDeploymentBatch($data);
 
         $statements = $this->draftStatements($this->statementInput($data));
@@ -799,13 +829,14 @@ class QueryRequestWorkflow
             $databaseConnections = $sourceRequest->accessConnections
                 ->whenEmpty(fn (): Collection => collect([$databaseConnection]));
 
-            $this->ensureCanRequestQueryAccess($requester, $databaseConnections, $requestedAccessMode);
+            $this->ensureCanRequestAccess($requester, $databaseConnections, $requestedAccessMode, $sourceRequest->access_transport);
 
             if ($requestedAccessMode === AccessMode::Write) {
                 $this->ensureWriteSessionDurationIsAllowed(
                     $requester,
                     $databaseConnections,
                     $sourceRequest->access_duration_minutes ?? 60,
+                    $sourceRequest->access_transport,
                 );
             }
 
@@ -814,6 +845,7 @@ class QueryRequestWorkflow
                 $databaseConnections,
                 [],
                 $requestedAccessMode,
+                $sourceRequest->access_transport,
             );
             $status = $requiresApproval ? QueryRequestStatus::PendingReview : QueryRequestStatus::Approved;
             $approvedById = $requiresApproval ? null : $requester->id;
@@ -829,6 +861,7 @@ class QueryRequestWorkflow
             'sql' => $firstStatementSql ?? $sourceRequest->sql,
             'query_type' => $sourceRequest->query_type,
             'request_kind' => $sourceRequest->request_kind,
+            'access_transport' => $sourceRequest->access_transport,
             'requested_access_mode' => $requestedAccessMode,
             'status' => $status,
             'requires_approval' => $requiresApproval,
@@ -872,6 +905,7 @@ class QueryRequestWorkflow
             'retry_of_id' => $sourceRequest->id,
             'retry_from_statement_position' => $retryFromPosition,
             'approval_required' => $requiresApproval,
+            'access_transport' => $retryRequest->access_transport->value,
         ]);
         $this->auditLogger->log('query_request.retry_request_created', $actor, $sourceRequest, [
             'retry_request_id' => $retryRequest->id,
@@ -886,7 +920,7 @@ class QueryRequestWorkflow
      *
      * @throws ValidationException
      */
-    private function ensureCanRequestQueryAccess(User $user, Collection $databaseConnections, AccessMode $requestedAccessMode): void
+    private function ensureCanRequestAccess(User $user, Collection $databaseConnections, AccessMode $requestedAccessMode, AccessTransport $accessTransport): void
     {
         if ($user->isAdmin()) {
             return;
@@ -894,11 +928,19 @@ class QueryRequestWorkflow
 
         foreach ($databaseConnections as $connection) {
             $queryType = $this->queryTypeForAccessMode($requestedAccessMode);
-            $permission = $user->effectiveQueryAccessPermissionFor($connection, $queryType);
+            $permission = $accessTransport === AccessTransport::NativeProxy
+                ? $user->effectiveNativeProxyPermissionFor($connection, $queryType)
+                : $user->effectiveQueryAccessPermissionFor($connection, $queryType);
 
-            if (! $permission['query_access_mode']->allows($queryType)) {
+            $accessMode = $accessTransport === AccessTransport::NativeProxy
+                ? $permission['native_proxy_access_mode']
+                : $permission['query_access_mode'];
+
+            if (! $accessMode->allows($queryType)) {
                 throw ValidationException::withMessages([
-                    'database_connection_ids' => 'Your role is not allowed to request the selected session access level for every selected database.',
+                    $accessTransport === AccessTransport::NativeProxy ? 'requested_access_mode' : 'database_connection_ids' => $accessTransport === AccessTransport::NativeProxy
+                        ? 'Your role is not allowed to request the selected Native Client Access level for this database.'
+                        : 'Your role is not allowed to request the selected session access level for every selected database.',
                 ]);
             }
         }
@@ -931,7 +973,7 @@ class QueryRequestWorkflow
      * @param  Collection<int, DatabaseConnection>  $databaseConnections
      * @param  array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int}>  $statements
      */
-    private function requiresApproval(User $user, Collection $databaseConnections, array $statements, ?AccessMode $requestedAccessMode): bool
+    private function requiresApproval(User $user, Collection $databaseConnections, array $statements, ?AccessMode $requestedAccessMode, AccessTransport $accessTransport = AccessTransport::Browser): bool
     {
         if ($user->isAdmin()) {
             return false;
@@ -940,8 +982,10 @@ class QueryRequestWorkflow
         if ($requestedAccessMode instanceof AccessMode) {
             $queryType = $this->queryTypeForAccessMode($requestedAccessMode);
 
-            return $databaseConnections->contains(function (DatabaseConnection $connection) use ($user, $queryType): bool {
-                $permission = $user->effectiveQueryAccessPermissionFor($connection, $queryType);
+            return $databaseConnections->contains(function (DatabaseConnection $connection) use ($user, $queryType, $accessTransport): bool {
+                $permission = $accessTransport === AccessTransport::NativeProxy
+                    ? $user->effectiveNativeProxyPermissionFor($connection, $queryType)
+                    : $user->effectiveQueryAccessPermissionFor($connection, $queryType);
 
                 return $queryType === QueryType::Read
                     ? $permission['read_requires_approval']
@@ -970,14 +1014,17 @@ class QueryRequestWorkflow
      *
      * @throws ValidationException
      */
-    private function ensureWriteSessionDurationIsAllowed(User $user, Collection $databaseConnections, int $durationMinutes): void
+    private function ensureWriteSessionDurationIsAllowed(User $user, Collection $databaseConnections, int $durationMinutes, AccessTransport $accessTransport = AccessTransport::Browser): void
     {
         if ($user->isAdmin()) {
             return;
         }
 
         foreach ($databaseConnections as $connection) {
-            $maximumDuration = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write)['max_write_session_minutes'];
+            $permission = $accessTransport === AccessTransport::NativeProxy
+                ? $user->effectiveNativeProxyPermissionFor($connection, QueryType::Write)
+                : $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write);
+            $maximumDuration = $permission['max_write_session_minutes'];
 
             if ($maximumDuration !== null && $durationMinutes > $maximumDuration) {
                 throw ValidationException::withMessages([
@@ -1176,7 +1223,7 @@ class QueryRequestWorkflow
      *
      * @throws ValidationException
      */
-    private function databaseConnectionsForAccess(array $data): Collection
+    private function databaseConnectionsForAccess(array $data, AccessTransport $accessTransport = AccessTransport::Browser): Collection
     {
         $connectionIds = collect($data['database_connection_ids'] ?? [$data['database_connection_id'] ?? null])
             ->filter(fn (mixed $connectionId): bool => (int) $connectionId > 0)
@@ -1194,7 +1241,51 @@ class QueryRequestWorkflow
             ]);
         }
 
+        if ($accessTransport === AccessTransport::NativeProxy) {
+            if ($connectionIds->count() !== 1) {
+                throw ValidationException::withMessages([
+                    'database_connection_ids' => 'Native Client Access requires exactly one active database connection.',
+                ]);
+            }
+
+            if (! $databaseConnections->first()?->is_active) {
+                throw ValidationException::withMessages([
+                    'database_connection_ids' => 'Native Client Access requires an active database connection.',
+                ]);
+            }
+        }
+
         return $databaseConnections;
+    }
+
+    /**
+     * @param  array{access_transport?:string}  $data
+     *
+     * @throws ValidationException
+     */
+    private function accessTransport(array $data): AccessTransport
+    {
+        $accessTransport = AccessTransport::tryFrom((string) ($data['access_transport'] ?? AccessTransport::Browser->value));
+
+        if (! $accessTransport instanceof AccessTransport) {
+            throw ValidationException::withMessages([
+                'access_transport' => 'Choose a supported access transport.',
+            ]);
+        }
+
+        return $accessTransport;
+    }
+
+    /**
+     * @throws ValidationException
+     */
+    private function ensureAccessTransportIsValidForRequestKind(AccessTransport $accessTransport, QueryRequestKind $requestKind): void
+    {
+        if ($accessTransport === AccessTransport::NativeProxy && $requestKind !== QueryRequestKind::QueryAccess) {
+            throw ValidationException::withMessages([
+                'access_transport' => 'Native Client Access is available only for Query Access requests.',
+            ]);
+        }
     }
 
     /**

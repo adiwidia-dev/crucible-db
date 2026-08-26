@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AccessMode;
+use App\Enums\AccessTransport;
 use App\Enums\ExecutionStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
@@ -50,11 +51,21 @@ class QuerySessionWorkflow
         $sessionAccessMode = $queryRequest->requested_access_mode ?? AccessMode::Read;
         $sessionQueryType = $sessionAccessMode === AccessMode::Write ? QueryType::Write : QueryType::Read;
 
-        if (! $user->isAdmin() && $databaseConnections->contains(
-            fn (DatabaseConnection $connection): bool => ! $user->effectiveQueryAccessPermissionFor($connection, $sessionQueryType)['query_access_mode']->allows($sessionQueryType),
-        )) {
+        $accessTransport = $queryRequest->access_transport;
+        $hasCurrentSessionAccess = $databaseConnections->contains(function (DatabaseConnection $connection) use ($user, $sessionQueryType, $accessTransport): bool {
+            if ($accessTransport === AccessTransport::NativeProxy) {
+                return ! $user->effectiveNativeProxyPermissionFor($connection, $sessionQueryType)['native_proxy_access_mode']->allows($sessionQueryType);
+            }
+
+            return ! $user->isAdmin()
+                && ! $user->effectiveQueryAccessPermissionFor($connection, $sessionQueryType)['query_access_mode']->allows($sessionQueryType);
+        });
+
+        if ($hasCurrentSessionAccess) {
             throw ValidationException::withMessages([
-                'query_request' => 'You no longer have the approved session access level on every selected database.',
+                'query_request' => $accessTransport === AccessTransport::NativeProxy
+                    ? 'You no longer have the approved Native Client Access level for this database.'
+                    : 'You no longer have the approved session access level on every selected database.',
             ]);
         }
 
