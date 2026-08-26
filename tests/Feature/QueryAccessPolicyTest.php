@@ -48,6 +48,23 @@ class QueryAccessPolicyTest extends TestCase
         $this->assertSame(AccessMode::None, $permission['native_proxy_access_mode']);
     }
 
+    public function test_native_proxy_permission_is_denied_for_an_inactive_connection_before_role_resolution(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $user = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create(['is_active' => false]);
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Write,
+            'native_proxy_access_mode' => AccessMode::Write,
+        ]);
+
+        $permission = $user->effectiveNativeProxyPermissionFor($connection, QueryType::Write);
+
+        $this->assertSame(AccessMode::None, $permission['native_proxy_access_mode']);
+    }
+
     public function test_native_proxy_permission_uses_direct_precedence_group_restriction_and_maximum_access_cap(): void
     {
         $role = Role::factory()->developer()->create();

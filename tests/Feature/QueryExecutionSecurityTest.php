@@ -13,6 +13,7 @@ use App\Services\QueryGuard;
 use Closure;
 use Generator;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\Connectors\PostgresConnector;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Mockery;
@@ -204,6 +205,7 @@ SQL;
             $this->assertSame('ca certificate', $configuration['sslrootcert']);
             $this->assertSame('client certificate', $configuration['sslcert']);
             $this->assertSame('client private key', $configuration['sslkey']);
+            $this->assertPostgreSqlTlsOptionsAreIncludedInLaravelConnectorDsn($configuration);
         });
 
         app(DatabaseQueryExecutor::class)->execute(
@@ -273,6 +275,7 @@ SQL;
             $this->assertSame('ca certificate', $configuration['sslrootcert']);
             $this->assertSame('client certificate', $configuration['sslcert']);
             $this->assertSame('client private key', $configuration['sslkey']);
+            $this->assertPostgreSqlTlsOptionsAreIncludedInLaravelConnectorDsn($configuration);
         });
 
         app(DatabaseSchemaBrowser::class)->tables(
@@ -363,6 +366,30 @@ SQL;
         ]);
 
         return $databaseConnection;
+    }
+
+    /**
+     * @param  array<string, mixed>  $configuration
+     */
+    private function assertPostgreSqlTlsOptionsAreIncludedInLaravelConnectorDsn(array $configuration): void
+    {
+        $connector = new class extends PostgresConnector
+        {
+            /**
+             * @param  array<string, mixed>  $configuration
+             */
+            public function dsn(array $configuration): string
+            {
+                return $this->getDsn($configuration);
+            }
+        };
+
+        $dsn = $connector->dsn($configuration);
+
+        $this->assertStringContainsString(';sslmode=verify-full', $dsn);
+        $this->assertStringContainsString(';sslrootcert=ca certificate', $dsn);
+        $this->assertStringContainsString(';sslcert=client certificate', $dsn);
+        $this->assertStringContainsString(';sslkey=client private key', $dsn);
     }
 
     /**
