@@ -1,11 +1,13 @@
 package main
 
-import "fmt"
+import (
+	"os"
+
+	"github.com/adiwidia-dev/crucible-db/native/internal/command"
+)
 
 func main() {
-	if err := run(); err != nil {
-		fmt.Println(err)
-	}
+	os.Exit(command.Run(run, os.Stderr))
 }
 
 func run() error {
