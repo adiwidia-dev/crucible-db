@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\AccessMode;
+use App\Enums\AccessTransport;
 use App\Enums\DatabaseDriver;
 use App\Enums\DatabaseTlsMode;
 use App\Enums\ExecutionStatus;
@@ -700,6 +701,43 @@ class CrucibleMvpTest extends TestCase
                 ->has('connections', 1)
                 ->where('connections.0.name', 'Analytics Primary')
                 ->where('connections.0.driver', DatabaseDriver::PostgreSql->value));
+    }
+
+    public function test_native_client_request_pages_expose_native_policy_and_transport_details(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create([
+            'name' => 'Analytics Primary',
+            'driver' => DatabaseDriver::PostgreSql,
+            'is_active' => true,
+        ]);
+        $queryRequest = QueryRequest::factory()->queryAccess()->create([
+            'requester_id' => $admin->id,
+            'database_connection_id' => $connection->id,
+            'access_transport' => AccessTransport::NativeProxy,
+            'requested_access_mode' => AccessMode::Read,
+        ]);
+        $queryRequest->accessConnections()->sync([$connection->id]);
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.create'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('connections.0.can_native_proxy_read', true)
+                ->where('connections.0.can_native_proxy_write', true));
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('query_requests.data.0.access_transport', AccessTransport::NativeProxy->value));
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.show', $queryRequest))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('query_request.access_transport', AccessTransport::NativeProxy->value)
+                ->where('query_request.access_transport_label', 'Native client'));
     }
 
     public function test_create_table_statement_is_classified_as_write_access(): void

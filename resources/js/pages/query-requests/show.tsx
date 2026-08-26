@@ -60,6 +60,7 @@ import type {
     QueryRequestStatus,
     QueryRequestKind,
     QueryType,
+    AccessTransport,
 } from '@/lib/crucible';
 import { index } from '@/routes/query-requests';
 import { show as querySessionShow } from '@/routes/query-sessions';
@@ -110,6 +111,8 @@ type QueryRequest = {
     status: QueryRequestStatus;
     query_type: QueryType;
     request_kind: QueryRequestKind;
+    access_transport: AccessTransport;
+    access_transport_label: string;
     requested_access_mode: 'read' | 'write' | null;
     requires_approval: boolean;
     scheduled_at: string | null;
@@ -317,6 +320,8 @@ export default function QueryRequestShow({
     const { auth } = usePage<{ auth: Auth }>().props;
     const userTimezone = auth.user.timezone ?? 'UTC';
     const isQueryAccess = query_request.request_kind === 'query_access';
+    const isNativeClientAccess =
+        isQueryAccess && query_request.access_transport === 'native_proxy';
     const isActiveQueryAccess =
         isQueryAccess && query_request.status === 'running';
     const activeSessionExpiresAt =
@@ -644,6 +649,16 @@ export default function QueryRequestShow({
                                         </dd>
                                     </div>
                                 )}
+                                {isNativeClientAccess && (
+                                    <div className="flex min-w-0 gap-1.5">
+                                        <dt>Transport</dt>
+                                        <dd className="truncate font-medium text-foreground">
+                                            {
+                                                query_request.access_transport_label
+                                            }
+                                        </dd>
+                                    </div>
+                                )}
                                 {isQueryAccess && (
                                     <div className="flex min-w-0 gap-1.5">
                                         <dt>
@@ -684,6 +699,14 @@ export default function QueryRequestShow({
                                     </dd>
                                 </div>
                             </dl>
+                            {isNativeClientAccess && (
+                                <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
+                                    SQL is executed later from an approved
+                                    native database client. Review the target,
+                                    access level, and session window before
+                                    approving this request.
+                                </p>
+                            )}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end">
@@ -1030,12 +1053,20 @@ export default function QueryRequestShow({
                                 Request overview
                             </h2>
                         </div>
-                        <StatusBadge
-                            value={query_request.request_kind}
-                            label={queryRequestKindLabel(
-                                query_request.request_kind,
+                        <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge
+                                value={query_request.request_kind}
+                                label={queryRequestKindLabel(
+                                    query_request.request_kind,
+                                )}
+                            />
+                            {isNativeClientAccess && (
+                                <StatusBadge
+                                    value="native_proxy"
+                                    label="Native client"
+                                />
                             )}
-                        />
+                        </div>
                     </div>
                     <div className="px-4 py-3 sm:px-5">
                         <dl className="grid gap-x-5 gap-y-3 text-sm min-[420px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">

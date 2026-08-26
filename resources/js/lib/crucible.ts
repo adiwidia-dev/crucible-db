@@ -12,6 +12,7 @@ export type QueryRequestStatus =
     | 'cancelled';
 export type QueryType = 'read' | 'write';
 export type QueryRequestKind = 'single_execution' | 'query_access';
+export type AccessTransport = 'browser' | 'native_proxy';
 export type ExecutionStatus = 'running' | 'succeeded' | 'failed';
 
 export type Paginated<T> = {
@@ -54,6 +55,7 @@ export type QueryRequestSummary = {
     latest_query_type: QueryType | null;
     effective_query_type: QueryType;
     request_kind: QueryRequestKind;
+    access_transport: AccessTransport;
     requested_access_mode: 'read' | 'write' | null;
     requires_approval: boolean;
     scheduled_at: string | null;

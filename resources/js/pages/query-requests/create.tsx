@@ -12,6 +12,7 @@ import {
     Plus,
     ShieldAlert,
     Sparkles,
+    Terminal,
     Trash2,
     TriangleAlert,
     X,
@@ -42,6 +43,7 @@ type EditableQueryRequest = {
     database_connection_id: number;
     database_connection_ids: number[];
     request_kind: 'single_execution' | 'query_access';
+    access_transport: 'browser' | 'native_proxy';
     title: string;
     description: string | null;
     statements: Array<{
@@ -60,6 +62,8 @@ type Props = {
         Pick<DatabaseConnectionSummary, 'id' | 'name' | 'driver'> & {
             can_write: boolean;
             can_query_access_write: boolean;
+            can_native_proxy_read: boolean;
+            can_native_proxy_write: boolean;
             read_requires_approval: boolean;
             write_requires_approval: boolean;
             max_write_session_minutes: number | null;
@@ -276,6 +280,9 @@ export default function QueryRequestCreate({
     const [requestKind, setRequestKind] = useState<
         'single_execution' | 'query_access'
     >(query_request?.request_kind ?? 'single_execution');
+    const [accessTransport, setAccessTransport] = useState<
+        'browser' | 'native_proxy'
+    >(query_request?.access_transport ?? 'browser');
     const [scheduleQuery, setScheduleQuery] = useState(
         query_request?.scheduled_at !== null &&
             query_request?.scheduled_at !== undefined,
@@ -311,10 +318,21 @@ export default function QueryRequestCreate({
             ),
         [connections, selectedConnectionIds],
     );
+    const isNativeClientAccess =
+        requestKind === 'query_access' && accessTransport === 'native_proxy';
+    const nativeEligibleConnections = useMemo(
+        () =>
+            connections.filter(
+                (connection) => connection.can_native_proxy_read,
+            ),
+        [connections],
+    );
     const canRequestWriteSession =
         selectedSessionConnections.length > 0 &&
-        selectedSessionConnections.every(
-            (connection) => connection.can_query_access_write,
+        selectedSessionConnections.every((connection) =>
+            isNativeClientAccess
+                ? connection.can_native_proxy_write
+                : connection.can_query_access_write,
         );
     const sessionRequiresApproval =
         requestedAccessMode === 'write'
@@ -499,6 +517,34 @@ export default function QueryRequestCreate({
         );
     }
 
+    function selectWorkflow(
+        nextRequestKind: 'single_execution' | 'query_access',
+        nextAccessTransport: 'browser' | 'native_proxy',
+    ): void {
+        setRequestKind(nextRequestKind);
+        setAccessTransport(nextAccessTransport);
+
+        if (nextAccessTransport !== 'native_proxy') {
+            return;
+        }
+
+        const currentNativeConnection = selectedConnectionIds.find((id) =>
+            nativeEligibleConnections.some(
+                (connection) => String(connection.id) === id,
+            ),
+        );
+        const nextConnectionId =
+            currentNativeConnection ??
+            (nativeEligibleConnections[0]
+                ? String(nativeEligibleConnections[0].id)
+                : '');
+
+        setSelectedConnectionIds(
+            nextConnectionId === '' ? [] : [nextConnectionId],
+        );
+        setRequestedAccessMode('read');
+    }
+
     return (
         <>
             <Head
@@ -542,6 +588,16 @@ export default function QueryRequestCreate({
                 >
                     {({ processing, errors }) => (
                         <>
+                            <input
+                                type="hidden"
+                                name="request_kind"
+                                value={requestKind}
+                            />
+                            <input
+                                type="hidden"
+                                name="access_transport"
+                                value={accessTransport}
+                            />
                             <section className="border-y bg-card sm:rounded-lg sm:border">
                                 <div className="border-b px-4 py-3 sm:px-5">
                                     <h2 className="text-sm font-semibold">
@@ -604,21 +660,22 @@ export default function QueryRequestCreate({
                                         <Label htmlFor="request_kind">
                                             Workflow
                                         </Label>
-                                        <div className="grid gap-3 md:grid-cols-2">
+                                        <div className="grid gap-3 lg:grid-cols-3">
                                             <label
                                                 className={`flex cursor-pointer gap-3 rounded-md border bg-background p-3.5 transition-colors duration-150 ease-out hover:bg-accent/35 motion-reduce:transition-none ${requestKind === 'single_execution' ? 'border-primary bg-primary/5' : ''}`}
                                             >
                                                 <input
                                                     type="radio"
-                                                    name="request_kind"
+                                                    name="request_workflow"
                                                     value="single_execution"
                                                     checked={
                                                         requestKind ===
                                                         'single_execution'
                                                     }
                                                     onChange={() =>
-                                                        setRequestKind(
+                                                        selectWorkflow(
                                                             'single_execution',
+                                                            'browser',
                                                         )
                                                     }
                                                     className="mt-0.5 accent-primary"
@@ -636,19 +693,22 @@ export default function QueryRequestCreate({
                                                 </span>
                                             </label>
                                             <label
-                                                className={`flex cursor-pointer gap-3 rounded-md border bg-background p-3.5 transition-colors duration-150 ease-out hover:bg-accent/35 motion-reduce:transition-none ${requestKind === 'query_access' ? 'border-primary bg-primary/5' : ''}`}
+                                                className={`flex cursor-pointer gap-3 rounded-md border bg-background p-3.5 transition-colors duration-150 ease-out hover:bg-accent/35 motion-reduce:transition-none ${requestKind === 'query_access' && accessTransport === 'browser' ? 'border-primary bg-primary/5' : ''}`}
                                             >
                                                 <input
                                                     type="radio"
-                                                    name="request_kind"
+                                                    name="request_workflow"
                                                     value="query_access"
                                                     checked={
                                                         requestKind ===
-                                                        'query_access'
+                                                            'query_access' &&
+                                                        accessTransport ===
+                                                            'browser'
                                                     }
                                                     onChange={() =>
-                                                        setRequestKind(
+                                                        selectWorkflow(
                                                             'query_access',
+                                                            'browser',
                                                         )
                                                     }
                                                     className="mt-0.5 accent-primary"
@@ -665,6 +725,36 @@ export default function QueryRequestCreate({
                                                     </span>
                                                 </span>
                                             </label>
+                                            <label
+                                                className={`flex cursor-pointer gap-3 rounded-md border bg-background p-3.5 transition-colors duration-150 ease-out hover:bg-accent/35 motion-reduce:transition-none ${isNativeClientAccess ? 'border-primary bg-primary/5' : ''}`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="request_workflow"
+                                                    value="native_proxy"
+                                                    checked={
+                                                        isNativeClientAccess
+                                                    }
+                                                    onChange={() =>
+                                                        selectWorkflow(
+                                                            'query_access',
+                                                            'native_proxy',
+                                                        )
+                                                    }
+                                                    className="mt-0.5 accent-primary"
+                                                />
+                                                <span className="grid gap-1">
+                                                    <span className="flex items-center gap-2 font-medium">
+                                                        <Terminal className="size-4 text-primary" />
+                                                        Native Client Access
+                                                    </span>
+                                                    <span className="text-sm text-muted-foreground">
+                                                        Use an approved database
+                                                        client through the
+                                                        Crucible CLI.
+                                                    </span>
+                                                </span>
+                                            </label>
                                         </div>
                                         <InputError
                                             message={errors.request_kind}
@@ -673,43 +763,98 @@ export default function QueryRequestCreate({
 
                                     {requestKind === 'query_access' && (
                                         <div className="grid gap-5 rounded-md border bg-muted/20 p-3.5">
-                                            <ConnectionMultiCombobox
-                                                connections={connections}
-                                                values={selectedConnectionIds}
-                                                onValueChange={(values) => {
-                                                    setSelectedConnectionIds(
-                                                        values,
-                                                    );
-
-                                                    const selected =
-                                                        connections.filter(
-                                                            (connection) =>
-                                                                values.includes(
-                                                                    String(
-                                                                        connection.id,
-                                                                    ),
-                                                                ),
-                                                        );
-
-                                                    if (
-                                                        requestedAccessMode ===
-                                                            'write' &&
-                                                        !selected.every(
-                                                            (connection) =>
-                                                                connection.can_write,
-                                                        )
-                                                    ) {
-                                                        setRequestedAccessMode(
-                                                            'read',
-                                                        );
+                                            {isNativeClientAccess ? (
+                                                <ConnectionCombobox
+                                                    connections={
+                                                        nativeEligibleConnections
                                                     }
-                                                }}
-                                                error={
-                                                    errors.database_connection_ids
-                                                }
-                                                label="Session connections"
-                                                description="Choose every database that this time-boxed session may access. The requested access level must be available on every selected target."
-                                            />
+                                                    name="database_connection_ids[]"
+                                                    value={
+                                                        selectedConnectionIds[0] ??
+                                                        ''
+                                                    }
+                                                    onValueChange={(value) => {
+                                                        setSelectedConnectionIds(
+                                                            value === ''
+                                                                ? []
+                                                                : [value],
+                                                        );
+
+                                                        const connection =
+                                                            nativeEligibleConnections.find(
+                                                                (item) =>
+                                                                    String(
+                                                                        item.id,
+                                                                    ) === value,
+                                                            );
+
+                                                        if (
+                                                            requestedAccessMode ===
+                                                                'write' &&
+                                                            !connection?.can_native_proxy_write
+                                                        ) {
+                                                            setRequestedAccessMode(
+                                                                'read',
+                                                            );
+                                                        }
+                                                    }}
+                                                    error={
+                                                        errors.database_connection_ids
+                                                    }
+                                                    label="Native client connection"
+                                                    description="Choose one approved target. SQL is executed later from your database client after this access request is approved."
+                                                />
+                                            ) : (
+                                                <ConnectionMultiCombobox
+                                                    connections={connections}
+                                                    values={
+                                                        selectedConnectionIds
+                                                    }
+                                                    onValueChange={(values) => {
+                                                        setSelectedConnectionIds(
+                                                            values,
+                                                        );
+
+                                                        const selected =
+                                                            connections.filter(
+                                                                (connection) =>
+                                                                    values.includes(
+                                                                        String(
+                                                                            connection.id,
+                                                                        ),
+                                                                    ),
+                                                            );
+
+                                                        if (
+                                                            requestedAccessMode ===
+                                                                'write' &&
+                                                            !selected.every(
+                                                                (connection) =>
+                                                                    connection.can_query_access_write,
+                                                            )
+                                                        ) {
+                                                            setRequestedAccessMode(
+                                                                'read',
+                                                            );
+                                                        }
+                                                    }}
+                                                    error={
+                                                        errors.database_connection_ids
+                                                    }
+                                                    label="Session connections"
+                                                    description="Choose every database that this time-boxed session may access. The requested access level must be available on every selected target."
+                                                />
+                                            )}
+                                            {isNativeClientAccess &&
+                                                nativeEligibleConnections.length ===
+                                                    0 && (
+                                                    <p className="text-xs text-muted-foreground">
+                                                        No active connection is
+                                                        available for your
+                                                        Native Client Access
+                                                        policy.
+                                                    </p>
+                                                )}
                                             <div className="grid gap-3 border-t pt-4">
                                                 <div>
                                                     <Label>
@@ -792,10 +937,12 @@ export default function QueryRequestCreate({
                                                         <p className="text-xs text-muted-foreground">
                                                             Read + write is
                                                             unavailable because
-                                                            at least one
-                                                            selected connection
-                                                            permits read-only
-                                                            Query Access.
+                                                            the selected
+                                                            connection only
+                                                            permits read-only{' '}
+                                                            {isNativeClientAccess
+                                                                ? 'Native Client Access.'
+                                                                : 'Query Access.'}
                                                         </p>
                                                     )}
                                                 {selectedConnectionIds.length >
@@ -1082,7 +1229,10 @@ export default function QueryRequestCreate({
                                             Access window
                                         </h2>
                                         <p className="mt-1 text-xs text-muted-foreground">
-                                            Set how long the approved browser
+                                            Set how long the approved{' '}
+                                            {isNativeClientAccess
+                                                ? 'native client'
+                                                : 'browser'}{' '}
                                             session remains available.
                                         </p>
                                     </div>
@@ -1243,13 +1393,9 @@ export default function QueryRequestCreate({
                                             </p>
                                         ) : (
                                             <p>
-                                                {selectedConnectionIds.length}{' '}
-                                                {selectedConnectionIds.length ===
-                                                1
-                                                    ? 'connection is'
-                                                    : 'connections are'}{' '}
-                                                included in this time-boxed
-                                                session.
+                                                {isNativeClientAccess
+                                                    ? 'One selected target will be available from an approved native database client after review.'
+                                                    : `${selectedConnectionIds.length} ${selectedConnectionIds.length === 1 ? 'connection is' : 'connections are'} included in this time-boxed session.`}
                                             </p>
                                         )}
                                     </div>

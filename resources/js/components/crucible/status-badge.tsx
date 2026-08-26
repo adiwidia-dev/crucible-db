@@ -24,6 +24,8 @@ const statusStyles: Record<string, string> = {
     pending_review:
         'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-300',
     mysql: 'border-orange-200 bg-orange-50 text-orange-900 dark:border-orange-900/70 dark:bg-orange-950/40 dark:text-orange-300',
+    native_proxy:
+        'border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-900/70 dark:bg-indigo-950/40 dark:text-indigo-300',
     pgsql: 'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-300',
     read: 'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-300',
     read_only:

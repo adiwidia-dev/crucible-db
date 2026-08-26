@@ -74,6 +74,7 @@ class QueryRequestController extends Controller
                 'latest_query_type' => $queryRequest->latestExecution?->query_type?->value,
                 'effective_query_type' => $this->effectiveQueryType($queryRequest),
                 'request_kind' => $queryRequest->request_kind->value,
+                'access_transport' => $queryRequest->access_transport->value,
                 'requested_access_mode' => $queryRequest->requested_access_mode?->value,
                 'requires_approval' => $queryRequest->requires_approval,
                 'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
@@ -236,6 +237,8 @@ class QueryRequestController extends Controller
                 'status' => $queryRequest->status->value,
                 'query_type' => $queryRequest->query_type->value,
                 'request_kind' => $queryRequest->request_kind->value,
+                'access_transport' => $queryRequest->access_transport->value,
+                'access_transport_label' => $this->accessTransportLabel($queryRequest->access_transport),
                 'requested_access_mode' => $queryRequest->requested_access_mode?->value,
                 'requires_approval' => $queryRequest->requires_approval,
                 'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
@@ -534,6 +537,7 @@ class QueryRequestController extends Controller
                     ->whenEmpty(fn () => collect([$queryRequest->database_connection_id]))
                     ->values(),
                 'request_kind' => $queryRequest->request_kind->value,
+                'access_transport' => $queryRequest->access_transport->value,
                 'title' => $queryRequest->title,
                 'description' => $queryRequest->description,
                 'statements' => $queryRequest->statements->map(fn ($statement): array => [
@@ -592,7 +596,7 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, can_query_access_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
+     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, can_query_access_write:bool, can_native_proxy_read:bool, can_native_proxy_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
      */
     private function connectionOptions(User $user): array
     {
@@ -605,6 +609,8 @@ class QueryRequestController extends Controller
                 $readPermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Read);
                 $writePermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Write);
                 $queryAccessPermission = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write);
+                $nativeReadPermission = $user->effectiveNativeProxyPermissionFor($connection, QueryType::Read);
+                $nativeWritePermission = $user->effectiveNativeProxyPermissionFor($connection, QueryType::Write);
 
                 return [
                     'id' => $connection->id,
@@ -612,6 +618,8 @@ class QueryRequestController extends Controller
                     'driver' => $connection->driver->value,
                     'can_write' => $writePermission['access_mode']->allows(QueryType::Write),
                     'can_query_access_write' => $queryAccessPermission['query_access_mode']->allows(QueryType::Write),
+                    'can_native_proxy_read' => $nativeReadPermission['native_proxy_access_mode']->allows(QueryType::Read),
+                    'can_native_proxy_write' => $nativeWritePermission['native_proxy_access_mode']->allows(QueryType::Write),
                     'read_requires_approval' => $readPermission['read_requires_approval'],
                     'write_requires_approval' => $writePermission['write_requires_approval'],
                     'max_write_session_minutes' => $writePermission['max_write_session_minutes'],
@@ -658,6 +666,14 @@ class QueryRequestController extends Controller
             'name' => $connection->name,
             'driver' => $connection->driver->value,
         ];
+    }
+
+    private function accessTransportLabel(AccessTransport $accessTransport): string
+    {
+        return match ($accessTransport) {
+            AccessTransport::Browser => 'Browser',
+            AccessTransport::NativeProxy => 'Native client',
+        };
     }
 
     /**
