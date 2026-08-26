@@ -15,6 +15,7 @@ use App\Models\RoleConnectionGroupPolicy;
 use App\Models\RoleDatabasePermission;
 use App\Models\User;
 use App\Services\DatabaseQueryExecutor;
+use App\Services\DatabaseTlsMaterializer;
 use App\Services\QueryRequestWorkflow;
 use App\Services\QuerySessionWorkflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -370,7 +371,7 @@ class QueryAccessPolicyTest extends TestCase
             'approved_at' => now(),
         ])->save();
 
-        $fakeExecutor = new class extends DatabaseQueryExecutor
+        $fakeExecutor = new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             public function execute(DatabaseConnection $databaseConnection, string $sql, QueryType $queryType): array
             {
