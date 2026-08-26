@@ -222,6 +222,8 @@ Approval remains evaluated across selected targets, but Native Client Access alw
 
 - `native_proxy_enabled` boolean, default false.
 - normalized upstream TLS fields used by both browser execution and native proxy: `tls_mode`, `tls_ca_certificate`, `tls_client_certificate`, encrypted/hidden `tls_client_key`.
+- Every Laravel target-connection consumer, including initial setup, schema browsing, and query execution, resolves upstream TLS exclusively from these normalized fields. Legacy `ssl_mode` is migration input only and must not affect a new or existing runtime connection after normalization.
+- `native_proxy_enabled` is an authorization gate, not merely a form setting: effective Native Client Access permission resolution must return no access when it is false, including for administrators. Later request and connection-admission checks repeat this gate in depth.
 
 `role_database_permissions` and `role_connection_group_policies`:
 

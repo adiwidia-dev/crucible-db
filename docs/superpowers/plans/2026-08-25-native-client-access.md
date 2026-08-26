@@ -213,13 +213,18 @@ git commit -m "feat: add native query access policy gates"
 - Modify: `app/Http/Requests/StoreDatabaseConnectionRequest.php`
 - Modify: `app/Http/Requests/UpdateDatabaseConnectionRequest.php`
 - Modify: `app/Services/DatabaseQueryExecutor.php`
+- Modify: `app/Services/DatabaseSchemaBrowser.php`
+- Modify: `app/Models/User.php`
+- Modify: `app/Http/Requests/StoreInitialConnectionRequest.php`
 - Modify: `resources/js/pages/connections/form.tsx`
+- Modify: `resources/js/pages/setup/connection.tsx`
 - Test: `tests/Feature/CrucibleMvpTest.php`
 - Test: `tests/Feature/QueryExecutionSecurityTest.php`
+- Test: `tests/Feature/QueryAccessPolicyTest.php`
 
 - [ ] **Step 1: Write failing TLS validation and driver-option tests**
 
-Cover disabled/preferred/required/verify-ca/verify-identity, certificate/key pairing, encrypted hidden client key, PostgreSQL `sslmode`, and MySQL PDO CA/certificate/key options. Prove `verify-identity` rejects a missing CA. Add administrator/non-admin tests for `native_proxy_enabled` and prove a disabled connection cannot be selected or admitted.
+Cover disabled/preferred/required/verify-ca/verify-identity, certificate/key pairing, encrypted hidden client key, PostgreSQL `sslmode`, and MySQL PDO CA/certificate/key options in both query execution and schema browsing. Prove `verify-identity` rejects a missing CA. Add administrator/non-admin tests for `native_proxy_enabled` and prove the native effective-permission boundary denies disabled connections, including administrators. Prove initial setup accepts normalized TLS input and cannot silently persist a legacy `ssl_mode` value as a different runtime TLS mode.
 
 - [ ] **Step 2: Run narrow tests and verify RED**
 
@@ -229,7 +234,7 @@ Expected: FAIL for missing fields/behavior.
 
 - [ ] **Step 3: Implement migration and request/model/executor changes**
 
-Use `DatabaseTlsMode` values `disabled`, `preferred`, `required`, `verify_ca`, `verify_identity`. Preserve existing PostgreSQL `ssl_mode` values during migration, add encrypted `tls_client_key`, and hide it from serialization. Never accept `tls_skip_verify` in production configuration.
+Use `DatabaseTlsMode` values `disabled`, `preferred`, `required`, `verify_ca`, `verify_identity`. Preserve existing PostgreSQL `ssl_mode` values during migration, add encrypted `tls_client_key`, and hide it from serialization. Update initial setup, schema browsing, and query execution to use only normalized TLS configuration; retain `ssl_mode` solely as migration input. Make `effectiveNativeProxyPermissionFor()` deny every disabled connection before administrator or role resolution. Never accept `tls_skip_verify` in production configuration.
 
 - [ ] **Step 4: Update the connection form using existing Crucible controls**
 
@@ -245,7 +250,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add app database resources/js/pages/connections tests
+git add app database resources/js/pages/connections resources/js/pages/setup tests
 git commit -m "feat: normalize target database tls policy"
 ```
 
