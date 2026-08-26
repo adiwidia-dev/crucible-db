@@ -106,6 +106,36 @@ class ConnectionGroupManagementTest extends TestCase
         $this->assertFalse($effectivePermission['read_requires_approval']);
     }
 
+    public function test_admin_can_set_native_proxy_access_mode_on_a_connection_group_policy(): void
+    {
+        $admin = $this->adminUser();
+        $connectionGroup = ConnectionGroup::factory()->create();
+
+        $this->actingAs($admin)->post(route('roles.store'), [
+            'name' => 'Native group operator',
+            'description' => 'Uses native database clients for approved work.',
+            'policies' => [],
+            'group_policies' => [[
+                'connection_group_id' => $connectionGroup->id,
+                'access_mode' => AccessMode::Write->value,
+                'query_access_mode' => AccessMode::Read->value,
+                'native_proxy_access_mode' => AccessMode::Write->value,
+                'can_review' => false,
+                'read_requires_approval' => true,
+                'write_requires_approval' => true,
+                'max_write_session_minutes' => 30,
+            ]],
+        ])->assertRedirect(route('roles.index'));
+
+        $role = Role::query()->where('slug', 'native-group-operator')->firstOrFail();
+
+        $this->assertDatabaseHas('role_connection_group_policies', [
+            'role_id' => $role->id,
+            'connection_group_id' => $connectionGroup->id,
+            'native_proxy_access_mode' => AccessMode::Write->value,
+        ]);
+    }
+
     public function test_admin_can_assign_a_connection_group_policy_to_a_role(): void
     {
         $admin = $this->adminUser();

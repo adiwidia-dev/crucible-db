@@ -42,6 +42,7 @@ class UpdateRoleRequest extends FormRequest
             'policies.*.database_connection_id' => ['required', 'integer', 'distinct', 'exists:database_connections,id'],
             'policies.*.access_mode' => ['required', Rule::enum(AccessMode::class)],
             'policies.*.query_access_mode' => ['nullable', Rule::in([AccessMode::Read->value, AccessMode::Write->value])],
+            'policies.*.native_proxy_access_mode' => ['nullable', Rule::enum(AccessMode::class)],
             'policies.*.can_review' => ['sometimes', 'boolean'],
             'policies.*.requires_approval' => ['sometimes', 'boolean'],
             'policies.*.read_requires_approval' => ['sometimes', 'boolean'],
@@ -51,6 +52,7 @@ class UpdateRoleRequest extends FormRequest
             'group_policies.*.connection_group_id' => ['required', 'integer', 'distinct', 'exists:connection_groups,id'],
             'group_policies.*.access_mode' => ['required', Rule::enum(AccessMode::class)],
             'group_policies.*.query_access_mode' => ['nullable', Rule::in([AccessMode::Read->value, AccessMode::Write->value])],
+            'group_policies.*.native_proxy_access_mode' => ['nullable', Rule::enum(AccessMode::class)],
             'group_policies.*.can_review' => ['sometimes', 'boolean'],
             'group_policies.*.requires_approval' => ['sometimes', 'boolean'],
             'group_policies.*.read_requires_approval' => ['sometimes', 'boolean'],
@@ -74,7 +76,7 @@ class UpdateRoleRequest extends FormRequest
     }
 
     /**
-     * @return array<int, array{database_connection_id: int, access_mode: string, query_access_mode: string, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}>
+     * @return array<int, array{database_connection_id: int, access_mode: string, query_access_mode: string, native_proxy_access_mode: string, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}>
      */
     public function policyAttributes(): array
     {
@@ -88,6 +90,7 @@ class UpdateRoleRequest extends FormRequest
                 'query_access_mode' => $policy['access_mode'] === AccessMode::Write->value
                     ? ($policy['query_access_mode'] ?? AccessMode::Read->value)
                     : AccessMode::Read->value,
+                'native_proxy_access_mode' => $this->nativeProxyAccessModeFor($policy),
                 'can_review' => (bool) ($policy['can_review'] ?? false),
                 'read_requires_approval' => (bool) ($policy['read_requires_approval'] ?? $policy['requires_approval'] ?? true),
                 'write_requires_approval' => (bool) ($policy['write_requires_approval'] ?? $policy['requires_approval'] ?? true),
@@ -101,7 +104,7 @@ class UpdateRoleRequest extends FormRequest
     }
 
     /**
-     * @return array<int, array{connection_group_id: int, access_mode: string, query_access_mode: string, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}>
+     * @return array<int, array{connection_group_id: int, access_mode: string, query_access_mode: string, native_proxy_access_mode: string, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}>
      */
     public function groupPolicyAttributes(): array
     {
@@ -115,6 +118,7 @@ class UpdateRoleRequest extends FormRequest
                 'query_access_mode' => $policy['access_mode'] === AccessMode::Write->value
                     ? ($policy['query_access_mode'] ?? AccessMode::Read->value)
                     : AccessMode::Read->value,
+                'native_proxy_access_mode' => $this->nativeProxyAccessModeFor($policy),
                 'can_review' => (bool) ($policy['can_review'] ?? false),
                 'read_requires_approval' => (bool) ($policy['read_requires_approval'] ?? $policy['requires_approval'] ?? true),
                 'write_requires_approval' => (bool) ($policy['write_requires_approval'] ?? $policy['requires_approval'] ?? true),
@@ -125,6 +129,22 @@ class UpdateRoleRequest extends FormRequest
         }
 
         return $attributes;
+    }
+
+    /**
+     * @param  array{access_mode: string, native_proxy_access_mode?: string}  $policy
+     */
+    private function nativeProxyAccessModeFor(array $policy): string
+    {
+        $requestedMode = $policy['native_proxy_access_mode'] ?? AccessMode::None->value;
+
+        return match ($policy['access_mode']) {
+            AccessMode::None->value => AccessMode::None->value,
+            AccessMode::Read->value => $requestedMode === AccessMode::None->value
+                ? AccessMode::None->value
+                : AccessMode::Read->value,
+            AccessMode::Write->value => $requestedMode,
+        };
     }
 
     /**

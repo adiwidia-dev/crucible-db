@@ -30,6 +30,7 @@ class DatabaseConnectionFactory extends Factory
             'password' => 'crucible',
             'ssl_mode' => null,
             'is_active' => true,
+            'native_proxy_enabled' => false,
         ];
     }
 

@@ -28,12 +28,17 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  * @property bool $is_active
  * @property-read User|null $createdBy
  */
-#[Fillable(['created_by_id', 'name', 'driver', 'host', 'port', 'database', 'username', 'password', 'ssl_mode', 'is_active'])]
+#[Fillable(['created_by_id', 'name', 'driver', 'host', 'port', 'database', 'username', 'password', 'ssl_mode', 'is_active', 'native_proxy_enabled'])]
 #[Hidden(['password'])]
 class DatabaseConnection extends Model
 {
     /** @use HasFactory<DatabaseConnectionFactory> */
     use HasFactory;
+
+    /** @var array<string, bool> */
+    protected $attributes = [
+        'native_proxy_enabled' => false,
+    ];
 
     protected function casts(): array
     {
@@ -41,6 +46,7 @@ class DatabaseConnection extends Model
             'driver' => DatabaseDriver::class,
             'password' => 'encrypted',
             'is_active' => 'boolean',
+            'native_proxy_enabled' => 'boolean',
             'port' => 'integer',
         ];
     }

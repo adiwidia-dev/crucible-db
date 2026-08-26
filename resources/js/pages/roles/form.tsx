@@ -47,6 +47,7 @@ type RoleFormData = {
         {
             access_mode: AccessMode;
             query_access_mode: AccessMode;
+            native_proxy_access_mode: AccessMode;
             can_review: boolean;
             read_requires_approval: boolean;
             write_requires_approval: boolean;
@@ -58,6 +59,7 @@ type RoleFormData = {
         {
             access_mode: AccessMode;
             query_access_mode: AccessMode;
+            native_proxy_access_mode: AccessMode;
             can_review: boolean;
             read_requires_approval: boolean;
             write_requires_approval: boolean;
@@ -94,6 +96,7 @@ type PolicyDraft = {
     database_connection_id: number;
     access_mode: AccessMode;
     query_access_mode: AccessMode;
+    native_proxy_access_mode: AccessMode;
     can_review: boolean;
     read_requires_approval: boolean;
     write_requires_approval: boolean;
@@ -104,6 +107,7 @@ type GroupPolicyDraft = {
     connection_group_id: number;
     access_mode: AccessMode;
     query_access_mode: AccessMode;
+    native_proxy_access_mode: AccessMode;
     can_review: boolean;
     read_requires_approval: boolean;
     write_requires_approval: boolean;
@@ -147,6 +151,50 @@ function QueryAccessModeField({
     );
 }
 
+function NativeProxyAccessModeField({
+    name,
+    accessMode,
+    nativeProxyAccessMode,
+    onChange,
+}: {
+    name: string;
+    accessMode: AccessMode;
+    nativeProxyAccessMode: AccessMode;
+    onChange: (nativeProxyAccessMode: AccessMode) => void;
+}) {
+    const accessModeRank = { none: 0, read: 1, write: 2 } as const;
+
+    return (
+        <>
+            <Label>Native Client Access</Label>
+            <select
+                name={name}
+                value={nativeProxyAccessMode}
+                onChange={(event) => onChange(event.target.value as AccessMode)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+                <option value="none">Disabled</option>
+                <option
+                    value="read"
+                    disabled={accessModeRank.read > accessModeRank[accessMode]}
+                >
+                    Read-only
+                </option>
+                <option
+                    value="write"
+                    disabled={accessModeRank.write > accessModeRank[accessMode]}
+                >
+                    Read + write
+                </option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+                Native SQL is unknown before approval and authorized when it
+                runs.
+            </p>
+        </>
+    );
+}
+
 export default function RoleForm({
     role,
     connections,
@@ -163,6 +211,7 @@ export default function RoleForm({
                   database_connection_id: Number(connectionId),
                   access_mode: policy.access_mode,
                   query_access_mode: policy.query_access_mode,
+                  native_proxy_access_mode: policy.native_proxy_access_mode,
                   can_review: policy.can_review,
                   read_requires_approval: policy.read_requires_approval,
                   write_requires_approval: policy.write_requires_approval,
@@ -182,6 +231,8 @@ export default function RoleForm({
                           connection_group_id: Number(connectionGroupId),
                           access_mode: policy.access_mode,
                           query_access_mode: policy.query_access_mode,
+                          native_proxy_access_mode:
+                              policy.native_proxy_access_mode,
                           can_review: policy.can_review,
                           read_requires_approval: policy.read_requires_approval,
                           write_requires_approval:
@@ -210,6 +261,7 @@ export default function RoleForm({
                 database_connection_id: connectionId,
                 access_mode: 'read',
                 query_access_mode: 'read',
+                native_proxy_access_mode: 'none',
                 can_review: false,
                 read_requires_approval: false,
                 write_requires_approval: false,
@@ -246,6 +298,7 @@ export default function RoleForm({
                 connection_group_id: connectionGroupId,
                 access_mode: 'read',
                 query_access_mode: 'read',
+                native_proxy_access_mode: 'none',
                 can_review: false,
                 read_requires_approval: false,
                 write_requires_approval: false,
@@ -472,7 +525,7 @@ export default function RoleForm({
                                                                                 Remove
                                                                             </Button>
                                                                         </div>
-                                                                        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+                                                                        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
                                                                             <div className="grid gap-2">
                                                                                 <Label>
                                                                                     Maximum
@@ -501,6 +554,16 @@ export default function RoleForm({
                                                                                                     'write'
                                                                                                         ? policy.query_access_mode
                                                                                                         : 'read',
+                                                                                                native_proxy_access_mode:
+                                                                                                    accessMode ===
+                                                                                                    'none'
+                                                                                                        ? 'none'
+                                                                                                        : accessMode ===
+                                                                                                                'read' &&
+                                                                                                            policy.native_proxy_access_mode ===
+                                                                                                                'write'
+                                                                                                          ? 'read'
+                                                                                                          : policy.native_proxy_access_mode,
                                                                                                 write_requires_approval:
                                                                                                     accessMode ===
                                                                                                     'write',
@@ -555,6 +618,28 @@ export default function RoleForm({
                                                                                             {
                                                                                                 query_access_mode:
                                                                                                     queryAccessMode,
+                                                                                            },
+                                                                                        )
+                                                                                    }
+                                                                                />
+                                                                            </div>
+                                                                            <div className="grid gap-2">
+                                                                                <NativeProxyAccessModeField
+                                                                                    name={`group_policies[${index}][native_proxy_access_mode]`}
+                                                                                    accessMode={
+                                                                                        policy.access_mode
+                                                                                    }
+                                                                                    nativeProxyAccessMode={
+                                                                                        policy.native_proxy_access_mode
+                                                                                    }
+                                                                                    onChange={(
+                                                                                        nativeProxyAccessMode,
+                                                                                    ) =>
+                                                                                        updateGroupPolicy(
+                                                                                            index,
+                                                                                            {
+                                                                                                native_proxy_access_mode:
+                                                                                                    nativeProxyAccessMode,
                                                                                             },
                                                                                         )
                                                                                     }
@@ -789,6 +874,11 @@ export default function RoleForm({
                                                                                     Access
                                                                                 </th>
                                                                                 <th className="py-2.5 pr-4 font-medium">
+                                                                                    Native
+                                                                                    Client
+                                                                                    Access
+                                                                                </th>
+                                                                                <th className="py-2.5 pr-4 font-medium">
                                                                                     Read
                                                                                     approval
                                                                                 </th>
@@ -918,6 +1008,16 @@ export default function RoleForm({
                                                                                                                     'write'
                                                                                                                         ? policy.query_access_mode
                                                                                                                         : 'read',
+                                                                                                                native_proxy_access_mode:
+                                                                                                                    accessMode ===
+                                                                                                                    'none'
+                                                                                                                        ? 'none'
+                                                                                                                        : accessMode ===
+                                                                                                                                'read' &&
+                                                                                                                            policy.native_proxy_access_mode ===
+                                                                                                                                'write'
+                                                                                                                          ? 'read'
+                                                                                                                          : policy.native_proxy_access_mode,
                                                                                                                 write_requires_approval:
                                                                                                                     accessMode ===
                                                                                                                     'write',
@@ -975,6 +1075,28 @@ export default function RoleForm({
                                                                                                             {
                                                                                                                 query_access_mode:
                                                                                                                     queryAccessMode,
+                                                                                                            },
+                                                                                                        )
+                                                                                                    }
+                                                                                                />
+                                                                                            </td>
+                                                                                            <td className="grid gap-2">
+                                                                                                <NativeProxyAccessModeField
+                                                                                                    name={`policies[${index}][native_proxy_access_mode]`}
+                                                                                                    accessMode={
+                                                                                                        policy.access_mode
+                                                                                                    }
+                                                                                                    nativeProxyAccessMode={
+                                                                                                        policy.native_proxy_access_mode
+                                                                                                    }
+                                                                                                    onChange={(
+                                                                                                        nativeProxyAccessMode,
+                                                                                                    ) =>
+                                                                                                        updatePolicy(
+                                                                                                            index,
+                                                                                                            {
+                                                                                                                native_proxy_access_mode:
+                                                                                                                    nativeProxyAccessMode,
                                                                                                             },
                                                                                                         )
                                                                                                     }

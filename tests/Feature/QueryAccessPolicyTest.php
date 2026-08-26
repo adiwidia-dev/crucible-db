@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\AccessMode;
+use App\Enums\AccessTransport;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
@@ -23,6 +24,99 @@ use Tests\TestCase;
 class QueryAccessPolicyTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_native_proxy_defaults_and_policy_casts_are_persisted(): void
+    {
+        $request = QueryRequest::factory()->create();
+        $connection = DatabaseConnection::factory()->create();
+        $permission = RoleDatabasePermission::factory()->create([
+            'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::Write,
+            'native_proxy_access_mode' => AccessMode::Read,
+        ]);
+
+        $this->assertSame(AccessTransport::Browser, $request->access_transport);
+        $this->assertFalse($connection->native_proxy_enabled);
+        $this->assertSame(AccessMode::Read, $permission->native_proxy_access_mode);
+    }
+
+    public function test_native_proxy_permission_uses_direct_precedence_group_restriction_and_maximum_access_cap(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $user = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        $firstGroup = ConnectionGroup::factory()->create();
+        $secondGroup = ConnectionGroup::factory()->create();
+        $firstGroup->databaseConnections()->sync([$connection->id]);
+        $secondGroup->databaseConnections()->sync([$connection->id]);
+
+        RoleConnectionGroupPolicy::factory()->create([
+            'role_id' => $role->id,
+            'connection_group_id' => $firstGroup->id,
+            'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::Read,
+            'native_proxy_access_mode' => AccessMode::Write,
+        ]);
+        RoleConnectionGroupPolicy::factory()->create([
+            'role_id' => $role->id,
+            'connection_group_id' => $secondGroup->id,
+            'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::Write,
+            'native_proxy_access_mode' => AccessMode::Read,
+        ]);
+
+        $this->assertSame(
+            AccessMode::Read,
+            $user->effectiveNativeProxyPermissionFor($connection, QueryType::Read)['native_proxy_access_mode'],
+        );
+        $this->assertSame(
+            AccessMode::None,
+            $user->effectiveNativeProxyPermissionFor($connection, QueryType::Write)['native_proxy_access_mode'],
+        );
+
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+            'query_access_mode' => AccessMode::Write,
+            'native_proxy_access_mode' => AccessMode::Write,
+        ]);
+        $user->refresh();
+
+        $effectivePermission = $user->effectiveDatabasePermission($connection);
+
+        $this->assertSame(AccessMode::Read, $effectivePermission['access_mode']);
+        $this->assertSame(AccessMode::Read, $effectivePermission['native_proxy_access_mode']);
+        $this->assertSame(AccessMode::Read, $user->effectiveNativeProxyPermissionFor($connection, QueryType::Read)['native_proxy_access_mode']);
+        $this->assertSame(AccessMode::None, $user->effectiveNativeProxyPermissionFor($connection, QueryType::Write)['native_proxy_access_mode']);
+    }
+
+    public function test_native_proxy_access_mode_is_independent_from_query_access_mode(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $user = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::Read,
+            'native_proxy_access_mode' => AccessMode::Write,
+        ]);
+
+        $this->assertSame(
+            AccessMode::Read,
+            $user->effectiveQueryAccessPermissionFor($connection, QueryType::Read)['query_access_mode'],
+        );
+        $this->assertSame(
+            AccessMode::None,
+            $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write)['query_access_mode'],
+        );
+        $this->assertSame(
+            AccessMode::Write,
+            $user->effectiveNativeProxyPermissionFor($connection, QueryType::Write)['native_proxy_access_mode'],
+        );
+    }
 
     public function test_read_and_write_role_policies_are_resolved_for_the_requested_operation(): void
     {

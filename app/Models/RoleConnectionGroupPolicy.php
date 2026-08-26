@@ -22,17 +22,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool $write_requires_approval
  * @property int|null $max_write_session_minutes
  */
-#[Fillable(['role_id', 'connection_group_id', 'access_mode', 'query_access_mode', 'can_review', 'requires_approval', 'read_requires_approval', 'write_requires_approval', 'max_write_session_minutes'])]
+#[Fillable(['role_id', 'connection_group_id', 'access_mode', 'query_access_mode', 'native_proxy_access_mode', 'can_review', 'requires_approval', 'read_requires_approval', 'write_requires_approval', 'max_write_session_minutes'])]
 class RoleConnectionGroupPolicy extends Model
 {
     /** @use HasFactory<RoleConnectionGroupPolicyFactory> */
     use HasFactory;
+
+    /** @var array<string, string> */
+    protected $attributes = [
+        'native_proxy_access_mode' => AccessMode::None->value,
+    ];
 
     protected function casts(): array
     {
         return [
             'access_mode' => AccessMode::class,
             'query_access_mode' => AccessMode::class,
+            'native_proxy_access_mode' => AccessMode::class,
             'can_review' => 'boolean',
             'requires_approval' => 'boolean',
             'read_requires_approval' => 'boolean',

@@ -177,6 +177,41 @@ class AdminRoleManagementTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_set_native_proxy_access_mode_and_non_administrators_cannot_manage_role_policies(): void
+    {
+        $admin = $this->adminUser();
+        $developer = $this->developerUser();
+        $connection = DatabaseConnection::factory()->create();
+
+        $this->actingAs($admin)->post(route('roles.store'), [
+            'name' => 'Native connection operator',
+            'description' => 'Uses native database clients for approved work.',
+            'policies' => [[
+                'database_connection_id' => $connection->id,
+                'access_mode' => AccessMode::Write->value,
+                'query_access_mode' => AccessMode::Read->value,
+                'native_proxy_access_mode' => AccessMode::Read->value,
+                'can_review' => false,
+                'read_requires_approval' => true,
+                'write_requires_approval' => true,
+            ]],
+        ])->assertRedirect(route('roles.index'));
+
+        $role = Role::query()->where('slug', 'native-connection-operator')->firstOrFail();
+
+        $this->assertDatabaseHas('role_database_permissions', [
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'native_proxy_access_mode' => AccessMode::Read->value,
+        ]);
+
+        $this->actingAs($developer)->post(route('roles.store'), [
+            'name' => 'Unapproved Native Operator',
+            'policies' => [],
+            'group_policies' => [],
+        ])->assertForbidden();
+    }
+
     public function test_role_cannot_be_deleted_while_users_or_permissions_are_attached(): void
     {
         $admin = $this->adminUser();
