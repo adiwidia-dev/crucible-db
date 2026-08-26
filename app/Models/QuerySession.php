@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -91,6 +92,14 @@ class QuerySession extends Model
     public function queries(): HasMany
     {
         return $this->hasMany(QuerySessionQuery::class);
+    }
+
+    /**
+     * @return HasOne<NativeProxyLease, $this>
+     */
+    public function nativeProxyLease(): HasOne
+    {
+        return $this->hasOne(NativeProxyLease::class);
     }
 
     public function isActive(): bool
