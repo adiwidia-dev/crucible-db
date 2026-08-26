@@ -109,21 +109,23 @@ The generated command is:
 
 ```bash
 crucible connect \
-  --server https://tunnel.example.com \
+  --server https://crucible.example.com \
   --lease 01K... \
   --listen 127.0.0.1:15432
 ```
 
 For MySQL the recommended local port is `13306`. The CLI command never includes the synthetic database password, device code, tunnel token, upstream credential, or internal target address.
 
-`--server` always names the Go service's public HTTPS origin. The Go service exposes a fixed discovery and CLI authorization surface on that origin:
+`--server` always names Crucible's existing public `APP_URL`. The web UI and CLI use one hostname and one TLS certificate. The public router sends ordinary paths to Laravel and only the fixed discovery/tunnel paths to the private Go service:
 
 - `GET /.well-known/crucible-native-client.json` returns protocol version, device authorization path, token path, tunnel path, verification URI on the Laravel web origin, and minimum/supported CLI versions;
-- `POST /v1/device/authorize` validates size/rate limits and forwards the request through the HMAC-authenticated internal control API;
-- `POST /v1/device/token` applies polling limits and forwards the exchange through the internal control API;
-- `GET /v1/tunnel/{lease}` upgrades the authenticated database tunnel.
+- `POST /native-tunnel/v1/device/authorize` validates size/rate limits and forwards the request through the HMAC-authenticated internal control API;
+- `POST /native-tunnel/v1/device/token` applies polling limits and forwards the exchange through the internal control API;
+- `GET /native-tunnel/v1/tunnel/{lease}` upgrades the authenticated database tunnel.
 
-The CLI never needs to know Laravel's private control URL. The browser verification URI may use the normal `APP_URL`, including its existing outer browser access controls. The tunnel hostname itself needs only standard HTTPS reachability because Crucible device authorization and tunnel tokens are authoritative.
+The CLI never needs to know Laravel's private control URL or a second hostname. The browser verification URI uses the same `APP_URL` and normal Laravel/Fortify route. The discovery and `/native-tunnel/*` paths must be reachable by a non-browser CLI before it owns a browser session cookie; Crucible device authorization and tunnel bearer tokens are authoritative for those paths.
+
+If an outer identity-aware proxy protects all paths with browser-only authentication, operators must create the narrowest possible machine-compatible exception for exactly the discovery document and `/native-tunnel/*`. The outer product remains optional and is not part of Crucible's authentication model.
 
 The CLI requests a device authorization, displays the verification URL and user code, opens the browser when possible, and polls at the server-provided interval. The authenticated browser page shows the same user code, target, protocol, access level, and expiry and requires explicit approval. The CLI receives a tunnel token only after the Query Session owner approves the matching device authorization.
 
@@ -315,7 +317,7 @@ The flow uses RFC 8628 response/error semantics without turning Crucible into a 
 
 Device/user codes and synthetic credentials are separately rate limited by IP, lease, username, and device authorization. Error responses do not reveal whether a username, lease, or individual secret was valid.
 
-The Go service requests synthetic authentication material only after receiving a syntactically valid startup username. Its internal request includes the lease already authenticated by the WebSocket bearer token and `/v1/tunnel/{lease}` URL, the tunnel token/device authorization identity, proxy instance, protocol, and Go-generated connection ID. Laravel rejects any username that does not resolve to that exact lease. Laravel returns the material with a single-use authentication attempt ID bound to all of those identities, the current credential version, and a 15-second expiry. The response is marked `Cache-Control: no-store`. Go retains the decrypted secret only for the handshake, overwrites/discards the byte buffer immediately afterward, and never places it in any intermediary or application cache. After successful protocol authentication, Go submits the attempt ID rather than a password. Successful protocol authentication is not sufficient to reach the target: the separate atomic connection authorization call must consume the attempt, reserve capacity, and return upstream configuration.
+The Go service requests synthetic authentication material only after receiving a syntactically valid startup username. Its internal request includes the lease already authenticated by the WebSocket bearer token and `/native-tunnel/v1/tunnel/{lease}` URL, the tunnel token/device authorization identity, proxy instance, protocol, and Go-generated connection ID. Laravel rejects any username that does not resolve to that exact lease. Laravel returns the material with a single-use authentication attempt ID bound to all of those identities, the current credential version, and a 15-second expiry. The response is marked `Cache-Control: no-store`. Go retains the decrypted secret only for the handshake, overwrites/discards the byte buffer immediately afterward, and never places it in any intermediary or application cache. After successful protocol authentication, Go submits the attempt ID rather than a password. Successful protocol authentication is not sufficient to reach the target: the separate atomic connection authorization call must consume the attempt, reserve capacity, and return upstream configuration.
 
 ## 11. Internal control API
 
@@ -346,7 +348,7 @@ Every mutating endpoint is idempotent by request ID. Authentication and connecti
 
 ## 12. Tunnel protocol
 
-The public Go endpoint is `GET /v1/tunnel/{lease}` over HTTPS WebSocket and negotiates subprotocol `crucible.tunnel.v1`.
+The public Go endpoint is `GET /native-tunnel/v1/tunnel/{lease}` over HTTPS WebSocket and negotiates subprotocol `crucible.tunnel.v1`.
 
 The CLI presents the bearer token, CLI metadata headers, requested protocol, and a random connection ID. The server validates the token through Laravel before upgrading. Origin-based browser access is rejected; only bearer-authenticated non-browser clients are allowed.
 
@@ -512,7 +514,9 @@ Defaults are configuration-backed and documented:
 
 It does not receive `APP_KEY`, Laravel database path, mail/SSO secrets, or target credentials as environment variables.
 
-Production publishes the tunnel service to loopback on a configurable host port, default `127.0.0.1:8081`, for an operator-managed TLS reverse proxy at `NATIVE_PROXY_PUBLIC_URL`. The PostgreSQL/MySQL listeners are not published. The public tunnel URL should use a dedicated hostname when the main web hostname is protected by an outer access product that cannot pass the CLI bearer token; Crucible itself remains the tunnel authority.
+Production publishes only the existing application HTTP port. The native proxy exposes port 8081 solely on the private Compose network; PostgreSQL/MySQL listeners are also private. The application FrankenPHP/Caddy configuration reverse-proxies `/.well-known/crucible-native-client.json` and `/native-tunnel/*` to `native-proxy:8081`, including WebSocket upgrades, disabled buffering, bounded headers, and long-lived connection timeouts. Every other path continues to Laravel.
+
+`APP_URL` is the only public origin configuration and is embedded in generated CLI commands. No `NATIVE_PROXY_PUBLIC_URL`, tunnel subdomain, additional public DNS record, or second TLS certificate is required.
 
 Health endpoints:
 
@@ -600,8 +604,8 @@ Implementation follows test-first red-green-refactor cycles.
 ## 25. Documentation deliverables
 
 - User guide: requesting, reviewing, activating, installing CLI, DBeaver/CLI setup, rotating credentials, ending access, and troubleshooting.
-- Administrator guide: enabling connection/role permissions, tunnel URL, limits, upstream TLS, and audit review.
-- Operator guide: DNS/TLS reverse proxy, Compose deployment, health/metrics, upgrades, draining, incident response, and log redaction.
+- Administrator guide: enabling connection/role permissions, single-origin tunnel paths, limits, upstream TLS, and audit review.
+- Operator guide: single-origin path routing, optional outer-auth path exceptions, Compose deployment, health/metrics, upgrades, draining, incident response, and log redaction.
 - Security reference: trust boundaries, credential lifecycle, read-only layers, blocked capabilities, privacy, and threat model.
 - Protocol compatibility matrix and known limitations.
 - CLI reference with every flag, exit code, JSON schema, checksum/signature verification, and examples.
@@ -622,5 +626,5 @@ The feature is complete only when all of the following are true:
 8. Expiry and every revocation trigger close active connections within five seconds.
 9. Unsupported protocol capabilities fail explicitly and cannot bypass auditing.
 10. Go proxy/CLI and Laravel pass their complete unit, feature, integration, fuzz, race, static analysis, dependency audit, image, and end-to-end gates.
-11. Production exposes only the HTTPS tunnel endpoint; native database listeners remain private.
+11. Web UI and CLI use the same `APP_URL`; production exposes only the existing application origin while the native proxy and database listeners remain private.
 12. Signed CLI artifacts and complete user/admin/operator/security documentation are published.

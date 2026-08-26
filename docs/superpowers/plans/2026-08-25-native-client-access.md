@@ -61,6 +61,7 @@
 - `.github/workflows/native.yml`: Go unit/race/fuzz/static/integration/image gate.
 - `.github/workflows/release-native.yml`: tag-only signed CLI artifacts.
 - `compose.yaml`, `compose.production.yaml`: proxy service and private networking.
+- `.docker/Caddyfile`, `.docker/production-supervisord.conf`: single-origin path routing and custom Octane/FrankenPHP startup.
 - `.env.example`, `.env.production.example`, `docs/**`: configuration, user/admin/operator/security/compatibility references.
 
 ## Task 1: Establish the Go module and immutable protocol contracts
@@ -546,7 +547,7 @@ git commit -m "feat: authenticate native proxy control calls"
 
 - [ ] **Step 1: Write failing signature parity and gateway tests**
 
-Use PHP fixture vectors checked into `native/internal/control/testdata/signatures.json`. Prove canonical signatures match Laravel, request ids are unique, retries never reuse nonces, responses are size-limited, discovery has fixed paths/versions, device endpoints forward only permitted fields, tunnel authorization forwards bearer hash/lease/device/protocol/proxy/connection identity before upgrade, and upstream errors are sanitized.
+Use PHP fixture vectors checked into `native/internal/control/testdata/signatures.json`. Prove canonical signatures match Laravel, request ids are unique, retries never reuse nonces, responses are size-limited, discovery advertises the fixed same-origin `/.well-known/crucible-native-client.json` and `/native-tunnel/v1/*` paths, device endpoints forward only permitted fields, tunnel authorization forwards bearer hash/lease/device/protocol/proxy/connection identity before upgrade, and upstream errors are sanitized.
 
 - [ ] **Step 2: Verify RED**
 
@@ -583,7 +584,7 @@ git commit -m "feat(native): add control client and cli gateway"
 
 - [ ] **Step 1: Write failing command/device tests**
 
-Test required `--server`/`--lease`, HTTPS-only server except explicit test mode, discovery version bounds, browser-open fallback, printed user code, polling interval/slow_down, cancellation signals, token only in memory, `--json` secret-free events, rejection of every non-loopback listen address, local-port conflict errors, version output, and shell completion.
+Test required `--server`/`--lease`, HTTPS-only server except explicit test mode, discovery fetched from the same `--server` origin, fixed path/version bounds, browser-open fallback, printed user code, polling interval/slow_down, cancellation signals, token only in memory, `--json` secret-free events, rejection of every non-loopback listen address, local-port conflict errors, version output, and shell completion.
 
 - [ ] **Step 2: Verify RED**
 
@@ -635,7 +636,7 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement using coder/websocket**
 
-Call `POST /tunnels/authorize` and require an allow response bound to the URL lease and presented token before `websocket.Accept`. Set `CompressionMode: websocket.CompressionDisabled`, `SetReadLimit`, require `crucible.tunnel.v1`, reject text frames, and copy in both directions through bounded buffers. The CLI derives PostgreSQL/MySQL default local ports from discovery but accepts an available loopback override.
+Serve the public bridge at `/native-tunnel/v1/tunnel/{lease}`. Call the internal `POST /tunnels/authorize` control endpoint and require an allow response bound to the URL lease and presented token before `websocket.Accept`. Set `CompressionMode: websocket.CompressionDisabled`, `SetReadLimit`, require `crucible.tunnel.v1`, reject text frames, and copy in both directions through bounded buffers. The CLI derives PostgreSQL/MySQL default local ports from same-origin discovery but accepts an available loopback override.
 
 - [ ] **Step 4: Verify race/leak behavior**
 
@@ -1152,6 +1153,7 @@ git commit -m "feat: surface native proxy operations"
 **Files:**
 
 - Modify: `compose.yaml`
+- Modify: `.docker/Caddyfile`
 - Create: `native/test/integration/harness_test.go`
 - Create: `native/test/integration/postgres_test.go`
 - Create: `native/test/integration/mysql_test.go`
@@ -1160,7 +1162,7 @@ git commit -m "feat: surface native proxy operations"
 
 - [ ] **Step 1: Write failing cross-language contract and E2E tests**
 
-Test discovery/device flow, tunnel, synthetic auth, read-only/write, prepared statements, audit metadata, cancellation, rotation, expiry, cross-lease denial, Laravel/Redis/proxy/target outages, reconnect, and target credential lacking user-creation privileges.
+Test same-origin discovery/device/tunnel routing through the application Caddy endpoint, synthetic auth, read-only/write, prepared statements, audit metadata, cancellation, rotation, expiry, cross-lease denial, Laravel/Redis/proxy/target outages, reconnect, and target credential lacking user-creation privileges.
 
 - [ ] **Step 2: Verify RED with services running**
 
@@ -1171,7 +1173,7 @@ Expected: FAIL before harness/service wiring.
 
 - [ ] **Step 3: Implement development service configuration**
 
-Build `native-proxy` from local source, expose tunnel `8081` for development only, keep native listeners internal, provide dedicated control secret, health dependencies, and fixture users that can query/write only the target database and cannot create users/roles.
+Build `native-proxy` from local source, keep tunnel port 8081 and native listeners private, and route `/.well-known/crucible-native-client.json` plus `/native-tunnel/*` through the existing application Caddy port. Preserve WebSocket upgrade headers, disable response buffering for tunnel traffic, and leave all other paths on Laravel. Provide the dedicated control secret, health dependencies, and fixture users that can query/write only the target database and cannot create users/roles.
 
 - [ ] **Step 4: Verify full E2E matrix**
 
@@ -1180,7 +1182,7 @@ Run the PHP contract test and Go integration suite; expected PASS for both drive
 - [ ] **Step 5: Commit**
 
 ```bash
-git add compose.yaml phpunit.xml native/test tests/Feature/NativeProxyControlContractTest.php
+git add compose.yaml .docker/Caddyfile phpunit.xml native/test tests/Feature/NativeProxyControlContractTest.php
 git commit -m "test: cover native proxy end to end"
 ```
 
@@ -1189,6 +1191,9 @@ git commit -m "test: cover native proxy end to end"
 **Files:**
 
 - Create: `Dockerfile.native`
+- Modify: `.docker/Caddyfile`
+- Modify: `.docker/production-supervisord.conf`
+- Modify: `Dockerfile.production`
 - Modify: `compose.production.yaml`
 - Modify: `.env.production.example`
 - Modify: `docs/operations/production.md`
@@ -1210,7 +1215,7 @@ Build `crucible-proxy` with Go 1.26.1, `CGO_ENABLED=0`, pinned modules, stripped
 
 - [ ] **Step 3: Add production service**
 
-Use the same immutable release tag, internal control/Redis networks, `127.0.0.1:${NATIVE_PROXY_TUNNEL_PORT:-8081}:8081`, no host mapping for 5432/3306, health/readiness, resource limits, secrets from `.env.production`, and graceful stop longer than the drain timeout.
+Use the same immutable release tag and internal control/Redis network with no host mapping for 8081, 5432, or 3306. Copy `.docker/Caddyfile` into the production app image and start Octane/FrankenPHP with `--caddyfile=/etc/caddy/Caddyfile`; route only `/.well-known/crucible-native-client.json` and `/native-tunnel/*` to `native-proxy:8081`, and keep publishing the existing app port as the single origin. Configure WebSocket upgrades, disabled buffering/compression, bounded headers, long-lived tunnel timeouts, health/readiness, resource limits, secrets from `.env.production`, and graceful stop longer than the drain timeout. Derive all public URLs from `APP_URL`; do not introduce `NATIVE_PROXY_PUBLIC_URL`.
 
 - [ ] **Step 4: Build and smoke test**
 
@@ -1227,7 +1232,7 @@ Expected: valid Compose, successful build, non-root execution, version output, n
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Dockerfile.native compose.production.yaml .env.production.example docs/operations/production.md
+git add Dockerfile.native Dockerfile.production .docker/Caddyfile .docker/production-supervisord.conf compose.production.yaml .env.production.example docs/operations/production.md
 git commit -m "build: package native proxy service"
 ```
 
@@ -1364,7 +1369,7 @@ Expected: FAIL for missing native fixtures/pages.
 
 - [ ] **Step 3: Write role-specific documentation**
 
-Include the complete request/review/activation/CLI/DBeaver flow, one-time credentials, rotation/revoke, read-only/write consequences, CLI install/signature verification, all flags/exit codes/JSON events, proxy configuration, TLS reverse proxy, explicit loopback-only and local database-TLS-disabled client profiles, upstream TLS distinction, health/metrics, backup/recovery, drain/upgrade, incident response, blocked protocol capabilities, trust boundaries, and troubleshooting.
+Include the complete request/review/activation/CLI/DBeaver flow, one-time credentials, rotation/revoke, read-only/write consequences, CLI install/signature verification, all flags/exit codes/JSON events, single-origin `APP_URL` routing, fixed discovery and `/native-tunnel/*` paths, optional outer-auth path exceptions, explicit loopback-only and local database-TLS-disabled client profiles, upstream TLS distinction, health/metrics, backup/recovery, drain/upgrade, incident response, blocked protocol capabilities, trust boundaries, and troubleshooting. State that no second subdomain, DNS record, public proxy port, or TLS certificate is required.
 
 - [ ] **Step 4: Capture consistent screenshots**
 
