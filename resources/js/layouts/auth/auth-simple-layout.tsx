@@ -7,6 +7,7 @@ export default function AuthSimpleLayout({
     children,
     title,
     description,
+    wide = false,
 }: AuthLayoutProps) {
     return (
         <div className="flex min-h-svh flex-col bg-muted/30">
@@ -35,7 +36,7 @@ export default function AuthSimpleLayout({
             <main className="flex flex-1 items-center justify-center px-6 py-12 md:px-10">
                 <section
                     aria-labelledby="auth-title"
-                    className="w-full max-w-md overflow-hidden border bg-background sm:rounded-lg"
+                    className={`w-full overflow-hidden border bg-background sm:rounded-lg ${wide ? 'max-w-2xl' : 'max-w-md'}`}
                 >
                     <div className="border-b px-5 py-5 sm:px-8">
                         <h1

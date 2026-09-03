@@ -113,3 +113,9 @@ jobs:
           DB_DATABASE: crucible_control_test
           DB_USERNAME: crucible
           DB_PASSWORD: crucible_test
+
+      - name: Verify first-run network provisioning
+        run: php artisan test --compact tests/Feature/ApplicationDatabaseProvisioningMatrixTest.php
+        env:
+          CONTROL_DATABASE_POSTGRES_HOST: 127.0.0.1
+          CONTROL_DATABASE_MYSQL_HOST: 127.0.0.1

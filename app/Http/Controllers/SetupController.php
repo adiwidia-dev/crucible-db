@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\ApplicationDatabaseDriver;
 use App\Enums\DatabaseDriver;
 use App\Http\Requests\CompleteInitialSetupRequest;
+use App\Http\Requests\StoreApplicationDatabaseConfigurationRequest;
 use App\Http\Requests\StoreInitialConnectionRequest;
 use App\Models\DatabaseConnection;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ApplicationDatabaseManager;
 use App\Services\ApplicationSettings;
 use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
@@ -19,14 +22,69 @@ use Inertia\Response;
 
 class SetupController extends Controller
 {
-    public function show(): Response
+    public function show(ApplicationDatabaseManager $applicationDatabaseManager): Response|RedirectResponse
     {
         abort_if(User::query()->exists(), 404);
+
+        if ($applicationDatabaseManager->requiresRestart()) {
+            return redirect()->route('setup.database.restart');
+        }
+
+        if ($applicationDatabaseManager->requiresSelection()) {
+            return redirect()->route('setup.database.create');
+        }
 
         return Inertia::render('setup/owner', [
             'app_name' => config('app.name'),
             'passwordRules' => Password::defaults()->toPasswordRulesString(),
         ]);
+    }
+
+    public function createApplicationDatabase(ApplicationDatabaseManager $applicationDatabaseManager): Response|RedirectResponse
+    {
+        abort_if(User::query()->exists(), 404);
+
+        if (! $applicationDatabaseManager->usesManagedConfiguration()) {
+            return redirect()->route('setup.show');
+        }
+
+        if ($applicationDatabaseManager->requiresRestart()) {
+            return redirect()->route('setup.database.restart');
+        }
+
+        if (! $applicationDatabaseManager->requiresSelection()) {
+            return redirect()->route('setup.show');
+        }
+
+        return Inertia::render('setup/application-database', [
+            'drivers' => array_map(fn (ApplicationDatabaseDriver $driver): array => [
+                'value' => $driver->value,
+                'label' => $driver->label(),
+                'default_port' => $driver->defaultPort(),
+            ], ApplicationDatabaseDriver::cases()),
+            'sqlite_path' => config('database.connections.control.database'),
+        ]);
+    }
+
+    public function storeApplicationDatabase(
+        StoreApplicationDatabaseConfigurationRequest $request,
+        ApplicationDatabaseManager $applicationDatabaseManager,
+    ): RedirectResponse {
+        abort_if(User::query()->exists(), 409);
+        $applicationDatabaseManager->provision($request->validated());
+
+        return redirect()->route('setup.database.restart');
+    }
+
+    public function restartApplicationDatabase(ApplicationDatabaseManager $applicationDatabaseManager): Response|RedirectResponse
+    {
+        abort_if(User::query()->exists(), 404);
+
+        if (! $applicationDatabaseManager->requiresRestart()) {
+            return redirect()->route('setup.show');
+        }
+
+        return Inertia::render('setup/database-restart');
     }
 
     public function store(CompleteInitialSetupRequest $request, ApplicationSettings $settings, AuditLogger $auditLogger): RedirectResponse
