@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthProviderController;
 use App\Http\Controllers\ConnectionGroupController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Settings\AccessWorkflowSettingsController;
+use App\Http\Controllers\Settings\ApplicationDatabaseMigrationController;
 use App\Http\Controllers\Settings\ApplicationSettingsController;
 use App\Http\Controllers\Settings\AuthenticationMethodController;
 use App\Http\Controllers\Settings\FactoryResetController;
@@ -47,6 +48,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/', fn () => redirect()->route('application-settings.edit'))->name('admin-settings.index');
         Route::get('application', [ApplicationSettingsController::class, 'edit'])->name('application-settings.edit');
         Route::patch('application', [ApplicationSettingsController::class, 'update'])->name('application-settings.update');
+        Route::get('application-database', [ApplicationDatabaseMigrationController::class, 'edit'])
+            ->name('application-database-migrations.edit');
+        Route::post('application-database', [ApplicationDatabaseMigrationController::class, 'store'])
+            ->name('application-database-migrations.store');
+        Route::post('application-database/{migration}/copy', [ApplicationDatabaseMigrationController::class, 'migrate'])
+            ->name('application-database-migrations.migrate');
+        Route::post('application-database/{migration}/verify', [ApplicationDatabaseMigrationController::class, 'verify'])
+            ->name('application-database-migrations.verify');
+        Route::post('application-database/{migration}/activate', [ApplicationDatabaseMigrationController::class, 'activate'])
+            ->name('application-database-migrations.activate');
+        Route::post('application-database/{migration}/activate/finalize', [ApplicationDatabaseMigrationController::class, 'finalizeActivation'])
+            ->name('application-database-migrations.activate.finalize');
+        Route::post('application-database/{migration}/rollback', [ApplicationDatabaseMigrationController::class, 'rollback'])
+            ->name('application-database-migrations.rollback');
+        Route::post('application-database/{migration}/rollback/finalize', [ApplicationDatabaseMigrationController::class, 'finalizeRollback'])
+            ->name('application-database-migrations.rollback.finalize');
         Route::get('access-workflows', [AccessWorkflowSettingsController::class, 'edit'])->name('access-workflows.edit');
         Route::patch('access-workflows', [AccessWorkflowSettingsController::class, 'update'])->name('access-workflows.update');
         Route::get('sql-policy', [SqlStatementPolicyController::class, 'edit'])->name('sql-statement-policy.edit');

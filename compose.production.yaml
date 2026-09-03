@@ -8,13 +8,6 @@ services:
       APP_ENV: production
       APP_DEBUG: "false"
       CACHE_STORE: redis
-      DB_CONNECTION: sqlite
-      DB_DATABASE: /app/storage/database/crucible.sqlite
-      DB_FOREIGN_KEYS: "true"
-      DB_BUSY_TIMEOUT: "5000"
-      DB_JOURNAL_MODE: WAL
-      DB_SYNCHRONOUS: FULL
-      DB_TRANSACTION_MODE: IMMEDIATE
       QUEUE_CONNECTION: redis
       REDIS_HOST: redis
       SESSION_DRIVER: redis
@@ -49,6 +42,47 @@ services:
     restart: unless-stopped
     volumes:
       - crucible_redis:/data
+    networks:
+      - backend
+
+  control-postgres:
+    image: postgres:17-alpine
+    profiles: ["control-postgres"]
+    environment:
+      POSTGRES_DB: ${CRUCIBLE_CONTROL_DATABASE_NAME:-crucible}
+      POSTGRES_USER: ${CRUCIBLE_CONTROL_DATABASE_USERNAME:-crucible}
+      POSTGRES_PASSWORD: ${CRUCIBLE_CONTROL_DATABASE_PASSWORD:-}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    init: true
+    restart: unless-stopped
+    volumes:
+      - crucible_control_postgres:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  control-mysql:
+    image: mysql:8.4
+    profiles: ["control-mysql"]
+    environment:
+      MYSQL_DATABASE: ${CRUCIBLE_CONTROL_DATABASE_NAME:-crucible}
+      MYSQL_USER: ${CRUCIBLE_CONTROL_DATABASE_USERNAME:-crucible}
+      MYSQL_PASSWORD: ${CRUCIBLE_CONTROL_DATABASE_PASSWORD:-}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "--host=127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    init: true
+    restart: unless-stopped
+    volumes:
+      - crucible_control_mysql:/var/lib/mysql
     networks:
       - backend
 
@@ -111,6 +145,8 @@ services:
       - proxy_egress
 
 volumes:
+  crucible_control_mysql:
+  crucible_control_postgres:
   crucible_redis:
   crucible_storage:
 

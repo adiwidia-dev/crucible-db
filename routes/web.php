@@ -17,13 +17,16 @@ use App\Http\Controllers\SetupController;
 use App\Http\Controllers\SsoController;
 use App\Http\Controllers\UserInvitationController;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
+    DB::connection('control')->select('select 1');
     Cache::put('health-check', 'ok', 5);
 
     return response()->json([
         'status' => 'ok',
+        'database' => 'ok',
         'cache' => Cache::get('health-check'),
     ]);
 })->name('health');

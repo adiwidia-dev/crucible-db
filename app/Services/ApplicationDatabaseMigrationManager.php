@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\ApplicationDatabaseDriver;
 use App\Enums\ApplicationDatabaseMigrationStatus;
+use App\Models\User;
 use App\Support\ApplicationDatabaseBootstrap;
 use App\Support\ApplicationDatabaseMigrationStore;
 use Illuminate\Support\Facades\DB;
@@ -73,6 +74,23 @@ final class ApplicationDatabaseMigrationManager
         unset($state['source']['payload'], $state['destination']['payload']);
 
         return $state;
+    }
+
+    /** @return array<string, mixed> */
+    public function recordOperatorEvent(string $id, string $event, User $actor): array
+    {
+        return $this->store->update($id, function (array $state) use ($actor, $event): array {
+            $state['events'][] = [
+                'at' => now()->toIso8601String(),
+                'event' => $event,
+                'actor' => [
+                    'id' => $actor->getKey(),
+                    'name' => $actor->name,
+                ],
+            ];
+
+            return $state;
+        });
     }
 
     /** @return array<string, mixed> */

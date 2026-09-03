@@ -15,6 +15,7 @@ class HealthTest extends TestCase
             ->assertOk()
             ->assertJson([
                 'status' => 'ok',
+                'database' => 'ok',
                 'cache' => 'ok',
             ]);
     }

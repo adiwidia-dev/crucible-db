@@ -63,28 +63,42 @@ This document is the cross-check ledger for adding SQLite, PostgreSQL, and MySQL
 
 ### Phase 7 — Authenticated admin migration UI
 
-- Status: pending.
+- Status: complete on `feature/app-database-drivers`.
 - Add an admin-only guided UI over the proven command/service workflow.
-- Gate: authorization, confirmation, progress, failure recovery, and audit tests pass.
+- Gate: passed. Admin authorization, typed cutover and rollback confirmations, non-overlapping progress polling, encrypted operator events, connectivity errors, retry actions, and a fenced recovery route are covered. Normal and native-control traffic remain blocked while the migration console stays available.
 
 ### Phase 8 — Production deployment support
 
-- Status: pending.
+- Status: complete on `feature/app-database-drivers`.
 - Update production Compose, entrypoints, health checks, examples, and operator guidance for all drivers.
-- Gate: clean production-style installations boot with each driver and restart all long-running processes correctly.
+- Gate: passed for automated configuration and driver provisioning. Production Compose validates with the base, `control-postgres`, and `control-mysql` profiles; neither database publishes a port. Startup retries the selected database, readiness verifies database and cache, the storage volume retains encrypted managed configuration, and the operator guide defines the Octane/Horizon/scheduler restart boundary.
 
 ### Phase 9 — Regression and fault testing
 
-- Status: pending.
+- Status: complete on `feature/app-database-drivers`.
 - Run the full application and native-proxy suites plus interruption, credential, corruption, and partial-copy scenarios.
-- Gate: no known regression in query access, deployment batches, approvals, auditing, or native-client access.
+- Gate: passed. The full Laravel suite, enabled cross-driver matrix, native Laravel suite, Go native-proxy suite, type checks, linting, production build, and targeted corruption, invalid-credential, genuine partial-copy resume, and fenced-source mutation tests pass.
 
 ### Phase 10 — Acceptance and release
 
-- Status: pending.
+- Status: automated checks complete; operator acceptance pending.
 - Complete operator acceptance, upgrade testing, release notes, and rollback rehearsal.
-- Gate: release checklist is signed off with evidence for all earlier gates.
+- Gate: release notes and automated upgrade, rollback, production configuration, and regression evidence are complete. The production image also starts successfully against PostgreSQL 17 and MySQL 8.4, with database/cache health plus Octane, Horizon, and scheduler verified in each run. The operator must perform and sign off the manual checklist below before release.
+
+#### Manual operator acceptance remaining
+
+- [ ] Back up a representative SQLite installation and record the restore location.
+- [ ] Confirm there are no active browser sessions, native leases, native connections, or queued database jobs.
+- [ ] In **Admin > Application Database**, migrate SQLite to PostgreSQL and confirm the UI remains available while normal and native-client admissions return maintenance responses.
+- [ ] Restart every Laravel runtime process when prompted, verify `/health`, then finalize activation.
+- [ ] Verify users, roles, connections, approvals, drafts, execution history, audit records, notification preferences, and encrypted target credentials are present.
+- [ ] Create and complete one safe Deployment Batch, one browser Query Access session, and one PostgreSQL and MySQL native-client session.
+- [ ] Prepare rollback, restart every Laravel runtime process, finalize it, and confirm records created after cutover were synchronized back to SQLite.
+- [ ] Repeat the migration and rollback rehearsal with MySQL as the destination.
+- [ ] Test a production-style container recreation while PostgreSQL is active and again while MySQL is active; confirm Octane, Horizon, scheduler, gateway, and native proxy are healthy.
+- [ ] Restore the backup in an isolated environment and confirm the restored application starts.
+- [ ] Record operator, timestamp, application revision, source/destination versions, evidence links, and final approval.
 
 ## Current implementation boundary
 
-Phases 1–6 now support first-run provisioning and operator-driven migration through the CLI. Existing installations can move between SQLite, PostgreSQL, and MySQL with verified copying, maintenance fencing, restart-aware cutover, and reverse synchronization before rollback. The authenticated admin migration UI remains intentionally deferred to Phase 7, and production Compose/operator packaging remains deferred to Phase 8.
+Phases 1–9 and the automated portion of Phase 10 are implemented. Existing installations can move among SQLite, PostgreSQL, and MySQL through the CLI or authenticated admin workflow with verified copying, maintenance fencing, restart-aware cutover, and reverse synchronization before rollback. Production packaging supports embedded SQLite, optional isolated PostgreSQL or MySQL profiles, and external database endpoints. Only the manual operator acceptance checklist remains before release sign-off.

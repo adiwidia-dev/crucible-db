@@ -2,6 +2,7 @@ import { Link, usePage } from '@inertiajs/react';
 import {
     BadgeCheck,
     Database,
+    DatabaseBackup,
     FileCode2,
     FolderTree,
     KeyRound,
@@ -28,6 +29,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { edit as editAccessWorkflows } from '@/routes/access-workflows';
+import { edit as editApplicationDatabase } from '@/routes/application-database-migrations';
 import { edit as editApplicationSettings } from '@/routes/application-settings';
 import { index as auditLogsIndex } from '@/routes/audit-logs';
 import { edit as editAuthenticationMethods } from '@/routes/authentication-methods';
@@ -104,6 +106,11 @@ export function AppSidebar() {
                     title: 'Application',
                     href: editApplicationSettings(),
                     icon: Settings2,
+                },
+                {
+                    title: 'Application Database',
+                    href: editApplicationDatabase(),
+                    icon: DatabaseBackup,
                 },
                 {
                     title: 'Notification Policy',

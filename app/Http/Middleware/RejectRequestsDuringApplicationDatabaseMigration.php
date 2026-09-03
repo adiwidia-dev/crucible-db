@@ -20,6 +20,10 @@ final class RejectRequestsDuringApplicationDatabaseMigration
             return $next($request);
         }
 
+        if ($request->routeIs('application-database-migrations.*')) {
+            return $next($request);
+        }
+
         $payload = [
             'message' => 'Crucible is temporarily read-only while the application database is being migrated.',
             'retry_after' => 30,
