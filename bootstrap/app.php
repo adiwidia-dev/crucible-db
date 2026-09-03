@@ -5,6 +5,7 @@ use App\Http\Middleware\EnsureUserIsEnabled;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RedirectToSetupWhenUninitialized;
+use App\Http\Middleware\RejectRequestsDuringApplicationDatabaseMigration;
 use App\Http\Middleware\VerifyNativeProxyControlRequest;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -26,14 +27,18 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
-        $middleware->web(append: [
-            HandleAppearance::class,
-            RedirectToSetupWhenUninitialized::class,
-            EnsureUserIsEnabled::class,
-            EnsureAuthenticationMethodIsEnabled::class,
-            HandleInertiaRequests::class,
-        ]);
+        $middleware->web(
+            prepend: [RejectRequestsDuringApplicationDatabaseMigration::class],
+            append: [
+                HandleAppearance::class,
+                RedirectToSetupWhenUninitialized::class,
+                EnsureUserIsEnabled::class,
+                EnsureAuthenticationMethodIsEnabled::class,
+                HandleInertiaRequests::class,
+            ],
+        );
         $middleware->alias([
+            'application-database-migration' => RejectRequestsDuringApplicationDatabaseMigration::class,
             'native-proxy-control' => VerifyNativeProxyControlRequest::class,
         ]);
     })

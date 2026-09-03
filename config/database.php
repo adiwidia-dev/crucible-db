@@ -55,6 +55,14 @@ return [
         ),
         'configured' => false,
         'fingerprint' => null,
+        'migration_directory' => env(
+            'CRUCIBLE_DATABASE_MIGRATION_DIRECTORY',
+            dirname(__DIR__).'/storage/app/crucible/application-database-migrations',
+        ),
+        'migration_fence_path' => env(
+            'CRUCIBLE_DATABASE_MIGRATION_FENCE_FILE',
+            dirname(__DIR__).'/storage/app/crucible/application-database-migration.fence',
+        ),
     ],
 
     /*

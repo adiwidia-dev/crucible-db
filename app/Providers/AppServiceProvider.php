@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Events\NativeProxyCredentialsCreated;
 use App\Events\NativeProxyLeaseRevoked;
+use App\Services\ApplicationDatabaseMigrationFence;
 use App\Services\ApplicationSettings;
 use App\Services\NativeProxy\LeaseRevocationPublisher;
 use App\Services\NotificationDispatcher;
@@ -12,6 +13,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\Events\NotificationSending;
+use Illuminate\Queue\Events\JobQueueing;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -61,6 +63,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureMailFromApplicationSettings();
         $this->configureNativeProxyRateLimiting();
         $this->configureNativeProxyRevocations();
+        $this->configureApplicationDatabaseMigrationFence();
     }
 
     protected function configureApplicationSettings(): void
@@ -144,6 +147,15 @@ class AppServiceProvider extends ServiceProvider
         });
         Event::listen(NativeProxyLeaseRevoked::class, function (NativeProxyLeaseRevoked $event): void {
             app(NotificationDispatcher::class)->nativeProxyLeasesRevoked($event->leaseIds, $event->reason);
+        });
+    }
+
+    protected function configureApplicationDatabaseMigrationFence(): void
+    {
+        Event::listen(function (JobQueueing $event): void {
+            if (app(ApplicationDatabaseMigrationFence::class)->isActive()) {
+                throw new \RuntimeException('New queued work is blocked while the application database is being migrated.');
+            }
         });
     }
 

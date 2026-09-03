@@ -9,7 +9,7 @@ use App\Http\Controllers\Internal\NativeProxy\TunnelAuthorizationController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('internal/native-proxy/v1')
-    ->middleware('native-proxy-control')
+    ->middleware(['application-database-migration', 'native-proxy-control'])
     ->group(function (): void {
         Route::get('health', fn () => response()->json(['status' => 'ok']))
             ->name('internal.native-proxy.health');

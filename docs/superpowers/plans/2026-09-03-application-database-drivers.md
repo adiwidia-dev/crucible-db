@@ -45,21 +45,21 @@ This document is the cross-check ledger for adding SQLite, PostgreSQL, and MySQL
 
 ### Phase 4 — Cross-driver copy engine
 
-- Status: pending.
+- Status: complete on `feature/app-database-drivers`.
 - Build a resumable, deterministic, table-ordered copy and verification engine.
-- Gate: representative data, encrypted attributes, IDs, timestamps, JSON, and nullable values round-trip across every supported source/destination pair.
+- Gate: passed. All six SQLite/PostgreSQL/MySQL source-destination directions complete a forward copy and reverse synchronization with matching row counts and canonical hashes. The matrix verifies timestamps, JSON, nullable values, preserved IDs, post-copy sequence continuity, raw native-client credential ciphertext, and successful decryption with the unchanged `APP_KEY`.
 
 ### Phase 5 — Migration and native-client safety controls
 
-- Status: pending.
+- Status: complete on `feature/app-database-drivers`.
 - Add maintenance fencing, queue draining, native-lease admission blocking, and active-session checks.
-- Gate: migration cannot begin with unsafe native activity and failed attempts leave the active database unchanged.
+- Gate: passed. The maintenance fence rejects web and native-control requests and blocks new queued work. Migration waits for queued, delayed, and reserved work to drain, pauses configured queues, skips scheduled control work, and refuses active browser sessions, native leases, or native connections. Failure tests prove the source configuration remains active and the fence is released after a cleanly handled copy failure.
 
 ### Phase 6 — CLI cutover and rollback
 
-- Status: pending.
+- Status: complete on `feature/app-database-drivers`.
 - Add inspect, plan, migrate, verify, activate, and rollback commands.
-- Gate: cutover is explicit, restart-aware, auditable, and reversible without deleting the source.
+- Gate: passed. Six operator commands provide encrypted planning, resumable copy, independent verification, explicit activation, restart finalization, and data-preserving rollback. State transitions and failures are recorded outside the changing database, configuration writes are retryable, cutover remains fenced until app/Horizon/scheduler restart is confirmed, and neither source nor destination is deleted.
 
 ### Phase 7 — Authenticated admin migration UI
 
@@ -87,4 +87,4 @@ This document is the cross-check ledger for adding SQLite, PostgreSQL, and MySQL
 
 ## Current implementation boundary
 
-Phases 1–3 provision only a fresh, empty application database during first-run setup. Moving an existing installation between drivers remains disabled until Phases 4–7 provide verified copying, fencing, cutover, and rollback.
+Phases 1–6 now support first-run provisioning and operator-driven migration through the CLI. Existing installations can move between SQLite, PostgreSQL, and MySQL with verified copying, maintenance fencing, restart-aware cutover, and reverse synchronization before rollback. The authenticated admin migration UI remains intentionally deferred to Phase 7, and production Compose/operator packaging remains deferred to Phase 8.
