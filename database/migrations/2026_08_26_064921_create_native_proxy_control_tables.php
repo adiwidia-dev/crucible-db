@@ -59,7 +59,10 @@ return new class extends Migration
             $table->timestamp('consumed_at')->nullable();
             $table->timestamps();
 
-            $table->index(['lease_id', 'status', 'expires_at']);
+            $table->index(
+                ['lease_id', 'status', 'expires_at'],
+                'native_proxy_device_auth_lease_status_expiry_index',
+            );
         });
 
         Schema::create('native_proxy_tokens', function (Blueprint $table): void {
@@ -75,8 +78,14 @@ return new class extends Migration
             $table->text('revocation_reason')->nullable();
             $table->timestamps();
 
-            $table->index(['lease_id', 'revoked_at', 'expires_at']);
-            $table->index(['device_authorization_id', 'revoked_at']);
+            $table->index(
+                ['lease_id', 'revoked_at', 'expires_at'],
+                'native_proxy_tokens_lease_revoked_expiry_index',
+            );
+            $table->index(
+                ['device_authorization_id', 'revoked_at'],
+                'native_proxy_tokens_device_revoked_index',
+            );
         });
 
         Schema::create('native_proxy_auth_attempts', function (Blueprint $table): void {

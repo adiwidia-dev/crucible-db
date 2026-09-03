@@ -13,16 +13,16 @@ return new class extends Migration
     {
         Schema::create('sql_policy_rules', function (Blueprint $table) {
             $table->id();
-            $table->string('database_driver')->index();
-            $table->string('effect')->index();
-            $table->string('match_type')->index();
+            $table->string('database_driver', 16)->index();
+            $table->string('effect', 16)->index();
+            $table->string('match_type', 16)->index();
             $table->char('match_value', 64);
             $table->text('canonical_sql')->nullable();
             $table->string('shape_signature')->nullable();
             $table->string('shape_label')->nullable();
-            $table->string('scope_type')->index();
+            $table->string('scope_type', 32)->index();
             $table->unsignedBigInteger('scope_id')->nullable();
-            $table->string('scope_key')->index();
+            $table->string('scope_key', 64)->index();
             $table->foreignId('created_by_id')->constrained('users')->restrictOnDelete();
             $table->foreignId('source_candidate_id')->nullable()->constrained('sql_policy_candidates')->nullOnDelete();
             $table->boolean('is_enabled')->default(true)->index();

@@ -138,6 +138,37 @@ services:
       timeout: 3s
       retries: 20
 
+  control-postgres-test:
+    image: ${CONTROL_POSTGRES_IMAGE:-postgres:17-alpine}
+    profiles: ["application-database-matrix"]
+    environment:
+      POSTGRES_DB: crucible_control_test
+      POSTGRES_USER: crucible
+      POSTGRES_PASSWORD: crucible_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crucible -d crucible_control_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  control-mysql-test:
+    image: ${CONTROL_MYSQL_IMAGE:-mysql:8.4}
+    profiles: ["application-database-matrix"]
+    environment:
+      MYSQL_DATABASE: crucible_control_test
+      MYSQL_USER: crucible
+      MYSQL_PASSWORD: crucible_test
+      MYSQL_ROOT_PASSWORD: crucible_root_test
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ucrucible", "-pcrucible_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
 volumes:
   crucible_storage:
   node_modules:

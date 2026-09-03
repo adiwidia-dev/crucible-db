@@ -13,7 +13,8 @@ return new class extends Migration
     {
         Schema::create('query_session_queries', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('query_session_id')->constrained()->cascadeOnDelete();
+            // The referenced table is created by a same-timestamp migration that sorts after this file.
+            $table->foreignId('query_session_id');
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->text('sql');
             $table->string('query_type')->index();
