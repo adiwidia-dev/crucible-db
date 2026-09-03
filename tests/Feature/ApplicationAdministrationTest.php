@@ -39,6 +39,17 @@ class ApplicationAdministrationTest extends TestCase
         $this->actingAs($user)
             ->get(route('sql-statement-policy.edit'))
             ->assertForbidden();
+
+        $this->actingAs($user)
+            ->get(route('access-workflows.edit'))
+            ->assertForbidden();
+
+        $this->actingAs($user)
+            ->patch(route('access-workflows.update'), [
+                'query_access_enabled' => false,
+                'native_client_access_enabled' => false,
+            ])
+            ->assertForbidden();
     }
 
     public function test_administrator_can_view_the_default_timezone_setting(): void
@@ -86,6 +97,60 @@ class ApplicationAdministrationTest extends TestCase
         $this->assertArrayNotHasKey('mail_password', $auditLog->metadata['after']);
     }
 
+    public function test_administrator_can_disable_access_workflows_globally(): void
+    {
+        $admin = $this->administrator();
+
+        $this->actingAs($admin)
+            ->get(route('access-workflows.edit'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('settings/admin/access-workflows')
+                ->where('settings.query_access_enabled', true)
+                ->where('settings.native_client_access_enabled', true)
+                ->where('settings.native_proxy_username_prefix', 'crucible_')
+                ->where('usage.active_query_sessions', 0)
+                ->where('usage.active_native_sessions', 0));
+
+        $this->actingAs($admin)
+            ->patch(route('access-workflows.update'), [
+                'query_access_enabled' => false,
+                'native_client_access_enabled' => false,
+                'native_proxy_username_prefix' => 'operations_',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $settings = app(ApplicationSettings::class);
+
+        $this->assertFalse($settings->queryAccessEnabled());
+        $this->assertFalse($settings->nativeClientAccessEnabled());
+        $this->assertSame('operations_', $settings->nativeProxyUsernamePrefix());
+        $auditLog = AuditLog::query()
+            ->where('action', 'access_workflows.updated')
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertSame('crucible_', $auditLog->metadata['before']['native_proxy_username_prefix']);
+        $this->assertSame('operations_', $auditLog->metadata['after']['native_proxy_username_prefix']);
+    }
+
+    public function test_native_proxy_username_prefix_must_be_client_safe(): void
+    {
+        $admin = $this->administrator();
+
+        $this->actingAs($admin)
+            ->from(route('access-workflows.edit'))
+            ->patch(route('access-workflows.update'), [
+                'query_access_enabled' => true,
+                'native_client_access_enabled' => true,
+                'native_proxy_username_prefix' => 'Invalid Prefix!',
+            ])
+            ->assertRedirect(route('access-workflows.edit'))
+            ->assertSessionHasErrors('native_proxy_username_prefix');
+
+        $this->assertSame('crucible_', app(ApplicationSettings::class)->nativeProxyUsernamePrefix());
+    }
+
     public function test_administrator_must_choose_a_valid_default_timezone(): void
     {
         $admin = $this->administrator();
@@ -123,21 +188,50 @@ class ApplicationAdministrationTest extends TestCase
         $this->assertSame(QueryType::Write, app(QueryGuard::class)->classify('ALTER TABLE employee ADD COLUMN region VARCHAR(100)'));
     }
 
-    public function test_administrator_can_allow_all_governed_statement_families(): void
+    public function test_administrator_can_enable_all_governed_statement_families_individually(): void
     {
         $admin = $this->administrator();
 
         $this->actingAs($admin)
             ->patch(route('sql-statement-policy.update'), [
                 ...$this->sqlStatementPolicyPayload([
-                    'sql_all_statement_families_enabled' => true,
+                    'sql_alter_table_enabled' => true,
+                    'sql_drop_table_enabled' => true,
+                    'sql_truncate_table_enabled' => true,
                 ]),
             ])
             ->assertSessionHasNoErrors();
 
-        $this->assertTrue(app(ApplicationSettings::class)->allowsAllSqlStatementFamilies());
         $this->assertTrue(app(ApplicationSettings::class)->allowsSqlStatementFamily(SqlStatementFamily::DropTable));
         $this->assertSame(QueryType::Write, app(QueryGuard::class)->classify('DROP TABLE employee'));
+    }
+
+    public function test_legacy_allow_all_setting_is_materialized_into_individual_statement_families(): void
+    {
+        ApplicationSetting::factory()->create([
+            'key' => 'sql_all_statement_families_enabled',
+            'value' => '1',
+        ]);
+
+        foreach (SqlStatementFamily::cases() as $statementFamily) {
+            ApplicationSetting::factory()->create([
+                'key' => $statementFamily->settingKey(),
+                'value' => '0',
+            ]);
+        }
+
+        $migration = require database_path('migrations/2026_09_03_072037_retire_sql_all_statement_families_setting.php');
+        $migration->up();
+
+        $this->assertFalse(ApplicationSetting::query()
+            ->where('key', 'sql_all_statement_families_enabled')
+            ->exists());
+
+        $settings = new ApplicationSettings;
+
+        foreach (SqlStatementFamily::cases() as $statementFamily) {
+            $this->assertTrue($settings->allowsSqlStatementFamily($statementFamily));
+        }
     }
 
     public function test_administrator_can_enable_the_emergency_sql_fallback(): void
@@ -267,7 +361,6 @@ class ApplicationAdministrationTest extends TestCase
     private function sqlStatementPolicyPayload(array $overrides = []): array
     {
         return [
-            'sql_all_statement_families_enabled' => false,
             'sql_emergency_fallback_enabled' => false,
             'sql_read_queries_enabled' => true,
             'sql_insert_enabled' => true,

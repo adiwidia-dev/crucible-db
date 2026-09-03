@@ -3,10 +3,13 @@
 namespace Tests\Feature;
 
 use App\Enums\AccessMode;
+use App\Models\ConnectionGroup;
 use App\Models\DatabaseConnection;
 use App\Models\Role;
+use App\Models\RoleConnectionGroupPolicy;
 use App\Models\RoleDatabasePermission;
 use App\Models\User;
+use App\Services\ApplicationSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Support\SessionKey;
 use Tests\TestCase;
@@ -20,7 +23,49 @@ class AdminRoleManagementTest extends TestCase
         $developer = $this->developerUser();
 
         $this->actingAs($developer)->get(route('roles.index'))->assertForbidden();
+        $this->actingAs($developer)
+            ->get(route('roles.show', $developer->roles()->firstOrFail()))
+            ->assertForbidden();
         $this->actingAs($developer)->get(route('users.index'))->assertForbidden();
+    }
+
+    public function test_administrator_can_view_role_details_without_opening_the_edit_form(): void
+    {
+        $admin = $this->adminUser();
+        $role = Role::factory()->developer()->create([
+            'name' => 'Production investigator',
+            'description' => 'Investigates production incidents.',
+        ]);
+        $assignedUser = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create(['name' => 'Primary']);
+        $connectionGroup = ConnectionGroup::factory()->create(['name' => 'Production group']);
+
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+            'query_access_mode' => AccessMode::Read,
+            'native_proxy_access_mode' => AccessMode::None,
+        ]);
+        RoleConnectionGroupPolicy::factory()->create([
+            'role_id' => $role->id,
+            'connection_group_id' => $connectionGroup->id,
+            'access_mode' => AccessMode::Read,
+            'query_access_mode' => AccessMode::None,
+            'native_proxy_access_mode' => AccessMode::Read,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('roles.show', $role))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('roles/show')
+                ->where('role.name', 'Production investigator')
+                ->where('role.users.0.id', $assignedUser->id)
+                ->where('role.policies.0.connection.name', 'Primary')
+                ->where('role.policies.0.query_access_mode', AccessMode::Read->value)
+                ->where('role.group_policies.0.connection_group.name', 'Production group')
+                ->where('role.group_policies.0.native_proxy_access_mode', AccessMode::Read->value));
     }
 
     public function test_admin_can_create_update_and_delete_custom_role(): void
@@ -210,6 +255,63 @@ class AdminRoleManagementTest extends TestCase
             'policies' => [],
             'group_policies' => [],
         ])->assertForbidden();
+    }
+
+    public function test_workflow_access_defaults_to_disabled_and_is_capped_by_maximum_access(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+        $defaultDisabledConnection = DatabaseConnection::factory()->create();
+
+        $this->actingAs($admin)
+            ->get(route('roles.create'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('access_features.query_access_enabled', true)
+                ->where('access_features.native_client_access_enabled', true));
+
+        $this->actingAs($admin)->post(route('roles.store'), [
+            'name' => 'Read investigator',
+            'policies' => [
+                [
+                    'database_connection_id' => $connection->id,
+                    'access_mode' => AccessMode::Read->value,
+                    'query_access_mode' => AccessMode::None->value,
+                    'native_proxy_access_mode' => AccessMode::Write->value,
+                ],
+                [
+                    'database_connection_id' => $defaultDisabledConnection->id,
+                    'access_mode' => AccessMode::Read->value,
+                ],
+            ],
+        ])->assertRedirect(route('roles.index'));
+
+        $role = Role::query()->where('slug', 'read-investigator')->firstOrFail();
+
+        $this->assertDatabaseHas('role_database_permissions', [
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'query_access_mode' => AccessMode::None->value,
+            'native_proxy_access_mode' => AccessMode::Read->value,
+        ]);
+        $this->assertDatabaseHas('role_database_permissions', [
+            'role_id' => $role->id,
+            'database_connection_id' => $defaultDisabledConnection->id,
+            'query_access_mode' => AccessMode::None->value,
+            'native_proxy_access_mode' => AccessMode::None->value,
+        ]);
+
+        app(ApplicationSettings::class)->put([
+            ApplicationSettings::QueryAccessEnabled => false,
+            ApplicationSettings::NativeClientAccessEnabled => false,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('roles.edit', $role))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('access_features.query_access_enabled', false)
+                ->where('access_features.native_client_access_enabled', false));
     }
 
     public function test_role_cannot_be_deleted_while_users_or_permissions_are_attached(): void

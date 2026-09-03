@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\ApplicationSetting;
 use App\Models\DatabaseConnection;
+use App\Models\NativeProxyLease;
+use App\Models\QueryRequest;
+use App\Models\QuerySession;
 use App\Models\Role;
 use App\Models\User;
 use App\Notifications\OperationalNotification;
@@ -151,6 +154,57 @@ class NotificationDeliveryTest extends TestCase
             [$creator, $operationalAdmin],
             OperationalNotification::class,
         );
+    }
+
+    public function test_native_proxy_credentials_and_revocation_notify_the_session_owner_without_a_secret(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create();
+        $request = QueryRequest::factory()->queryAccess()->create(['requester_id' => $user->id]);
+        $session = QuerySession::factory()->create([
+            'query_request_id' => $request->id,
+            'database_connection_id' => $request->database_connection_id,
+            'user_id' => $user->id,
+        ]);
+        $lease = NativeProxyLease::factory()->create([
+            'query_session_id' => $session->id,
+            'query_request_id' => $request->id,
+            'database_connection_id' => $request->database_connection_id,
+            'user_id' => $user->id,
+            'protocol_auth_secret' => 'must-not-notify',
+        ]);
+
+        $dispatcher = app(NotificationDispatcher::class);
+        $dispatcher->nativeProxyCredentialsCreated($lease->id);
+        $dispatcher->nativeProxyLeasesRevoked([$lease->id], 'Lease expired.');
+
+        Notification::assertSentTo($user, OperationalNotification::class, function (OperationalNotification $notification): bool {
+            $payload = $notification->toArray($this);
+
+            return ! str($payload['message'])->contains('must-not-notify')
+                && in_array($payload['event'], ['native_proxy.credentials_created', 'native_proxy.lease_revoked'], true);
+        });
+    }
+
+    public function test_native_proxy_health_failure_notifies_operational_recipients(): void
+    {
+        Notification::fake();
+
+        $operator = $this->adminUser();
+        $operator->update(['is_operational_alert_recipient' => true]);
+
+        app(NotificationDispatcher::class)->nativeProxyHealthChanged([
+            'status' => 'version_mismatch',
+            'checked_at' => now()->toIso8601String(),
+            'proxy_id' => 'proxy-a',
+            'version' => '0.1.0',
+            'message' => 'Expected native proxy version 0.1.1; received 0.1.0.',
+        ]);
+
+        Notification::assertSentTo($operator, OperationalNotification::class, function (OperationalNotification $notification): bool {
+            return $notification->toArray($this)['event'] === 'native_proxy.health_changed';
+        });
     }
 
     private function adminUser(): User

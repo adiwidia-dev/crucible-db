@@ -18,7 +18,11 @@ class ProfileUpdateTest extends TestCase
             ->actingAs($user)
             ->get(route('profile.edit'));
 
-        $response->assertOk();
+        $response
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('settings/profile')
+                ->missing('timezones'));
     }
 
     public function test_profile_information_can_be_updated()
@@ -30,7 +34,6 @@ class ProfileUpdateTest extends TestCase
             ->patch(route('profile.update'), [
                 'name' => 'Test User',
                 'email' => 'test@example.com',
-                'timezone' => 'Asia/Jakarta',
             ]);
 
         $response
@@ -41,22 +44,22 @@ class ProfileUpdateTest extends TestCase
 
         $this->assertSame('Test User', $user->name);
         $this->assertSame('test@example.com', $user->email);
-        $this->assertSame('Asia/Jakarta', $user->timezone);
         $this->assertNull($user->email_verified_at);
     }
 
-    public function test_profile_timezone_must_be_valid(): void
+    public function test_profile_update_does_not_change_the_timezone_preference(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['timezone' => 'UTC']);
 
-        $this
-            ->actingAs($user)
+        $this->actingAs($user)
             ->patch(route('profile.update'), [
-                'name' => 'Test User',
+                'name' => $user->name,
                 'email' => $user->email,
-                'timezone' => 'Jakarta',
+                'timezone' => 'Asia/Jakarta',
             ])
-            ->assertSessionHasErrors('timezone');
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('UTC', $user->refresh()->timezone);
     }
 
     public function test_email_verification_status_is_unchanged_when_the_email_address_is_unchanged()
@@ -68,7 +71,6 @@ class ProfileUpdateTest extends TestCase
             ->patch(route('profile.update'), [
                 'name' => 'Test User',
                 'email' => $user->email,
-                'timezone' => $user->timezone,
             ]);
 
         $response

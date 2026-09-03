@@ -1,0 +1,11 @@
+[
+  {
+    "secret": "native-proxy-control-secret-for-tests",
+    "method": "POST",
+    "path": "/internal/native-proxy/v1/tunnels/authorize",
+    "timestamp": "1700000000",
+    "request_id": "valid-request-id-01",
+    "body": "{\"connection_id\":\"test-connection\"}",
+    "signature": "3270f0e7905420a1432a4e77b4a4c77e58ad635f3f063aa9ea7f80820d9e86ba"
+  }
+]

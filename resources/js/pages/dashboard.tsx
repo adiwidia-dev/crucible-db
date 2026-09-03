@@ -7,10 +7,17 @@ import {
     FileCheck2,
     KeyRound,
     Plus,
+    Wifi,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { PageHeader } from '@/components/crucible/page-header';
+import {
+    SemanticIcon,
+    semanticToneForStatus,
+} from '@/components/crucible/semantic-icon';
+import type { SemanticTone } from '@/components/crucible/semantic-icon';
 import {
     SessionAccessBadge,
     StatusBadge,
@@ -22,6 +29,7 @@ import type {
     QueryRequestStatus,
     QueryType,
 } from '@/lib/crucible';
+import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import {
     create as createQueryRequest,
@@ -61,6 +69,15 @@ type DashboardProps = {
         scheduled: number;
         failed: number;
         active_sessions: number;
+        native_proxy_connections: number;
+        native_proxy_instances: number;
+    };
+    native_proxy_health: {
+        status: 'disabled' | 'healthy' | 'unhealthy' | 'version_mismatch';
+        checked_at: string | null;
+        proxy_id: string | null;
+        version: string | null;
+        message: string | null;
     };
     pending_reviews: DashboardRequest[];
     scheduled_requests: DashboardRequest[];
@@ -72,6 +89,8 @@ type QueueSectionProps = {
     id: string;
     title: string;
     detail: string;
+    icon: LucideIcon;
+    tone: SemanticTone;
     action?: ReactNode;
     children: ReactNode;
     className?: string;
@@ -81,6 +100,8 @@ function QueueSection({
     id,
     title,
     detail,
+    icon,
+    tone,
     action,
     children,
     className,
@@ -88,16 +109,27 @@ function QueueSection({
     return (
         <section
             aria-labelledby={id}
-            className={`overflow-hidden border-y bg-card sm:rounded-lg sm:border ${className ?? ''}`}
+            className={cn(
+                'h-full overflow-hidden border-y bg-card sm:rounded-lg sm:border',
+                className,
+            )}
         >
-            <div className="flex items-start justify-between gap-4 border-b px-4 py-3 sm:px-5">
-                <div>
-                    <h2 id={id} className="text-sm font-semibold">
-                        {title}
-                    </h2>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                        {detail}
-                    </p>
+            <div className="flex min-h-20 items-start justify-between gap-4 border-b px-4 py-3 sm:px-5">
+                <div className="flex min-w-0 items-start gap-3">
+                    <SemanticIcon
+                        icon={icon}
+                        tone={tone}
+                        size="sm"
+                        className="mt-0.5"
+                    />
+                    <div className="min-w-0">
+                        <h3 id={id} className="text-sm font-semibold">
+                            {title}
+                        </h3>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            {detail}
+                        </p>
+                    </div>
                 </div>
                 {action}
             </div>
@@ -109,9 +141,12 @@ function QueueSection({
 function EmptyQueue({ children }: { children: ReactNode }) {
     return (
         <div className="flex items-start gap-3 px-4 py-7 sm:px-5">
-            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
-            </span>
+            <SemanticIcon
+                icon={CheckCircle2}
+                tone="success"
+                size="sm"
+                className="mt-0.5"
+            />
             <div className="min-w-0 text-sm text-muted-foreground">
                 {children}
             </div>
@@ -246,6 +281,7 @@ export default function Dashboard({
     scheduled_requests,
     failed_requests,
     expiring_sessions,
+    native_proxy_health,
 }: DashboardProps) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const userTimezone = auth.user.timezone ?? 'UTC';
@@ -258,6 +294,7 @@ export default function Dashboard({
             'scheduled_requests',
             'failed_requests',
             'expiring_sessions',
+            'native_proxy_health',
         ],
     });
 
@@ -269,11 +306,14 @@ export default function Dashboard({
         return () => window.clearInterval(interval);
     }, []);
 
+    const proxyTone = semanticToneForStatus(native_proxy_health.status);
+
     const summaryItems = [
         {
             label: 'Needs review',
             value: summary.pending_reviews,
             icon: FileCheck2,
+            tone: 'pending' as const,
             href: queryRequestsIndex.url({
                 query: { status: 'pending_review' },
             }),
@@ -282,21 +322,37 @@ export default function Dashboard({
             label: 'Scheduled',
             value: summary.scheduled,
             icon: CalendarClock,
+            tone: 'info' as const,
             href: queryRequestsIndex.url({ query: { status: 'scheduled' } }),
         },
         {
             label: 'Failed',
             value: summary.failed,
             icon: AlertTriangle,
+            tone: 'danger' as const,
             href: queryRequestsIndex.url({ query: { status: 'failed' } }),
         },
         {
             label: 'Active sessions',
             value: summary.active_sessions,
             icon: KeyRound,
-            href: '#active-sessions',
+            tone: 'success' as const,
+            href: '#sessions-title',
         },
+        ...(native_proxy_health.status === 'disabled'
+            ? []
+            : [
+                  {
+                      label: 'Proxy connections',
+                      value: summary.native_proxy_connections,
+                      icon: Wifi,
+                      tone: proxyTone,
+                      href: '#native-proxy-health',
+                  },
+              ]),
     ];
+    const summaryColumnClassName =
+        summaryItems.length === 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4';
 
     return (
         <>
@@ -319,14 +375,24 @@ export default function Dashboard({
 
                 <section
                     aria-label="Operational summary"
-                    className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4"
+                    className={cn(
+                        'grid grid-cols-2 gap-2 sm:gap-3',
+                        summaryColumnClassName,
+                    )}
                 >
-                    {summaryItems.map((item) => {
+                    {summaryItems.map((item, index) => {
+                        const itemClassName = cn(
+                            'group flex min-h-20 items-center gap-3 border bg-card px-3 py-3 transition-colors duration-150 ease-out hover:border-primary/30 hover:bg-accent/35 focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-hidden focus-visible:ring-inset motion-reduce:transition-none sm:min-h-22 sm:rounded-lg sm:px-4 sm:py-4',
+                            summaryItems.length % 2 === 1 &&
+                                index === summaryItems.length - 1 &&
+                                'col-span-2 lg:col-span-1',
+                        );
                         const content = (
                             <>
-                                <span className="flex size-9 items-center justify-center rounded-md bg-muted text-muted-foreground transition-colors group-hover:bg-accent group-hover:text-primary">
-                                    <item.icon className="size-4" />
-                                </span>
+                                <SemanticIcon
+                                    icon={item.icon}
+                                    tone={item.tone}
+                                />
                                 <div className="min-w-0">
                                     <div className="text-2xl leading-none font-semibold tracking-[-0.025em]">
                                         {item.value}
@@ -342,7 +408,7 @@ export default function Dashboard({
                             <a
                                 key={item.label}
                                 href={item.href}
-                                className="group flex min-h-20 items-center gap-3 border bg-card px-3 py-3 transition-colors duration-150 ease-out hover:border-primary/30 hover:bg-accent/35 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden motion-reduce:transition-none sm:min-h-22 sm:rounded-lg sm:px-4 sm:py-4"
+                                className={itemClassName}
                             >
                                 {content}
                             </a>
@@ -351,7 +417,7 @@ export default function Dashboard({
                                 key={item.label}
                                 href={item.href}
                                 prefetch
-                                className="group flex min-h-20 items-center gap-3 border bg-card px-3 py-3 transition-colors duration-150 ease-out hover:border-primary/30 hover:bg-accent/35 focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden motion-reduce:transition-none sm:min-h-22 sm:rounded-lg sm:px-4 sm:py-4"
+                                className={itemClassName}
                             >
                                 {content}
                             </Link>
@@ -359,97 +425,199 @@ export default function Dashboard({
                     })}
                 </section>
 
-                <div className="grid gap-4 sm:gap-5">
+                <section
+                    aria-labelledby="operational-queues-title"
+                    className="grid gap-4 sm:gap-5"
+                >
                     <div className="px-1">
-                        <h2 className="text-base font-semibold">
-                            Needs attention
+                        <h2
+                            id="operational-queues-title"
+                            className="text-base font-semibold"
+                        >
+                            Operational queues
                         </h2>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Review work and failures that need a decision or
-                            follow-up.
+                            Review requests, upcoming executions, failures, and
+                            live access.
                         </p>
                     </div>
 
-                    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
-                        <div className="grid content-start gap-4 sm:gap-5">
-                            <QueueSection
-                                id="pending-review-title"
-                                title="Pending review"
-                                detail="Requests waiting for an authorized decision."
-                                action={
-                                    <Link
-                                        href={queryRequestsIndex({
-                                            query: { status: 'pending_review' },
-                                        })}
-                                        className="text-xs font-medium text-primary hover:underline"
-                                    >
-                                        View all
-                                    </Link>
-                                }
-                            >
-                                <RequestQueue
-                                    requests={pending_reviews}
-                                    queue="review"
-                                    timezone={userTimezone}
-                                />
-                            </QueueSection>
+                    <div className="grid gap-4 sm:gap-5 xl:grid-cols-2">
+                        <QueueSection
+                            id="pending-review-title"
+                            title="Pending review"
+                            detail="Requests waiting for an authorized decision."
+                            icon={FileCheck2}
+                            tone="pending"
+                            className="xl:col-start-1 xl:row-start-1"
+                            action={
+                                <Link
+                                    href={queryRequestsIndex({
+                                        query: { status: 'pending_review' },
+                                    })}
+                                    className="shrink-0 text-xs font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden"
+                                >
+                                    View all
+                                </Link>
+                            }
+                        >
+                            <RequestQueue
+                                requests={pending_reviews}
+                                queue="review"
+                                timezone={userTimezone}
+                            />
+                        </QueueSection>
 
-                            <QueueSection
-                                id="failed-execution-title"
-                                title="Failed execution"
-                                detail="Deployments that stopped and need investigation."
-                                action={
-                                    <Link
-                                        href={queryRequestsIndex({
-                                            query: { status: 'failed' },
-                                        })}
-                                        className="text-xs font-medium text-primary hover:underline"
-                                    >
-                                        View all
-                                    </Link>
-                                }
-                            >
-                                <RequestQueue
-                                    requests={failed_requests}
-                                    queue="failed"
-                                    timezone={userTimezone}
-                                />
-                            </QueueSection>
-                        </div>
+                        <QueueSection
+                            id="failed-execution-title"
+                            title="Failed execution"
+                            detail="Deployments that stopped and need investigation."
+                            icon={AlertTriangle}
+                            tone="danger"
+                            className="xl:col-start-1 xl:row-start-2"
+                            action={
+                                <Link
+                                    href={queryRequestsIndex({
+                                        query: { status: 'failed' },
+                                    })}
+                                    className="shrink-0 text-xs font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden"
+                                >
+                                    View all
+                                </Link>
+                            }
+                        >
+                            <RequestQueue
+                                requests={failed_requests}
+                                queue="failed"
+                                timezone={userTimezone}
+                            />
+                        </QueueSection>
 
-                        <div className="grid content-start gap-6">
-                            <QueueSection
-                                id="scheduled-title"
-                                title="Scheduled work"
-                                detail="Approved executions waiting for their scheduled time."
-                                action={
-                                    <Link
-                                        href={queryRequestsIndex({
-                                            query: { status: 'scheduled' },
-                                        })}
-                                        className="text-xs font-medium text-primary hover:underline"
-                                    >
-                                        View all
-                                    </Link>
-                                }
-                            >
-                                <RequestQueue
-                                    requests={scheduled_requests}
-                                    queue="scheduled"
-                                    timezone={userTimezone}
-                                />
-                            </QueueSection>
+                        <QueueSection
+                            id="scheduled-title"
+                            title="Scheduled work"
+                            detail="Approved executions waiting for their scheduled time."
+                            icon={CalendarClock}
+                            tone="info"
+                            className="xl:col-start-2 xl:row-start-1"
+                            action={
+                                <Link
+                                    href={queryRequestsIndex({
+                                        query: { status: 'scheduled' },
+                                    })}
+                                    className="shrink-0 text-xs font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden"
+                                >
+                                    View all
+                                </Link>
+                            }
+                        >
+                            <RequestQueue
+                                requests={scheduled_requests}
+                                queue="scheduled"
+                                timezone={userTimezone}
+                            />
+                        </QueueSection>
 
-                            <QueueSection
-                                id="sessions-title"
-                                title="Active sessions"
-                                detail="Open query-access sessions ordered by expiry."
-                            >
-                                <SessionQueue sessions={expiring_sessions} />
-                            </QueueSection>
-                        </div>
+                        <QueueSection
+                            id="sessions-title"
+                            title="Active sessions"
+                            detail="Open query-access sessions ordered by expiry."
+                            icon={KeyRound}
+                            tone="success"
+                            className="xl:col-start-2 xl:row-start-2"
+                        >
+                            <SessionQueue sessions={expiring_sessions} />
+                        </QueueSection>
                     </div>
-                </div>
+                </section>
+
+                {native_proxy_health.status !== 'disabled' && (
+                    <section
+                        aria-labelledby="system-health-title"
+                        className="grid gap-4 sm:gap-5"
+                    >
+                        <div className="px-1">
+                            <h2
+                                id="system-health-title"
+                                className="text-base font-semibold"
+                            >
+                                System health
+                            </h2>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                Service readiness for native client access.
+                            </p>
+                        </div>
+
+                        <div
+                            id="native-proxy-health"
+                            className="border-y bg-card sm:rounded-lg sm:border"
+                        >
+                            <div className="flex flex-col gap-5 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+                                <div className="flex min-w-0 items-start gap-3">
+                                    <SemanticIcon
+                                        icon={Wifi}
+                                        tone={proxyTone}
+                                    />
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <h3 className="text-sm font-semibold">
+                                                Native proxy
+                                            </h3>
+                                            <StatusBadge
+                                                value={
+                                                    native_proxy_health.status
+                                                }
+                                            />
+                                        </div>
+                                        <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
+                                            {native_proxy_health.message ??
+                                                'Ready for native client connections.'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <dl className="grid shrink-0 grid-cols-2 gap-x-8 gap-y-3 text-xs sm:grid-cols-4 lg:min-w-xl">
+                                    <div>
+                                        <dt className="text-muted-foreground">
+                                            Connections
+                                        </dt>
+                                        <dd className="mt-1 font-semibold text-foreground">
+                                            {summary.native_proxy_connections}
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-muted-foreground">
+                                            Instances
+                                        </dt>
+                                        <dd className="mt-1 font-semibold text-foreground">
+                                            {summary.native_proxy_instances}
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-muted-foreground">
+                                            Version
+                                        </dt>
+                                        <dd className="mt-1 font-mono text-foreground">
+                                            {native_proxy_health.version ??
+                                                'Unreported'}
+                                        </dd>
+                                    </div>
+                                    <div>
+                                        <dt className="text-muted-foreground">
+                                            Last checked
+                                        </dt>
+                                        <dd className="mt-1 text-foreground">
+                                            {formatDate(
+                                                native_proxy_health.checked_at,
+                                                userTimezone,
+                                            )}
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </div>
+                    </section>
+                )}
             </div>
         </>
     );

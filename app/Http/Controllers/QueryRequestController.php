@@ -107,6 +107,7 @@ class QueryRequestController extends Controller
             'connections' => $this->connectionOptions($user),
             'query_request' => null,
             'sql_statement_policy' => $settings->sqlStatementPolicyFormValues(),
+            'access_features' => $this->accessFeatures($settings),
         ]);
     }
 
@@ -241,6 +242,7 @@ class QueryRequestController extends Controller
                 'access_transport_label' => $this->accessTransportLabel($queryRequest->access_transport),
                 'requested_access_mode' => $queryRequest->requested_access_mode?->value,
                 'requires_approval' => $queryRequest->requires_approval,
+                'approval_label' => $this->approvalLabel($queryRequest),
                 'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
                 'approved_after_schedule' => $queryRequest->request_kind === QueryRequestKind::SingleExecution
                     && $queryRequest->status === QueryRequestStatus::Approved
@@ -529,6 +531,7 @@ class QueryRequestController extends Controller
         return Inertia::render('query-requests/create', [
             'connections' => $this->connectionOptions(request()->user()),
             'sql_statement_policy' => $settings->sqlStatementPolicyFormValues(),
+            'access_features' => $this->accessFeatures($settings),
             'query_request' => [
                 'id' => $queryRequest->id,
                 'database_connection_id' => $queryRequest->database_connection_id,
@@ -596,7 +599,7 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, can_query_access_write:bool, can_native_proxy_read:bool, can_native_proxy_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
+     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, can_query_access_read:bool, can_query_access_write:bool, can_native_proxy_read:bool, can_native_proxy_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
      */
     private function connectionOptions(User $user): array
     {
@@ -608,7 +611,8 @@ class QueryRequestController extends Controller
             ->map(function (DatabaseConnection $connection) use ($user): array {
                 $readPermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Read);
                 $writePermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Write);
-                $queryAccessPermission = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write);
+                $queryAccessReadPermission = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Read);
+                $queryAccessWritePermission = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write);
                 $nativeReadPermission = $user->effectiveNativeProxyPermissionFor($connection, QueryType::Read);
                 $nativeWritePermission = $user->effectiveNativeProxyPermissionFor($connection, QueryType::Write);
 
@@ -617,7 +621,8 @@ class QueryRequestController extends Controller
                     'name' => $connection->name,
                     'driver' => $connection->driver->value,
                     'can_write' => $writePermission['access_mode']->allows(QueryType::Write),
-                    'can_query_access_write' => $queryAccessPermission['query_access_mode']->allows(QueryType::Write),
+                    'can_query_access_read' => $queryAccessReadPermission['query_access_mode']->allows(QueryType::Read),
+                    'can_query_access_write' => $queryAccessWritePermission['query_access_mode']->allows(QueryType::Write),
                     'can_native_proxy_read' => $nativeReadPermission['native_proxy_access_mode']->allows(QueryType::Read),
                     'can_native_proxy_write' => $nativeWritePermission['native_proxy_access_mode']->allows(QueryType::Write),
                     'read_requires_approval' => $readPermission['read_requires_approval'],
@@ -627,6 +632,17 @@ class QueryRequestController extends Controller
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * @return array{query_access_enabled: bool, native_client_access_enabled: bool}
+     */
+    private function accessFeatures(ApplicationSettings $settings): array
+    {
+        return [
+            'query_access_enabled' => $settings->queryAccessEnabled(),
+            'native_client_access_enabled' => $settings->nativeClientAccessEnabled(),
+        ];
     }
 
     /**
@@ -673,6 +689,24 @@ class QueryRequestController extends Controller
         return match ($accessTransport) {
             AccessTransport::Browser => 'Browser',
             AccessTransport::NativeProxy => 'Native client',
+        };
+    }
+
+    private function approvalLabel(QueryRequest $queryRequest): string
+    {
+        if (! $queryRequest->requires_approval) {
+            return 'Not required';
+        }
+
+        if ($queryRequest->approvedBy instanceof User) {
+            return "Approved by {$queryRequest->approvedBy->name}";
+        }
+
+        return match ($queryRequest->status) {
+            QueryRequestStatus::Draft => 'Not submitted',
+            QueryRequestStatus::Rejected => 'Rejected',
+            QueryRequestStatus::Cancelled => 'No decision',
+            default => 'Awaiting decision',
         };
     }
 

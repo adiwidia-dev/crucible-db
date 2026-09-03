@@ -6,7 +6,7 @@
 
 ## Statement families
 
-Enable read, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, and `TRUNCATE TABLE` according to workspace policy. **Allow all governed statement families** permits every recognized family without discarding individual selections.
+Enable read, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, and `TRUNCATE TABLE` individually according to workspace policy.
 
 ## Emergency SQL fallback
 

@@ -4,6 +4,7 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AuthProviderController;
 use App\Http\Controllers\ConnectionGroupController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\Settings\AccessWorkflowSettingsController;
 use App\Http\Controllers\Settings\ApplicationSettingsController;
 use App\Http\Controllers\Settings\AuthenticationMethodController;
 use App\Http\Controllers\Settings\FactoryResetController;
@@ -12,6 +13,8 @@ use App\Http\Controllers\Settings\NotificationSettingsController;
 use App\Http\Controllers\Settings\PreferencesController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
+use App\Http\Controllers\Settings\SqlPolicyCandidateResolutionController;
+use App\Http\Controllers\Settings\SqlPolicyRuleController;
 use App\Http\Controllers\Settings\SqlStatementPolicyController;
 use App\Http\Controllers\SsoController;
 use App\Http\Controllers\UserInvitationController;
@@ -35,6 +38,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('user-password.update');
 
     Route::get('settings/preferences', [PreferencesController::class, 'edit'])->name('preferences.edit');
+    Route::patch('settings/preferences/timezone', [PreferencesController::class, 'updateTimezone'])->name('preferences.timezone.update');
     Route::redirect('settings/appearance', '/settings/preferences')->name('appearance.edit');
     Route::redirect('settings/notifications', '/settings/preferences')->name('user-notifications.edit');
     Route::patch('settings/notifications', [NotificationPreferencesController::class, 'update'])->name('user-notifications.update');
@@ -43,8 +47,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/', fn () => redirect()->route('application-settings.edit'))->name('admin-settings.index');
         Route::get('application', [ApplicationSettingsController::class, 'edit'])->name('application-settings.edit');
         Route::patch('application', [ApplicationSettingsController::class, 'update'])->name('application-settings.update');
+        Route::get('access-workflows', [AccessWorkflowSettingsController::class, 'edit'])->name('access-workflows.edit');
+        Route::patch('access-workflows', [AccessWorkflowSettingsController::class, 'update'])->name('access-workflows.update');
         Route::get('sql-policy', [SqlStatementPolicyController::class, 'edit'])->name('sql-statement-policy.edit');
         Route::patch('sql-policy', [SqlStatementPolicyController::class, 'update'])->name('sql-statement-policy.update');
+        Route::post('sql-policy/candidates/{sqlPolicyCandidate}/resolve', SqlPolicyCandidateResolutionController::class)
+            ->name('sql-policy-candidates.resolve');
+        Route::patch('sql-policy/rules/{sqlPolicyRule}', [SqlPolicyRuleController::class, 'update'])
+            ->name('sql-policy-rules.update');
         Route::get('notifications', [NotificationSettingsController::class, 'edit'])->name('notification-settings.edit');
         Route::patch('notifications', [NotificationSettingsController::class, 'update'])->name('notification-settings.update');
         Route::delete('application/factory-reset', FactoryResetController::class)->name('application-settings.factory-reset');

@@ -14,6 +14,7 @@ import {
     SlidersHorizontal,
     UserRound,
     UsersRound,
+    Workflow,
 } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
@@ -26,6 +27,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { edit as editAccessWorkflows } from '@/routes/access-workflows';
 import { edit as editApplicationSettings } from '@/routes/application-settings';
 import { index as auditLogsIndex } from '@/routes/audit-logs';
 import { edit as editAuthenticationMethods } from '@/routes/authentication-methods';
@@ -78,6 +80,11 @@ export function AppSidebar() {
             items: [
                 { title: 'People', href: usersIndex(), icon: UsersRound },
                 { title: 'Access Roles', href: rolesIndex(), icon: KeyRound },
+                {
+                    title: 'Access Workflows',
+                    href: editAccessWorkflows(),
+                    icon: Workflow,
+                },
             ],
         },
         {

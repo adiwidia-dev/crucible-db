@@ -30,5 +30,7 @@ Administrators receive the complete operational workspace plus configuration men
 - **SQL Policy** controls governed statement families and Emergency SQL fallback.
 - **Audit Log** provides filterable and exportable administrative history.
 
+Native client access is configured from **Access Roles**. Its per-connection access level is separate from browser Query Access, and native proxy lifecycle events can be filtered in **Audit Log**.
+
 !!! danger "Administration does not remove operational accountability"
     Administrator actions are audited. Use the least access needed and keep production-impacting work in the normal request and review workflows.

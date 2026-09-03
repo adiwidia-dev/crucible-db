@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AccessTransport;
 use App\Http\Requests\EndQuerySessionRequest;
 use App\Models\DatabaseConnection;
 use App\Models\QueryRequest;
@@ -31,6 +32,10 @@ class QuerySessionController extends Controller
         Gate::authorize('view', $querySession);
 
         $querySession->load(['databaseConnection', 'databaseConnections', 'queryRequest.requester']);
+
+        if ($querySession->queryRequest->access_transport === AccessTransport::NativeProxy) {
+            return $this->nativeProxyResponse($querySession);
+        }
         $activeConnection = $querySession->databaseConnections
             ->firstWhere('id', request()->integer('connection_id'));
 
@@ -129,5 +134,91 @@ class QuerySessionController extends Controller
             'name' => $connection->name,
             'driver' => $connection->driver->value,
         ];
+    }
+
+    private function nativeProxyResponse(QuerySession $querySession): Response
+    {
+        $querySession->load([
+            'nativeProxyLease.connections',
+        ]);
+        $lease = $querySession->nativeProxyLease;
+        $canManage = request()->user()->can('manageNativeProxy', $querySession);
+
+        return Inertia::render('query-sessions/show', [
+            'session' => [
+                'id' => $querySession->id,
+                'started_at' => $querySession->started_at->toIso8601String(),
+                'expires_at' => $querySession->expires_at->toIso8601String(),
+                'ended_at' => $querySession->ended_at?->toIso8601String(),
+                'is_active' => $querySession->isActive(),
+                'transport' => AccessTransport::NativeProxy->value,
+                'request' => [
+                    'id' => $querySession->queryRequest->id,
+                    'title' => $querySession->queryRequest->title,
+                    'requester' => $querySession->queryRequest->requester->name,
+                    'access_mode' => $querySession->queryRequest->requested_access_mode->value,
+                ],
+                'connection' => $this->connectionSummary($querySession->databaseConnection),
+                'connections' => $querySession->databaseConnections
+                    ->map(fn (DatabaseConnection $connection): array => $this->connectionSummary($connection))
+                    ->values(),
+                'latest_query' => null,
+                'queries' => [],
+                'native_proxy' => [
+                    'can_manage' => $canManage,
+                    'lease' => $lease === null ? null : [
+                        'id' => $canManage ? $lease->id : null,
+                        'status' => $lease->status->value,
+                        'credential_version' => $lease->credential_version,
+                        'credentials_created_at' => $lease->credentials_revealed_at?->toIso8601String(),
+                        'expires_at' => $lease->expires_at->toIso8601String(),
+                    ],
+                    'authorized_devices' => $lease?->deviceAuthorizations()
+                        ->withActiveToken()
+                        ->latest('consumed_at')
+                        ->get()
+                        ->map(fn ($authorization): array => [
+                            'id' => $authorization->id,
+                            'device_label' => $authorization->device_label,
+                            'operating_system' => $authorization->operating_system,
+                            'architecture' => $authorization->architecture,
+                            'authorized_at' => $authorization->consumed_at?->toIso8601String(),
+                        ])
+                        ->values()
+                        ->all() ?? [],
+                    'connections' => $lease?->connections
+                        ->sortByDesc('connected_at')
+                        ->values()
+                        ->map(fn ($connection): array => [
+                            'id' => $connection->id,
+                            'protocol' => $connection->protocol->value,
+                            'status' => $connection->status->value,
+                            'client_application' => $connection->client_application,
+                            'connected_at' => $connection->connected_at?->toIso8601String(),
+                            'last_activity_at' => $connection->last_activity_at?->toIso8601String(),
+                            'statement_count' => $connection->statement_count,
+                        ])
+                        ->all() ?? [],
+                    'statements' => $querySession->queries()
+                        ->latest()
+                        ->paginate(25, ['*'], 'statements_page')
+                        ->withQueryString()
+                        ->through(fn ($statement): array => [
+                            'id' => $statement->id,
+                            'protocol_command' => $statement->native_protocol_command,
+                            'sql_fingerprint' => $statement->native_sql_fingerprint,
+                            'parameter_count' => $statement->native_parameter_count,
+                            'query_type' => $statement->query_type->value,
+                            'status' => $statement->status->value,
+                            'row_count' => $statement->row_count,
+                            'duration_ms' => $statement->duration_ms,
+                            'created_at' => $statement->created_at?->toIso8601String(),
+                        ]),
+                ],
+            ],
+            'tables' => [],
+            'native_proxy_server_url' => rtrim((string) config('app.url'), '/'),
+            'native_proxy_cli_download_url' => config('native_proxy.cli_download_url'),
+        ]);
     }
 }

@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DatabaseConnectionController;
+use App\Http\Controllers\NativeProxy\ConnectionController as NativeProxyConnectionController;
+use App\Http\Controllers\NativeProxy\DeviceAuthorizationController as NativeProxyDeviceAuthorizationController;
+use App\Http\Controllers\NativeProxy\LeaseController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NotificationSubscriptionController;
 use App\Http\Controllers\QueryExecutionExportController;
@@ -100,6 +103,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('query-session-queries.export');
     Route::post('query-sessions/{query_session}/end', [QuerySessionController::class, 'end'])
         ->name('query-sessions.end');
+    Route::post('query-sessions/{query_session}/native-proxy/credentials', [LeaseController::class, 'store'])
+        ->name('query-sessions.native-proxy.credentials.store');
+    Route::get('query-sessions/{query_session}/native-proxy/connections', [NativeProxyConnectionController::class, 'index'])
+        ->name('query-sessions.native-proxy.connections.index');
+    Route::post('native-proxy-leases/{native_proxy_lease}/credentials/rotate', [LeaseController::class, 'rotate'])
+        ->name('native-proxy-leases.credentials.rotate');
+    Route::post('native-proxy-leases/{native_proxy_lease}/revoke', [LeaseController::class, 'revoke'])
+        ->name('native-proxy-leases.revoke');
+    Route::get('native-proxy/device-authorizations/confirm', [NativeProxyDeviceAuthorizationController::class, 'confirm'])
+        ->name('native-proxy.device-authorizations.confirm');
+    Route::post('native-proxy/device-authorizations/confirm', [NativeProxyDeviceAuthorizationController::class, 'resolve'])
+        ->name('native-proxy.device-authorizations.resolve');
+    Route::get('native-proxy/device-authorizations/{device_authorization}', [NativeProxyDeviceAuthorizationController::class, 'show'])
+        ->name('native-proxy.device-authorizations.show');
+    Route::post('native-proxy/device-authorizations/{device_authorization}/decision', [NativeProxyDeviceAuthorizationController::class, 'decide'])
+        ->name('native-proxy.device-authorizations.decision');
     Route::get('query-executions/{query_execution}/export', QueryExecutionExportController::class)
         ->name('query-executions.export');
 

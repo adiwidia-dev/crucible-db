@@ -26,3 +26,14 @@
 | Rejected / cancelled | Access will not start. | Read the reason and request the correct scope if appropriate. |
 
 State labels describe whether work may proceed; they do not replace the latest policy or SQL evaluation.
+
+## Native client lease and connection states
+
+| State | Meaning | Typical next action |
+| --- | --- | --- |
+| Active lease | Temporary credentials may authorize a native client until the session expires. | Start the CLI tunnel or rotate/revoke credentials. |
+| Revoked lease | Credentials, device tokens, and connected clients have been invalidated. | Create a new request when access is still needed. |
+| Expired lease | The approved access window ended. | Create a fresh request. |
+| Reserved connection | The proxy admitted a client and is awaiting protocol authentication. | Wait briefly; stale reservations are pruned. |
+| Active connection | A native database client is connected through the lease. | Observe the safe statement history or revoke if necessary. |
+| Closed / failed | The client disconnected, was denied, or its reservation timed out. | Review audit metadata and reconnect only while the lease remains active. |

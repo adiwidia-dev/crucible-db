@@ -2,6 +2,7 @@ import { Form, Head, Link } from '@inertiajs/react';
 import {
     Database,
     Edit3,
+    Eye,
     FolderTree,
     Plus,
     ShieldCheck,
@@ -11,6 +12,7 @@ import ConnectionGroupController from '@/actions/App/Http/Controllers/Connection
 import { DataRegistry } from '@/components/crucible/data-registry';
 import { EmptyState } from '@/components/crucible/empty-state';
 import { PageHeader } from '@/components/crucible/page-header';
+import { SemanticIcon } from '@/components/crucible/semantic-icon';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -27,7 +29,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { create, edit, index } from '@/routes/connection-groups';
+import { create, edit, index, show } from '@/routes/connection-groups';
 
 type ConnectionGroup = {
     id: number;
@@ -114,15 +116,24 @@ export default function ConnectionGroupsIndex({ connection_groups }: Props) {
                                                 >
                                                     <td className="py-3 pr-4 pl-3 sm:pl-4">
                                                         <div className="flex items-center gap-3">
-                                                            <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                                                                <FolderTree className="size-4" />
-                                                            </span>
+                                                            <SemanticIcon
+                                                                icon={
+                                                                    FolderTree
+                                                                }
+                                                                tone="info"
+                                                                size="sm"
+                                                            />
                                                             <div className="min-w-0">
-                                                                <div className="font-medium">
+                                                                <Link
+                                                                    href={show(
+                                                                        connectionGroup.id,
+                                                                    )}
+                                                                    className="font-medium hover:underline"
+                                                                >
                                                                     {
                                                                         connectionGroup.name
                                                                     }
-                                                                </div>
+                                                                </Link>
                                                                 {connectionGroup.description && (
                                                                     <p className="mt-1 max-w-xl text-xs text-muted-foreground">
                                                                         {
@@ -151,6 +162,29 @@ export default function ConnectionGroupsIndex({ connection_groups }: Props) {
                                                     </td>
                                                     <td className="py-3 pr-3 sm:pr-4">
                                                         <div className="flex justify-end gap-2">
+                                                            <Tooltip>
+                                                                <TooltipTrigger
+                                                                    asChild
+                                                                >
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="icon"
+                                                                        asChild
+                                                                    >
+                                                                        <Link
+                                                                            href={show(
+                                                                                connectionGroup.id,
+                                                                            )}
+                                                                            aria-label={`View ${connectionGroup.name}`}
+                                                                        >
+                                                                            <Eye />
+                                                                        </Link>
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    View group
+                                                                </TooltipContent>
+                                                            </Tooltip>
                                                             <Tooltip>
                                                                 <TooltipTrigger
                                                                     asChild

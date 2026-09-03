@@ -18,7 +18,7 @@
   <a href="https://github.com/adiwidia-dev/crucible-db/actions/workflows/tests.yml"><img src="https://github.com/adiwidia-dev/crucible-db/actions/workflows/tests.yml/badge.svg" alt="CI status"></a>
   <a href="https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.1.0"><img src="https://img.shields.io/badge/release-v0.1.0-2563EB" alt="Crucible DB v0.1.0"></a>
   <a href="https://adiwidia-dev.github.io/crucible-db/"><img src="https://img.shields.io/badge/docs-read-2563EB?logo=readthedocs&logoColor=white" alt="Read the documentation"></a>
-  <img src="https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php&logoColor=white" alt="PHP 8.3 or later">
+  <img src="https://img.shields.io/badge/PHP-8.5%2B-777BB4?logo=php&logoColor=white" alt="PHP 8.5 or later">
   <img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license">
 </p>
@@ -29,6 +29,7 @@ Crucible DB gives engineering teams a safer path to production database work wit
 
 - **Deployment batches** — submit one or more ordered SQL statements, each scoped to its own target connection, for review, scheduling, and asynchronous execution.
 - **Time-bounded database access** — request read-only or read + write query sessions across one or more approved connections; sessions automatically expire and enforce their granted access level.
+- **Native client access** — approved Query Access sessions can issue short-lived credentials through the loopback-only Crucible CLI tunnel. The PostgreSQL/MySQL listeners are private, every statement remains policy-checked, and lease revocation closes connected clients. See the [compatibility matrix](docs/reference/native-client-compatibility.md) for the current desktop-client qualification status.
 - **Clear accountability** — record requests, reviews, executions, session activity, and administrative actions.
 - **Role-scoped access** — grant users the maximum deployment read/write access, reviewer authority, approval requirements, and optional write-session duration through reusable connection groups, with individual connection exceptions where needed. Write-capable policies default Query Access to read-only until an administrator explicitly permits read + write sessions.
 - **Controlled SQL surface** — administrators can enable each governed statement family or allow all of them. An audited emergency fallback can admit one otherwise unsupported Deployment Batch statement as write access, while administrative, file-access, security-management, procedural, transaction-control, and EXPLAIN ANALYZE SQL remain blocked.
@@ -53,7 +54,7 @@ flowchart LR
     T --> L
 ```
 
-Crucible DB connects to target databases only to test a connection, inspect schema, or execute an authorized request or active session query. It supports PostgreSQL and MySQL target connections. It does not currently expose a general database protocol proxy for desktop database clients.
+Crucible DB supports PostgreSQL and MySQL target connections. For an approved **Native client** Query Access session, the Crucible CLI opens a loopback-only database listener and tunnels it through the private proxy service on the same application origin. The proxy never exposes database ports publicly, does not create target-database users, and applies the approved role, session, SQL, audit, and expiry controls to each protocol statement.
 
 ### Governed SQL behavior
 
@@ -71,7 +72,7 @@ Deployment Batches can be saved as non-executable drafts, including when preflig
 
 ### Prerequisites
 
-- PHP 8.3 or later
+- PHP 8.5 or later
 - Composer 2
 - Node.js 22
 - Docker and Docker Compose (recommended for the full local stack)
@@ -95,7 +96,7 @@ The development Compose stack includes Crucible DB, Redis, Vite, and disposable 
 
 ## Production deployment
 
-Production uses two persistent services:
+Production uses four persistent services:
 
 ```text
 Crucible DB application
@@ -107,12 +108,26 @@ Redis
 ├─ queues and Horizon metadata
 ├─ sessions
 └─ cache
+
+Native proxy
+├─ private PostgreSQL/MySQL listeners
+├─ private tunnel gateway routed through the app origin
+└─ Redis-backed immediate lease revocation plus durable heartbeats
+
+Caddy gateway
+└─ the single public application origin, including native-client discovery and tunnel paths
 ```
 
 Production builds must use `Dockerfile.production`. Release `v0.1.0` is published as the immutable image `hephaestus/crucible-db:0.1.0`; `hephaestus/crucible-db:alpha` remains a moving convenience tag for existing alpha deployments. A deployment directory needs `compose.production.yaml`, `.env.production.example`, and a secure `.env.production` file—there is no need to clone the complete source repository or build the image on the server.
 
 ```bash
 cp .env.production.example .env.production
+```
+
+Native Client Access additionally requires an explicitly pinned, matching native-proxy image. Set it in the deployment shell or Compose `.env` file before starting the stack. The release Compose file intentionally does not default this image, so a deployment cannot silently use a stale proxy build.
+
+```bash
+export CRUCIBLE_NATIVE_IMAGE=registry.example/crucible-db-native:vX.Y.Z
 ```
 
 Set a unique application key, public URL, and mail settings in `.env.production`. You can generate an application key with:

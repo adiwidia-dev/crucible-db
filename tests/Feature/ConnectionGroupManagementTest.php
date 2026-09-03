@@ -62,6 +62,37 @@ class ConnectionGroupManagementTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_view_connection_group_members_and_role_policies(): void
+    {
+        $admin = $this->adminUser();
+        $role = Role::factory()->developer()->create(['name' => 'Staging investigator']);
+        $connection = DatabaseConnection::factory()->create(['name' => 'Staging API']);
+        $connectionGroup = ConnectionGroup::factory()->create([
+            'name' => 'Staging databases',
+            'description' => 'Shared staging targets.',
+        ]);
+
+        $connectionGroup->databaseConnections()->attach($connection);
+        RoleConnectionGroupPolicy::factory()->create([
+            'role_id' => $role->id,
+            'connection_group_id' => $connectionGroup->id,
+            'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::Read,
+            'native_proxy_access_mode' => AccessMode::Write,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('connection-groups.show', $connectionGroup))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('connection-groups/show')
+                ->where('connection_group.name', 'Staging databases')
+                ->where('connection_group.connections.0.name', 'Staging API')
+                ->where('connection_group.role_policies.0.role.name', 'Staging investigator')
+                ->where('connection_group.role_policies.0.query_access_mode', AccessMode::Read->value)
+                ->where('connection_group.role_policies.0.native_proxy_access_mode', AccessMode::Write->value));
+    }
+
     public function test_group_policy_grants_current_group_members_and_direct_policy_overrides_it(): void
     {
         $role = Role::factory()->developer()->create();
@@ -174,6 +205,9 @@ class ConnectionGroupManagementTest extends TestCase
         $developer = User::factory()->withRole($developerRole)->create();
 
         $this->actingAs($developer)->get(route('connection-groups.index'))->assertForbidden();
+        $this->actingAs($developer)
+            ->get(route('connection-groups.show', ConnectionGroup::factory()->create()))
+            ->assertForbidden();
         $this->actingAs($developer)->post(route('connection-groups.store'), [
             'name' => 'No access',
         ])->assertForbidden();

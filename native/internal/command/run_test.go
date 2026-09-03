@@ -39,3 +39,15 @@ func TestRunReturnsFailureAndWritesTheError(t *testing.T) {
 		t.Fatalf("expected error on stderr, got %q", stderr.String())
 	}
 }
+
+func TestRunPreservesCategorizedExitCodes(t *testing.T) {
+	var stderr bytes.Buffer
+
+	exitCode := command.Run(func() error {
+		return command.Wrap(command.ExitNetwork, errors.New("control plane unavailable"))
+	}, &stderr)
+
+	if exitCode != command.ExitNetwork {
+		t.Fatalf("expected network exit code, got %d", exitCode)
+	}
+}

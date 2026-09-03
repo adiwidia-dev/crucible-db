@@ -17,3 +17,18 @@ Schedule::command('crucible:expire-query-sessions')
     ->everyMinute()
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::command('crucible:expire-native-proxy-leases')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer();
+
+Schedule::command('crucible:check-native-proxy-health')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer();
+
+Schedule::command('crucible:prune-native-proxy-state')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer();

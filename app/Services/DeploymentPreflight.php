@@ -12,12 +12,16 @@ use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 /**
- * @phpstan-type PreflightMessage array{level:'warning'|'blocked',code:string,message:string}
+ * @phpstan-type PreflightMessage array{level:'warning'|'blocked',code:string,message:string,candidate_id?:int,shape_available?:bool}
  * @phpstan-type PreflightStatement array{position:int,connection_id:int|null,connection_name:string|null,query_type:string|null,status:'passed'|'warning'|'blocked',messages:array<int, PreflightMessage>}
  */
 class DeploymentPreflight
 {
-    public function __construct(private readonly QueryGuard $queryGuard) {}
+    public function __construct(
+        private readonly QueryGuard $queryGuard,
+        private readonly DeploymentStatementPolicy $deploymentStatementPolicy,
+        private readonly SqlPolicyCandidateRecorder $candidateRecorder,
+    ) {}
 
     /**
      * Evaluate the executable statements persisted on a deployment batch.
@@ -44,6 +48,7 @@ class DeploymentPreflight
         $results = array_values(array_map(
             /** @return PreflightStatement */
             fn (QueryRequestStatement $statement) => $this->evaluateStatement(
+                $queryRequest,
                 $queryRequest->requester,
                 $statement,
                 $statement->databaseConnection ?? $queryRequest->databaseConnection,
@@ -96,22 +101,47 @@ class DeploymentPreflight
     /**
      * @return PreflightStatement
      */
-    private function evaluateStatement(User $requester, QueryRequestStatement $statement, ?DatabaseConnection $connection): array
+    private function evaluateStatement(QueryRequest $queryRequest, User $requester, QueryRequestStatement $statement, ?DatabaseConnection $connection): array
     {
         /** @var list<PreflightMessage> $messages */
         $messages = [];
         $queryType = $statement->query_type;
 
         try {
-            $sql = $this->queryGuard->validateExecutable($statement->sql);
-            $queryType = $this->queryGuard->classify($sql);
+            if ($connection instanceof DatabaseConnection) {
+                $inspection = $this->deploymentStatementPolicy->assess($statement->sql, $connection);
+                $sql = $inspection['sql'];
+                $queryType = $inspection['query_type'];
+            } else {
+                $sql = $this->queryGuard->validateExecutable($statement->sql);
+                $queryType = $this->queryGuard->classify($sql);
+                $inspection = null;
+            }
 
-            if ($this->queryGuard->usesEmergencySqlFallback($sql)) {
-                $messages[] = $this->message(
-                    'warning',
-                    'emergency_sql_fallback',
-                    'This statement is using the emergency SQL fallback. It is treated as write access and should be reviewed carefully.',
+            if (in_array($inspection['source'] ?? null, ['emergency_fallback', 'unsupported'], true)
+                && $connection instanceof DatabaseConnection) {
+                $candidate = $this->candidateRecorder->record(
+                    $queryRequest,
+                    $statement,
+                    $connection,
+                    $sql,
+                    $inspection['shape'],
                 );
+                $messages[] = $inspection['source'] === 'emergency_fallback'
+                    ? $this->message(
+                        'warning',
+                        'emergency_sql_fallback',
+                        'This statement is using the emergency SQL fallback. It is treated as write access and should be reviewed carefully.',
+                        $candidate->id,
+                        $candidate->shape_signature !== null,
+                    )
+                    : $this->message(
+                        'blocked',
+                        'unsupported_sql_policy',
+                        'This SQL statement is not supported by the governed SQL policy.',
+                        $candidate->id,
+                        $candidate->shape_signature !== null,
+                    );
             }
         } catch (ValidationException $exception) {
             $messages[] = $this->message(
@@ -148,7 +178,9 @@ class DeploymentPreflight
 
         $topLevelSql = $this->queryGuard->topLevelExecutableSql($sql);
 
-        if ($queryType === QueryType::Write && preg_match('/^(update|delete)\b[\s\S]*\bwhere\b/i', $topLevelSql) !== 1) {
+        if ($queryType === QueryType::Write
+            && preg_match('/^(update|delete)\b/i', $topLevelSql) === 1
+            && preg_match('/\bwhere\b/i', $topLevelSql) !== 1) {
             $messages[] = $this->message(
                 'warning',
                 'unbounded_write',
@@ -198,19 +230,28 @@ class DeploymentPreflight
      * @param  'warning'|'blocked'  $level
      * @return PreflightMessage
      */
-    private function message(string $level, string $code, string $message): array
-    {
-        return match ($level) {
-            'blocked' => [
-                'level' => 'blocked',
-                'code' => $code,
-                'message' => $message,
-            ],
-            'warning' => [
-                'level' => 'warning',
-                'code' => $code,
-                'message' => $message,
-            ],
-        };
+    private function message(
+        string $level,
+        string $code,
+        string $message,
+        ?int $candidateId = null,
+        ?bool $shapeAvailable = null,
+    ): array {
+        /** @var PreflightMessage $result */
+        $result = [
+            'level' => $level,
+            'code' => $code,
+            'message' => $message,
+        ];
+
+        if ($candidateId !== null) {
+            $result['candidate_id'] = $candidateId;
+        }
+
+        if ($shapeAvailable !== null) {
+            $result['shape_available'] = $shapeAvailable;
+        }
+
+        return $result;
     }
 }

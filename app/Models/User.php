@@ -391,10 +391,11 @@ class User extends Authenticatable implements PasskeyUser
 
         return [
             'access_mode' => $resolvedAccessMode,
-            'query_access_mode' => $resolvedAccessMode === AccessMode::Write
-                ? ($queryAccessMode instanceof AccessMode ? $queryAccessMode : AccessMode::Read)
-                : $resolvedAccessMode,
-            'native_proxy_access_mode' => $this->cappedNativeProxyAccessMode(
+            'query_access_mode' => $this->cappedWorkflowAccessMode(
+                $resolvedAccessMode,
+                $queryAccessMode instanceof AccessMode ? $queryAccessMode : AccessMode::None,
+            ),
+            'native_proxy_access_mode' => $this->cappedWorkflowAccessMode(
                 $resolvedAccessMode,
                 $nativeProxyAccessMode instanceof AccessMode ? $nativeProxyAccessMode : AccessMode::None,
             ),
@@ -412,10 +413,11 @@ class User extends Authenticatable implements PasskeyUser
     {
         return [
             'access_mode' => $permission->access_mode,
-            'query_access_mode' => $permission->access_mode === AccessMode::Write
-                ? $permission->query_access_mode
-                : $permission->access_mode,
-            'native_proxy_access_mode' => $this->cappedNativeProxyAccessMode(
+            'query_access_mode' => $this->cappedWorkflowAccessMode(
+                $permission->access_mode,
+                $permission->query_access_mode,
+            ),
+            'native_proxy_access_mode' => $this->cappedWorkflowAccessMode(
                 $permission->access_mode,
                 $permission->native_proxy_access_mode,
             ),
@@ -471,11 +473,11 @@ class User extends Authenticatable implements PasskeyUser
         ];
     }
 
-    private function cappedNativeProxyAccessMode(AccessMode $maximumAccessMode, AccessMode $nativeProxyAccessMode): AccessMode
+    private function cappedWorkflowAccessMode(AccessMode $maximumAccessMode, AccessMode $workflowAccessMode): AccessMode
     {
-        return $this->accessModeRank($nativeProxyAccessMode) > $this->accessModeRank($maximumAccessMode)
+        return $this->accessModeRank($workflowAccessMode) > $this->accessModeRank($maximumAccessMode)
             ? $maximumAccessMode
-            : $nativeProxyAccessMode;
+            : $workflowAccessMode;
     }
 
     private function accessModeRank(AccessMode $accessMode): int

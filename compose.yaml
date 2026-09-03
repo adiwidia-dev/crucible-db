@@ -5,8 +5,9 @@ services:
     command: ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000", "--workers=2", "--max-requests=500"]
     environment:
       OCTANE_SERVER: frankenphp
-    ports:
-      - "8000:8000"
+      NATIVE_PROXY_ENABLED: "true"
+      NATIVE_PROXY_CONTROL_SECRET: ${NATIVE_PROXY_CONTROL_SECRET:-change-me-before-production}
+      NATIVE_PROXY_HEALTH_URL: http://native-proxy:8081/readyz
     volumes:
       - .:/app
       - node_modules:/app/node_modules
@@ -44,8 +45,11 @@ services:
   node:
     build:
       context: .
-    command: ["sh", "-lc", "npm install && npm run dev -- --host"]
+    command: ["sh", "-lc", "mkdir -p /tmp/crucible-vite && touch /tmp/crucible-vite/database.sqlite && npm install && npm run dev -- --host"]
     working_dir: /app
+    environment:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /tmp/crucible-vite/database.sqlite
     healthcheck:
       disable: true
     ports:
@@ -53,6 +57,43 @@ services:
     volumes:
       - .:/app
       - node_modules:/app/node_modules
+
+  gateway:
+    image: caddy:2.10-alpine
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.docker/native-proxy.Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      app:
+        condition: service_healthy
+      native-proxy:
+        condition: service_healthy
+
+  native-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.native
+    environment:
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      NATIVE_PROXY_ID: ${NATIVE_PROXY_ID:-crucible-dev}
+      NATIVE_PROXY_CONTROL_URL: http://app:8000
+      NATIVE_PROXY_CONTROL_SECRET: ${NATIVE_PROXY_CONTROL_SECRET:-change-me-before-production}
+      NATIVE_PROXY_REDIS_URL: redis://redis:6379/0
+      NATIVE_PROXY_REVOCATION_CHANNEL: ${NATIVE_PROXY_REVOCATION_CHANNEL:-native-proxy:lease-revoked}
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/crucible-proxy", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
 
   redis:
     image: redis:7-alpine
@@ -65,15 +106,16 @@ services:
       retries: 10
 
   target-postgres:
-    image: postgres:17-alpine
+    image: ${NATIVE_POSTGRES_IMAGE:-postgres:17-alpine}
     environment:
       POSTGRES_DB: crucible_target
-      POSTGRES_USER: crucible
-      POSTGRES_PASSWORD: crucible
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: crucible_root
     ports:
       - "5433:5432"
     volumes:
       - target_postgres_data:/var/lib/postgresql/data
+      - ./.docker/target-postgres/init.sql:/docker-entrypoint-initdb.d/10-crucible-target.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U crucible -d crucible_target"]
       interval: 5s
@@ -81,16 +123,15 @@ services:
       retries: 10
 
   target-mysql:
-    image: mysql:8.4
+    image: ${NATIVE_MYSQL_IMAGE:-mysql:8.4}
     environment:
       MYSQL_DATABASE: crucible_target
-      MYSQL_USER: crucible
-      MYSQL_PASSWORD: crucible
       MYSQL_ROOT_PASSWORD: crucible_root
     ports:
       - "3307:3306"
     volumes:
       - target_mysql_data:/var/lib/mysql
+      - ./.docker/target-mysql/init.sql:/docker-entrypoint-initdb.d/10-crucible-target.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ucrucible", "-pcrucible"]
       interval: 5s

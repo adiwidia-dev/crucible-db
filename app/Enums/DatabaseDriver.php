@@ -14,4 +14,20 @@ enum DatabaseDriver: string
             self::PostgreSql => 5432,
         };
     }
+
+    public function nativeProxyProtocol(): string
+    {
+        return match ($this) {
+            self::MySql => 'mysql',
+            self::PostgreSql => 'postgresql',
+        };
+    }
+
+    public static function fromNativeProxyProtocol(string $protocol): self
+    {
+        return match ($protocol) {
+            'mysql' => self::MySql,
+            'postgresql' => self::PostgreSql,
+        };
+    }
 }

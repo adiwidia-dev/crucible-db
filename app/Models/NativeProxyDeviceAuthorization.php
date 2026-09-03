@@ -36,6 +36,12 @@ class NativeProxyDeviceAuthorization extends Model
         return $query->whereIn('status', [NativeProxyDeviceAuthorizationStatus::Pending, NativeProxyDeviceAuthorizationStatus::Approved])->where('expires_at', '>', now());
     }
 
+    /** @param Builder<self> $query @return Builder<self> */
+    public function scopeWithActiveToken(Builder $query): Builder
+    {
+        return $query->whereHas('tokens', fn (Builder $tokens): Builder => $tokens->active());
+    }
+
     /** @return BelongsTo<NativeProxyLease, $this> */
     public function lease(): BelongsTo
     {

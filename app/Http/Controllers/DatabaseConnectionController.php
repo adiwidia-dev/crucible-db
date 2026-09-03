@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateDatabaseConnectionRequest;
 use App\Models\DatabaseConnection;
 use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
+use App\Services\NativeProxy\LeaseWorkflow;
 use App\Services\NotificationDispatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -158,7 +159,7 @@ class DatabaseConnectionController extends Controller
         ]);
     }
 
-    public function update(UpdateDatabaseConnectionRequest $request, DatabaseConnection $databaseConnection, AuditLogger $auditLogger): RedirectResponse
+    public function update(UpdateDatabaseConnectionRequest $request, DatabaseConnection $databaseConnection, AuditLogger $auditLogger, LeaseWorkflow $leaseWorkflow): RedirectResponse
     {
         $data = $request->validated();
         $tlsMaterialAction = $data['tls_material_action'];
@@ -189,15 +190,21 @@ class DatabaseConnectionController extends Controller
         $data['is_active'] = $request->boolean('is_active');
 
         $databaseConnection->update($data);
+        $leaseWorkflow->revokeForDatabaseConnections(
+            [$databaseConnection->id],
+            $request->user(),
+            $databaseConnection->is_active ? 'Database connection configuration changed.' : 'Database connection was deactivated.',
+        );
         $auditLogger->log('database_connection.updated', $request->user(), $databaseConnection);
 
         return redirect()->route('connections.show', $databaseConnection);
     }
 
-    public function destroy(DatabaseConnection $databaseConnection, AuditLogger $auditLogger): RedirectResponse
+    public function destroy(DatabaseConnection $databaseConnection, AuditLogger $auditLogger, LeaseWorkflow $leaseWorkflow): RedirectResponse
     {
         Gate::authorize('delete', $databaseConnection);
 
+        $leaseWorkflow->revokeForDatabaseConnections([$databaseConnection->id], request()->user(), 'Database connection was deleted.');
         $auditLogger->log('database_connection.deleted', request()->user(), $databaseConnection);
         $databaseConnection->notificationSubscriptions()->delete();
         $databaseConnection->delete();

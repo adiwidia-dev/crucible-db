@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 
+	"github.com/adiwidia-dev/crucible-db/native/internal/cli"
 	"github.com/adiwidia-dev/crucible-db/native/internal/command"
 )
 
@@ -11,5 +12,8 @@ func main() {
 }
 
 func run() error {
-	return nil
+	return cli.NewRootCommand(cli.Dependencies{
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	}).Execute()
 }

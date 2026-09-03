@@ -14,6 +14,7 @@ use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\QuerySessionQuery;
 use App\Models\User;
+use App\Services\NativeProxy\LeaseWorkflow;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -26,6 +27,8 @@ class QuerySessionWorkflow
         private readonly QueryGuard $queryGuard,
         private readonly DatabaseQueryExecutor $executor,
         private readonly NotificationDispatcher $notificationDispatcher,
+        private readonly LeaseWorkflow $nativeProxyLeaseWorkflow,
+        private readonly ApplicationSettings $applicationSettings,
     ) {}
 
     /**
@@ -42,6 +45,18 @@ class QuerySessionWorkflow
         if ($queryRequest->status !== QueryRequestStatus::Approved) {
             throw ValidationException::withMessages([
                 'query_request' => 'This query access request must be approved before a session can start.',
+            ]);
+        }
+
+        if ($queryRequest->access_transport === AccessTransport::NativeProxy && ! $this->applicationSettings->nativeClientAccessEnabled()) {
+            throw ValidationException::withMessages([
+                'query_request' => 'Native Client Access is currently disabled by an administrator.',
+            ]);
+        }
+
+        if ($queryRequest->access_transport === AccessTransport::Browser && ! $this->applicationSettings->queryAccessEnabled()) {
+            throw ValidationException::withMessages([
+                'query_request' => 'Query Access is currently disabled by an administrator.',
             ]);
         }
 
@@ -257,6 +272,11 @@ class QuerySessionWorkflow
             }
 
             $this->auditLogger->log('query_session.ended', $user, $querySession);
+            $this->nativeProxyLeaseWorkflow->revokeForQuerySession(
+                $querySession,
+                $user,
+                'Query access session ended.',
+            );
         });
     }
 

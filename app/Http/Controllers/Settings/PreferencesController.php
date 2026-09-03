@@ -3,19 +3,23 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Settings\UpdateTimezonePreferenceRequest;
 use App\Models\DatabaseConnection;
 use App\Models\NotificationSubscription;
 use App\Models\QueryRequest;
 use App\Models\User;
+use DateTimeZone;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class PreferencesController extends Controller
 {
-    public function edit(): Response
+    public function edit(Request $request): Response
     {
         /** @var User $user */
-        $user = request()->user();
+        $user = $request->user();
         $preferences = $user->notification_preferences ?? [];
 
         return Inertia::render('settings/preferences', [
@@ -26,6 +30,8 @@ class PreferencesController extends Controller
                 'email_sessions' => data_get($preferences, 'email.sessions', false),
                 'email_connection_failed' => data_get($preferences, 'email.connection_failed', true),
             ],
+            'timezone' => $user->timezone,
+            'timezones' => DateTimeZone::listIdentifiers(),
             'subscriptions' => $user->notificationSubscriptions()
                 ->with('subscribable')
                 ->latest()
@@ -34,6 +40,17 @@ class PreferencesController extends Controller
                 ->filter()
                 ->values(),
         ]);
+    }
+
+    public function updateTimezone(UpdateTimezonePreferenceRequest $request): RedirectResponse
+    {
+        $request->user()->forceFill([
+            'timezone' => $request->validated('timezone'),
+        ])->save();
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Timezone preference updated.']);
+
+        return to_route('preferences.edit');
     }
 
     /**

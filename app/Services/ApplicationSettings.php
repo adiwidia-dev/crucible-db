@@ -18,6 +18,12 @@ class ApplicationSettings
 
     public const PasskeyLoginEnabled = 'passkey_login_enabled';
 
+    public const QueryAccessEnabled = 'query_access_enabled';
+
+    public const NativeClientAccessEnabled = 'native_client_access_enabled';
+
+    public const NativeProxyUsernamePrefix = 'native_proxy_username_prefix';
+
     public const MailHost = 'mail_host';
 
     public const MailPort = 'mail_port';
@@ -47,8 +53,6 @@ class ApplicationSettings
     public const NotificationsConnectionFailedEnabled = 'notifications_connection_failed_enabled';
 
     public const SqlReadQueriesEnabled = 'sql_read_queries_enabled';
-
-    public const SqlAllStatementFamiliesEnabled = 'sql_all_statement_families_enabled';
 
     public const SqlEmergencyFallbackEnabled = 'sql_emergency_fallback_enabled';
 
@@ -100,21 +104,24 @@ class ApplicationSettings
         return $this->sqlStatementPolicyValues($this->values());
     }
 
+    /**
+     * @return array{query_access_enabled: bool, native_client_access_enabled: bool, native_proxy_username_prefix: string}
+     */
+    public function accessWorkflowFormValues(): array
+    {
+        return [
+            'query_access_enabled' => $this->queryAccessEnabled(),
+            'native_client_access_enabled' => $this->nativeClientAccessEnabled(),
+            'native_proxy_username_prefix' => $this->nativeProxyUsernamePrefix(),
+        ];
+    }
+
     public function allowsSqlStatementFamily(SqlStatementFamily $statementFamily): bool
     {
-        if ($this->allowsAllSqlStatementFamilies()) {
-            return true;
-        }
-
         return $this->boolean(
             $statementFamily->settingKey(),
             $statementFamily->isEnabledByDefault(),
         );
-    }
-
-    public function allowsAllSqlStatementFamilies(): bool
-    {
-        return $this->boolean(self::SqlAllStatementFamiliesEnabled, false);
     }
 
     public function allowsEmergencySqlFallback(): bool
@@ -139,6 +146,24 @@ class ApplicationSettings
     public function passwordLoginEnabled(): bool
     {
         return $this->boolean(self::PasswordLoginEnabled, true);
+    }
+
+    public function queryAccessEnabled(): bool
+    {
+        return $this->boolean(self::QueryAccessEnabled, true);
+    }
+
+    public function nativeClientAccessEnabled(): bool
+    {
+        return $this->boolean(self::NativeClientAccessEnabled, true);
+    }
+
+    public function nativeProxyUsernamePrefix(): string
+    {
+        return $this->string(
+            self::NativeProxyUsernamePrefix,
+            (string) config('native_proxy.username_prefix', 'crucible_'),
+        ) ?? 'crucible_';
     }
 
     /**
@@ -250,11 +275,6 @@ class ApplicationSettings
     private function sqlStatementPolicyValues(array $values): array
     {
         $settings = [
-            self::SqlAllStatementFamiliesEnabled => filter_var(
-                Arr::get($values, self::SqlAllStatementFamiliesEnabled, false),
-                FILTER_VALIDATE_BOOL,
-                FILTER_NULL_ON_FAILURE,
-            ) ?? false,
             self::SqlEmergencyFallbackEnabled => filter_var(
                 Arr::get($values, self::SqlEmergencyFallbackEnabled, false),
                 FILTER_VALIDATE_BOOL,

@@ -14,9 +14,12 @@ services:
       DB_BUSY_TIMEOUT: "5000"
       DB_JOURNAL_MODE: WAL
       DB_SYNCHRONOUS: FULL
+      DB_TRANSACTION_MODE: IMMEDIATE
       QUEUE_CONNECTION: redis
       REDIS_HOST: redis
       SESSION_DRIVER: redis
+      NATIVE_PROXY_ENABLED: "true"
+      NATIVE_PROXY_HEALTH_URL: http://native-proxy:8081/readyz
     init: true
     restart: unless-stopped
     stop_grace_period: 60s
@@ -26,8 +29,6 @@ services:
       timeout: 5s
       retries: 6
       start_period: 30s
-    ports:
-      - "8000:8000"
     volumes:
       - crucible_storage:/app/storage
     depends_on:
@@ -51,6 +52,64 @@ services:
     networks:
       - backend
 
+  gateway:
+    image: caddy:2.10-alpine
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 35s
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.docker/native-proxy.Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      app:
+        condition: service_healthy
+      native-proxy:
+        condition: service_healthy
+    networks:
+      - backend
+
+  native-proxy:
+    image: ${CRUCIBLE_NATIVE_IMAGE:?CRUCIBLE_NATIVE_IMAGE must be set to the matching native proxy release image}
+    pull_policy: always
+    environment:
+      APP_URL: ${APP_URL:?APP_URL must be configured}
+      NATIVE_PROXY_ID: ${NATIVE_PROXY_ID:-crucible-production}
+      NATIVE_PROXY_CONTROL_URL: http://app:8000
+      NATIVE_PROXY_CONTROL_SECRET: ${NATIVE_PROXY_CONTROL_SECRET:?NATIVE_PROXY_CONTROL_SECRET must be configured}
+      NATIVE_PROXY_REDIS_URL: redis://redis:6379/0
+      NATIVE_PROXY_REVOCATION_CHANNEL: ${NATIVE_PROXY_REVOCATION_CHANNEL:-native-proxy:lease-revoked}
+      NATIVE_PROXY_MAX_CONNECTIONS: ${NATIVE_PROXY_MAX_CONNECTIONS:-100}
+      NATIVE_PROXY_MAX_CONNECTIONS_PER_LEASE: ${NATIVE_PROXY_MAX_CONNECTIONS_PER_LEASE:-3}
+      NATIVE_PROXY_MAX_CONNECTIONS_PER_USER: ${NATIVE_PROXY_MAX_CONNECTIONS_PER_USER:-10}
+      NATIVE_PROXY_IDLE_TIMEOUT: ${NATIVE_PROXY_IDLE_TIMEOUT:-15m}
+      NATIVE_PROXY_DRAIN_TIMEOUT: ${NATIVE_PROXY_DRAIN_TIMEOUT:-30s}
+      NATIVE_PROXY_READINESS_INTERVAL: ${NATIVE_PROXY_READINESS_INTERVAL:-5s}
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/crucible-proxy", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 15s
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+      - proxy_egress
+
 volumes:
   crucible_redis:
   crucible_storage:
@@ -58,3 +117,4 @@ volumes:
 networks:
   backend:
     internal: true
+  proxy_egress: {}

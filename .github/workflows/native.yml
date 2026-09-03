@@ -1,0 +1,174 @@
+name: native proxy
+
+on:
+  workflow_call:
+  push:
+    branches: [main]
+    paths:
+      - native/**
+      - app/**
+      - bootstrap/**
+      - config/**
+      - database/**
+      - resources/js/components/native-proxy/**
+      - resources/js/pages/native-proxy/**
+      - resources/js/pages/query-sessions/**
+      - routes/**
+      - tests/**
+      - docs/**
+      - .docker/native-proxy.Caddyfile
+      - .docker/target-postgres/**
+      - .docker/target-mysql/**
+      - .env.example
+      - .env.production.example
+      - Dockerfile.native
+      - Dockerfile
+      - Dockerfile.production
+      - compose.yaml
+      - compose.production.yaml
+      - .github/workflows/native.yml
+      - .github/workflows/release-native.yml
+  pull_request:
+    paths:
+      - native/**
+      - app/**
+      - bootstrap/**
+      - config/**
+      - database/**
+      - resources/js/components/native-proxy/**
+      - resources/js/pages/native-proxy/**
+      - resources/js/pages/query-sessions/**
+      - routes/**
+      - tests/**
+      - docs/**
+      - .docker/native-proxy.Caddyfile
+      - .docker/target-postgres/**
+      - .docker/target-mysql/**
+      - .env.example
+      - .env.production.example
+      - Dockerfile.native
+      - Dockerfile
+      - Dockerfile.production
+      - compose.yaml
+      - compose.production.yaml
+      - .github/workflows/native.yml
+      - .github/workflows/release-native.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v6.0.0
+        with:
+          go-version: '1.26.6'
+      - name: Verify formatting and modules
+        run: |
+          test -z "$(gofmt -l .)"
+          go mod verify
+      - name: Static analysis
+        run: |
+          go vet ./...
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+      - name: Unit and race tests
+        run: go test -race ./...
+      - name: Bounded protocol fuzz smoke
+        run: |
+          go test -run '^$' -fuzz=FuzzFrontendMessage -fuzztime=5s ./internal/postgres
+          go test -run '^$' -fuzz=FuzzCommandPacket -fuzztime=5s ./internal/mysql
+          go test -run '^$' -fuzz=FuzzNegotiate -fuzztime=5s ./internal/tunnel
+
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - postgres: postgres:14-alpine
+            mysql: mysql:8.4
+          - postgres: postgres:15-alpine
+            mysql: mysql:8.4
+          - postgres: postgres:16-alpine
+            mysql: mysql:8.4
+          - postgres: postgres:17-alpine
+            mysql: mysql:8.4
+          - postgres: postgres:18-alpine
+            mysql: mysql:8.4
+          - postgres: postgres:17-alpine
+            mysql: mysql:8.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v6.0.0
+        with:
+          go-version: '1.26.6'
+      - name: Prepare Laravel environment
+        run: cp .env.example .env
+      - name: Start clean same-origin qualification stack
+        env:
+          NATIVE_POSTGRES_IMAGE: ${{ matrix.target.postgres }}
+          NATIVE_MYSQL_IMAGE: ${{ matrix.target.mysql }}
+        run: docker compose up -d --build app gateway native-proxy target-postgres target-mysql
+      - name: Migrate and seed native qualification state
+        run: |
+          docker compose exec -T app php artisan key:generate --force --no-interaction
+          docker compose exec -T app php artisan migrate:fresh --force --no-interaction
+          docker compose exec -T app php artisan db:seed --class=Database\\Seeders\\NativeProxyIntegrationSeeder --force --no-interaction
+          docker compose restart app
+      - name: Wait for the gateway
+        run: |
+          for _ in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:8000/health && exit 0
+            sleep 2
+          done
+          docker compose logs --tail=200
+          exit 1
+      - name: Run PostgreSQL and MySQL qualification harness
+        working-directory: native
+        env:
+          NATIVE_INTEGRATION: '1'
+          NATIVE_INTEGRATION_BASE_URL: http://localhost:8000
+          NATIVE_INTEGRATION_REDIS_URL: redis://127.0.0.1:6379/0
+          NATIVE_INTEGRATION_CONTROL_SECRET: change-me-before-production
+        run: go test -race -tags=integration ./test/integration -v
+      - name: Collect diagnostics
+        if: always()
+        run: docker compose logs --tail=200 app gateway native-proxy target-postgres target-mysql
+      - name: Remove qualification stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build non-root proxy image
+        run: docker build -f Dockerfile.native -t crucible-native:test .
+      - name: Verify the runtime binary on a read-only filesystem
+        run: docker run --rm --read-only --tmpfs /tmp crucible-native:test version
+      - name: Generate native image SBOM
+        uses: anchore/sbom-action@f8bdd1d8ac5e901a77a92f111440fdb1b593736b # v0.20.6
+        with:
+          image: crucible-native:test
+          artifact-name: native-proxy-sbom
+          output-file: native-proxy.spdx.json
+      - name: Scan the native image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        with:
+          image-ref: crucible-native:test
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL

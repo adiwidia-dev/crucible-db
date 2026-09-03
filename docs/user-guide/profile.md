@@ -4,13 +4,14 @@
 
 ![Profile settings](../assets/screenshots/account-profile.png){ .docs-screenshot }
 
-Use Profile to maintain your displayed name, account email, and operational timezone. Your identity appears in request, review, execution, notification, and audit context, so keep it recognizable to your team.
+Use Profile to maintain your displayed name and account email. Your identity appears in request, review, execution, notification, and audit context, so keep it recognizable to your team.
 
 ## Personal details
 
 - **Name** identifies you throughout governed work and audit history.
 - **Email address** is the password-login identity and notification destination.
-- **Timezone** controls how scheduled inputs and operational timestamps are presented.
+
+Set the timezone used for scheduled inputs and operational timestamps under [Preferences](preferences.md).
 
 Changing identity information does not change database permissions. Administrators assign roles separately under **People**.
 

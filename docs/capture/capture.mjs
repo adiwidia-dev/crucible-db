@@ -127,6 +127,22 @@ async function captureRequesterPages() {
 
         await visit(page, new URL(sessionHref, baseUrl).pathname);
         await screenshot(page, 'query-access-session.png');
+
+        await visit(page, '/query-requests');
+        await visitLinkedPage(
+            page,
+            'Native Client: investigate checkout timing',
+        );
+        const nativeSessionHref = await page
+            .getByRole('link', { name: 'Resume Session', exact: true })
+            .getAttribute('href');
+
+        if (!nativeSessionHref) {
+            throw new Error('The native documentation session is missing.');
+        }
+
+        await visit(page, new URL(nativeSessionHref, baseUrl).pathname);
+        await screenshot(page, 'native-client-session.png');
     } finally {
         await context.close();
     }

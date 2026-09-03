@@ -169,18 +169,12 @@ export default function QueryRequestsIndex({
                                                             }
                                                             label={queryRequestKindLabel(
                                                                 request.request_kind,
+                                                                request.access_transport,
                                                             )}
                                                         />
                                                         {request.request_kind ===
                                                         'query_access' ? (
                                                             <>
-                                                                {request.access_transport ===
-                                                                    'native_proxy' && (
-                                                                    <StatusBadge
-                                                                        value="native_proxy"
-                                                                        label="Native client"
-                                                                    />
-                                                                )}
                                                                 <SessionAccessBadge
                                                                     mode={
                                                                         request.requested_access_mode

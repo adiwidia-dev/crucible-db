@@ -13,6 +13,10 @@ import {
 import { useState } from 'react';
 import DatabaseConnectionController from '@/actions/App/Http/Controllers/DatabaseConnectionController';
 import NotificationSubscriptionController from '@/actions/App/Http/Controllers/NotificationSubscriptionController';
+import {
+    SemanticIcon,
+    semanticToneForStatus,
+} from '@/components/crucible/semantic-icon';
 import { StatusBadge } from '@/components/crucible/status-badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -89,7 +93,10 @@ export default function ConnectionShow({
                 <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                            <Database className="size-5 text-muted-foreground" />
+                            <SemanticIcon
+                                icon={Database}
+                                tone={semanticToneForStatus(connection.driver)}
+                            />
                             <h1 className="text-2xl leading-tight font-semibold tracking-[-0.025em] text-foreground">
                                 {connection.name}
                             </h1>

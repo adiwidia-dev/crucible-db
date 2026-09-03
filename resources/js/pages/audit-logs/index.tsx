@@ -36,6 +36,7 @@ type AuditLogFilters = {
     action: string;
     actor: string;
     ip_address: string;
+    event_family: string;
 };
 
 type AuditLogFilterOptions = {
@@ -111,7 +112,7 @@ export default function AuditLogsIndex({
                                     <Filter className="size-4 text-muted-foreground" />
                                     Filters
                                 </div>
-                                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                                     <div className="relative">
                                         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                                         <Input
@@ -152,6 +153,19 @@ export default function AuditLogsIndex({
                                         placeholder="IP address"
                                         aria-label="Filter by IP address"
                                     />
+                                    <select
+                                        name="event_family"
+                                        defaultValue={filters.event_family}
+                                        aria-label="Filter by event family"
+                                        className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                    >
+                                        <option value="">
+                                            All event families
+                                        </option>
+                                        <option value="native_proxy">
+                                            Native proxy
+                                        </option>
+                                    </select>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                     <Button disabled={processing}>

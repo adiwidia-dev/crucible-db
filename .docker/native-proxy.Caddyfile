@@ -1,0 +1,17 @@
+{
+	auto_https off
+}
+
+:8000 {
+	@native_client path /.well-known/crucible-native-client.json /native-tunnel/*
+
+	handle @native_client {
+		reverse_proxy native-proxy:8081 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy app:8000
+	}
+}

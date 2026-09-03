@@ -1,8 +1,8 @@
 # Request Query Access
 
-Use Query Access for a time-bounded browser session on one or more connections. It is intended for investigation, controlled repair, or exploratory work that does not fit a fixed Deployment Batch.
+Use Query Access for a time-bounded browser or Native client session on one or more connections. It is intended for investigation, controlled repair, or exploratory work that does not fit a fixed Deployment Batch.
 
-The request form presents Deployment Batch and Query Access side by side. Select Query Access before choosing connections and a session level.
+The request form presents Deployment Batch, browser Query Access, and Native client access side by side. Select the access transport before choosing connections and a session level.
 
 ![New Query Access request](../assets/screenshots/new-query-access-request.png){ .docs-screenshot }
 
@@ -50,3 +50,5 @@ Every query is checked at execution time. It may be blocked because:
 See [Supported SQL](../reference/supported-sql.md) for the boundaries.
 
 Continue with [Run SQL in a Query Access session](query-session-editor.md).
+
+For desktop database tools, continue with [Use Native Client access](native-client-access.md).

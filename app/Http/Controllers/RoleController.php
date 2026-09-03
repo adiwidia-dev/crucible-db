@@ -10,7 +10,9 @@ use App\Models\DatabaseConnection;
 use App\Models\Role;
 use App\Models\RoleConnectionGroupPolicy;
 use App\Models\RoleDatabasePermission;
+use App\Services\ApplicationSettings;
 use App\Services\AuditLogger;
+use App\Services\NativeProxy\LeaseWorkflow;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +44,7 @@ class RoleController extends Controller
         ]);
     }
 
-    public function create(): Response
+    public function create(ApplicationSettings $settings): Response
     {
         abort_unless(request()->user()->isAdmin(), 403);
 
@@ -51,6 +53,7 @@ class RoleController extends Controller
             'connections' => $this->databaseConnectionOptions(),
             'connection_groups' => $this->connectionGroupOptions(),
             'access_modes' => array_map(fn (AccessMode $mode): string => $mode->value, AccessMode::cases()),
+            'access_features' => $this->accessFeatures($settings),
         ]);
     }
 
@@ -75,14 +78,55 @@ class RoleController extends Controller
         return redirect()->route('roles.index');
     }
 
-    public function show(Role $role): RedirectResponse
+    public function show(Role $role, ApplicationSettings $settings): Response
     {
         abort_unless(request()->user()->isAdmin(), 403);
 
-        return redirect()->route('roles.edit', $role);
+        $role->load([
+            'users:id,name,email',
+            'databasePermissions.databaseConnection:id,name,driver,host,port,database,is_active',
+            'connectionGroupPolicies.connectionGroup:id,name,description',
+        ]);
+
+        return Inertia::render('roles/show', [
+            'role' => [
+                'id' => $role->id,
+                'name' => $role->name,
+                'slug' => $role->slug,
+                'description' => $role->description,
+                'is_admin' => $role->is_admin,
+                'users' => $role->users->map(fn ($user): array => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                ]),
+                'policies' => $role->databasePermissions->map(fn (RoleDatabasePermission $permission): array => [
+                    'id' => $permission->id,
+                    'connection' => [
+                        'id' => $permission->databaseConnection->id,
+                        'name' => $permission->databaseConnection->name,
+                        'driver' => $permission->databaseConnection->driver->value,
+                        'endpoint' => $permission->databaseConnection->host.':'.$permission->databaseConnection->port,
+                        'database' => $permission->databaseConnection->database,
+                        'is_active' => $permission->databaseConnection->is_active,
+                    ],
+                    ...$this->policyPayload($permission),
+                ]),
+                'group_policies' => $role->connectionGroupPolicies->map(fn (RoleConnectionGroupPolicy $policy): array => [
+                    'id' => $policy->id,
+                    'connection_group' => [
+                        'id' => $policy->connectionGroup->id,
+                        'name' => $policy->connectionGroup->name,
+                        'description' => $policy->connectionGroup->description,
+                    ],
+                    ...$this->policyPayload($policy),
+                ]),
+            ],
+            'access_features' => $this->accessFeatures($settings),
+        ]);
     }
 
-    public function edit(Role $role): Response
+    public function edit(Role $role, ApplicationSettings $settings): Response
     {
         abort_unless(request()->user()->isAdmin(), 403);
         abort_if($role->is_admin, 403);
@@ -122,10 +166,38 @@ class RoleController extends Controller
             'connections' => $this->databaseConnectionOptions(),
             'connection_groups' => $this->connectionGroupOptions(),
             'access_modes' => array_map(fn (AccessMode $mode): string => $mode->value, AccessMode::cases()),
+            'access_features' => $this->accessFeatures($settings),
         ]);
     }
 
-    public function update(UpdateRoleRequest $request, Role $role, AuditLogger $auditLogger): RedirectResponse
+    /**
+     * @return array{query_access_enabled: bool, native_client_access_enabled: bool}
+     */
+    private function accessFeatures(ApplicationSettings $settings): array
+    {
+        return [
+            'query_access_enabled' => $settings->queryAccessEnabled(),
+            'native_client_access_enabled' => $settings->nativeClientAccessEnabled(),
+        ];
+    }
+
+    /**
+     * @return array{access_mode: string, query_access_mode: string, native_proxy_access_mode: string, can_review: bool, read_requires_approval: bool, write_requires_approval: bool, max_write_session_minutes: int|null}
+     */
+    private function policyPayload(RoleDatabasePermission|RoleConnectionGroupPolicy $policy): array
+    {
+        return [
+            'access_mode' => $policy->access_mode->value,
+            'query_access_mode' => $policy->query_access_mode->value,
+            'native_proxy_access_mode' => $policy->native_proxy_access_mode->value,
+            'can_review' => $policy->can_review,
+            'read_requires_approval' => $policy->read_requires_approval,
+            'write_requires_approval' => $policy->write_requires_approval,
+            'max_write_session_minutes' => $policy->max_write_session_minutes,
+        ];
+    }
+
+    public function update(UpdateRoleRequest $request, Role $role, AuditLogger $auditLogger, LeaseWorkflow $leaseWorkflow): RedirectResponse
     {
         abort_if($role->is_admin, 403);
 
@@ -136,6 +208,12 @@ class RoleController extends Controller
             $this->syncDatabasePolicies($role, $request->policyAttributes());
             $this->syncConnectionGroupPolicies($role, $request->groupPolicyAttributes());
         });
+
+        $leaseWorkflow->revokeForUsers(
+            $role->users()->pluck('users.id')->all(),
+            $request->user(),
+            'Role policy changed.',
+        );
 
         $auditLogger->log('role.updated', $request->user(), $role, [
             'role_id' => $role->id,

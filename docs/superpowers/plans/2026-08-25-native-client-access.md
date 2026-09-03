@@ -1212,7 +1212,7 @@ Expected: FAIL/no match.
 
 - [ ] **Step 2: Implement multi-stage non-root image**
 
-Build `crucible-proxy` with Go 1.26.1, `CGO_ENABLED=0`, pinned modules, stripped binary, OCI source/version/revision/license labels, read-only root filesystem compatibility, non-root user, and no CLI binary in the runtime image.
+Build `crucible-proxy` with Go 1.26.6, `CGO_ENABLED=0`, pinned modules, stripped binary, OCI source/version/revision/license labels, read-only root filesystem compatibility, non-root user, and no CLI binary in the runtime image.
 
 - [ ] **Step 3: Add production service**
 

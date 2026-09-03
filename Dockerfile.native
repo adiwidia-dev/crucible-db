@@ -1,0 +1,35 @@
+FROM golang:1.26.6-alpine AS build
+
+WORKDIR /src/native
+
+COPY native/go.mod native/go.sum ./
+RUN go mod download && go mod verify
+
+COPY native ./
+
+ARG CRUCIBLE_VERSION=dev
+ARG CRUCIBLE_REVISION=unknown
+ARG CRUCIBLE_BUILD_DATE=unknown
+
+RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+    -ldflags="-s -w -X github.com/adiwidia-dev/crucible-db/native/internal/version.Version=${CRUCIBLE_VERSION} -X github.com/adiwidia-dev/crucible-db/native/internal/version.Revision=${CRUCIBLE_REVISION} -X github.com/adiwidia-dev/crucible-db/native/internal/version.Date=${CRUCIBLE_BUILD_DATE}" \
+    -o /out/crucible-proxy ./cmd/crucible-proxy
+
+FROM gcr.io/distroless/static-debian12:nonroot AS production
+
+ARG CRUCIBLE_VERSION=dev
+ARG CRUCIBLE_REVISION=unknown
+
+LABEL org.opencontainers.image.title="Crucible DB Native Proxy" \
+    org.opencontainers.image.description="Private PostgreSQL and MySQL proxy for governed Crucible DB native client access." \
+    org.opencontainers.image.source="https://github.com/adiwidia-dev/crucible-db" \
+    org.opencontainers.image.documentation="https://adiwidia-dev.github.io/crucible-db/" \
+    org.opencontainers.image.version="${CRUCIBLE_VERSION}" \
+    org.opencontainers.image.revision="${CRUCIBLE_REVISION}" \
+    org.opencontainers.image.licenses="MIT"
+
+COPY --from=build /out/crucible-proxy /usr/local/bin/crucible-proxy
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["/usr/local/bin/crucible-proxy"]

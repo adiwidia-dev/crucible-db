@@ -14,12 +14,14 @@ use App\Models\Role;
 use App\Models\RoleConnectionGroupPolicy;
 use App\Models\RoleDatabasePermission;
 use App\Models\User;
+use App\Services\ApplicationSettings;
 use App\Services\DatabaseQueryExecutor;
 use App\Services\DatabaseTlsMaterializer;
 use App\Services\QueryRequestWorkflow;
 use App\Services\QuerySessionWorkflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class QueryAccessPolicyTest extends TestCase
@@ -37,6 +39,56 @@ class QueryAccessPolicyTest extends TestCase
 
         $this->assertSame(AccessTransport::Browser, $request->access_transport);
         $this->assertSame(AccessMode::Read, $permission->native_proxy_access_mode);
+    }
+
+    public function test_query_request_detail_uses_status_aware_approval_labels(): void
+    {
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create([
+            'name' => 'Crucible Admin',
+        ]);
+        $connection = DatabaseConnection::factory()->create();
+
+        $draft = QueryRequest::factory()->queryAccess()->create([
+            'requester_id' => $admin->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Draft,
+            'requires_approval' => true,
+        ]);
+        $draft->accessConnections()->sync([$connection->id]);
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.show', $draft))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('query_request.approval_label', 'Not submitted'));
+
+        $pending = QueryRequest::factory()->queryAccess()->create([
+            'requester_id' => $admin->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::PendingReview,
+            'requires_approval' => true,
+        ]);
+        $pending->accessConnections()->sync([$connection->id]);
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.show', $pending))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('query_request.approval_label', 'Awaiting decision'));
+
+        $approved = QueryRequest::factory()->queryAccess()->approved()->create([
+            'requester_id' => $admin->id,
+            'database_connection_id' => $connection->id,
+            'requires_approval' => true,
+            'approved_by_id' => $admin->id,
+        ]);
+        $approved->accessConnections()->sync([$connection->id]);
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.show', $approved))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('query_request.approval_label', 'Approved by Crucible Admin'));
     }
 
     public function test_native_proxy_permission_is_denied_for_an_inactive_connection_before_admin_resolution(): void
@@ -142,6 +194,87 @@ class QueryAccessPolicyTest extends TestCase
             AccessMode::Write,
             $user->effectiveNativeProxyPermissionFor($connection, QueryType::Write)['native_proxy_access_mode'],
         );
+    }
+
+    public function test_disabled_role_workflows_are_excluded_from_request_options(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $user = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+            'query_access_mode' => AccessMode::None,
+            'native_proxy_access_mode' => AccessMode::None,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('query-requests.create'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('connections.0.can_query_access_read', false)
+                ->where('connections.0.can_native_proxy_read', false));
+    }
+
+    public function test_globally_disabled_access_workflows_are_hidden_and_cannot_be_created(): void
+    {
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
+        $connection = DatabaseConnection::factory()->create();
+
+        app(ApplicationSettings::class)->put([
+            ApplicationSettings::QueryAccessEnabled => false,
+            ApplicationSettings::NativeClientAccessEnabled => false,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.create'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('access_features.query_access_enabled', false)
+                ->where('access_features.native_client_access_enabled', false));
+
+        $payload = [
+            'request_kind' => QueryRequestKind::QueryAccess->value,
+            'requested_access_mode' => AccessMode::Read->value,
+            'database_connection_ids' => [$connection->id],
+            'title' => 'Temporary investigation access',
+            'access_duration_minutes' => 20,
+        ];
+
+        $this->actingAs($admin)
+            ->post(route('query-requests.store'), [
+                ...$payload,
+                'access_transport' => AccessTransport::Browser->value,
+            ])
+            ->assertSessionHasErrors('request_kind');
+
+        $this->actingAs($admin)
+            ->post(route('query-requests.store'), [
+                ...$payload,
+                'access_transport' => AccessTransport::NativeProxy->value,
+            ])
+            ->assertSessionHasErrors('access_transport');
+    }
+
+    public function test_globally_disabled_access_workflow_cannot_start_a_new_session(): void
+    {
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
+        $connection = DatabaseConnection::factory()->create();
+        $queryRequest = QueryRequest::factory()->queryAccess()->approved()->create([
+            'requester_id' => $admin->id,
+            'database_connection_id' => $connection->id,
+            'access_transport' => AccessTransport::Browser,
+        ]);
+        $queryRequest->accessConnections()->sync([$connection->id]);
+
+        app(ApplicationSettings::class)->put([
+            ApplicationSettings::QueryAccessEnabled => false,
+        ]);
+
+        $this->expectException(ValidationException::class);
+
+        app(QuerySessionWorkflow::class)->start($queryRequest, $admin);
     }
 
     public function test_native_client_access_uses_native_policy_and_persists_one_target_transport(): void

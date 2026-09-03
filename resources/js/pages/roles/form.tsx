@@ -83,6 +83,10 @@ type Props = {
     connections: Connection[];
     connection_groups: ConnectionGroup[];
     access_modes: AccessMode[];
+    access_features: {
+        query_access_enabled: boolean;
+        native_client_access_enabled: boolean;
+    };
 };
 
 type ConnectionGroup = {
@@ -114,83 +118,51 @@ type GroupPolicyDraft = {
     max_write_session_minutes: number | null;
 };
 
-function QueryAccessModeField({
-    name,
-    accessMode,
-    queryAccessMode,
-    onChange,
-}: {
-    name: string;
-    accessMode: AccessMode;
-    queryAccessMode: AccessMode;
-    onChange: (queryAccessMode: AccessMode) => void;
-}) {
-    return (
-        <>
-            <input
-                type="hidden"
-                name={name}
-                value={accessMode === 'write' ? queryAccessMode : 'read'}
-            />
-            {accessMode === 'write' && (
-                <>
-                    <Label>Query Access</Label>
-                    <select
-                        value={queryAccessMode}
-                        onChange={(event) =>
-                            onChange(event.target.value as AccessMode)
-                        }
-                        className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                    >
-                        <option value="read">Read-only</option>
-                        <option value="write">Read + write</option>
-                    </select>
-                </>
-            )}
-        </>
-    );
+const accessModeRank = { none: 0, read: 1, write: 2 } as const;
+
+function capWorkflowAccessMode(
+    workflowAccessMode: AccessMode,
+    maximumAccessMode: AccessMode,
+): AccessMode {
+    if (
+        accessModeRank[workflowAccessMode] > accessModeRank[maximumAccessMode]
+    ) {
+        return maximumAccessMode;
+    }
+
+    return workflowAccessMode;
 }
 
-function NativeProxyAccessModeField({
+function WorkflowAccessModeField({
+    label,
     name,
     accessMode,
-    nativeProxyAccessMode,
+    workflowAccessMode,
     onChange,
 }: {
+    label: string;
     name: string;
     accessMode: AccessMode;
-    nativeProxyAccessMode: AccessMode;
-    onChange: (nativeProxyAccessMode: AccessMode) => void;
+    workflowAccessMode: AccessMode;
+    onChange: (workflowAccessMode: AccessMode) => void;
 }) {
-    const accessModeRank = { none: 0, read: 1, write: 2 } as const;
-
     return (
         <>
-            <Label>Native Client Access</Label>
+            <Label>{label}</Label>
             <select
                 name={name}
-                value={nativeProxyAccessMode}
+                value={workflowAccessMode}
                 onChange={(event) => onChange(event.target.value as AccessMode)}
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             >
                 <option value="none">Disabled</option>
-                <option
-                    value="read"
-                    disabled={accessModeRank.read > accessModeRank[accessMode]}
-                >
-                    Read-only
-                </option>
-                <option
-                    value="write"
-                    disabled={accessModeRank.write > accessModeRank[accessMode]}
-                >
-                    Read + write
-                </option>
+                {accessMode !== 'none' && (
+                    <option value="read">Read-only</option>
+                )}
+                {accessMode === 'write' && (
+                    <option value="write">Read + write</option>
+                )}
             </select>
-            <p className="text-xs text-muted-foreground">
-                Native SQL is unknown before approval and authorized when it
-                runs.
-            </p>
         </>
     );
 }
@@ -200,8 +172,17 @@ export default function RoleForm({
     connections,
     connection_groups: connectionGroups,
     access_modes,
+    access_features: accessFeatures,
 }: Props) {
     const isEditing = Boolean(role);
+    const groupPolicyColumns =
+        accessFeatures.query_access_enabled &&
+        accessFeatures.native_client_access_enabled
+            ? 'xl:grid-cols-7'
+            : accessFeatures.query_access_enabled ||
+                accessFeatures.native_client_access_enabled
+              ? 'xl:grid-cols-6'
+              : 'xl:grid-cols-5';
     const action = role
         ? RoleController.update.form(role.id)
         : RoleController.store.form();
@@ -260,7 +241,7 @@ export default function RoleForm({
             {
                 database_connection_id: connectionId,
                 access_mode: 'read',
-                query_access_mode: 'read',
+                query_access_mode: 'none',
                 native_proxy_access_mode: 'none',
                 can_review: false,
                 read_requires_approval: false,
@@ -297,7 +278,7 @@ export default function RoleForm({
             {
                 connection_group_id: connectionGroupId,
                 access_mode: 'read',
-                query_access_mode: 'read',
+                query_access_mode: 'none',
                 native_proxy_access_mode: 'none',
                 can_review: false,
                 read_requires_approval: false,
@@ -353,8 +334,8 @@ export default function RoleForm({
                                         and purpose for people assigning it.
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="grid max-w-3xl gap-5 px-4 py-5 sm:grid-cols-2 sm:px-5">
-                                    <div className="grid gap-2">
+                                <CardContent className="grid items-start gap-5 px-4 py-5 sm:px-5">
+                                    <div className="grid w-full max-w-4xl gap-2">
                                         <Label htmlFor="name">Role Name</Label>
                                         <Input
                                             id="name"
@@ -365,16 +346,19 @@ export default function RoleForm({
                                         <InputError message={errors.name} />
                                     </div>
 
-                                    <div className="grid gap-2">
+                                    <div className="grid w-full max-w-4xl gap-2">
                                         <Label htmlFor="description">
                                             Description
                                         </Label>
-                                        <Input
+                                        <textarea
                                             id="description"
                                             name="description"
+                                            rows={3}
                                             defaultValue={
                                                 role?.description ?? ''
                                             }
+                                            placeholder="What this role is intended to do and who should receive it"
+                                            className="min-h-24 resize-y rounded-md border border-input bg-background px-3 py-2 text-sm transition-[color,border-color,box-shadow] duration-150 ease-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-reduce:transition-none"
                                         />
                                         <InputError
                                             message={errors.description}
@@ -525,7 +509,9 @@ export default function RoleForm({
                                                                                 Remove
                                                                             </Button>
                                                                         </div>
-                                                                        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-7">
+                                                                        <div
+                                                                            className={`mt-4 grid items-start gap-4 sm:grid-cols-2 ${groupPolicyColumns}`}
+                                                                        >
                                                                             <div className="grid gap-2">
                                                                                 <Label>
                                                                                     Maximum
@@ -550,20 +536,15 @@ export default function RoleForm({
                                                                                                 access_mode:
                                                                                                     accessMode,
                                                                                                 query_access_mode:
-                                                                                                    accessMode ===
-                                                                                                    'write'
-                                                                                                        ? policy.query_access_mode
-                                                                                                        : 'read',
+                                                                                                    capWorkflowAccessMode(
+                                                                                                        policy.query_access_mode,
+                                                                                                        accessMode,
+                                                                                                    ),
                                                                                                 native_proxy_access_mode:
-                                                                                                    accessMode ===
-                                                                                                    'none'
-                                                                                                        ? 'none'
-                                                                                                        : accessMode ===
-                                                                                                                'read' &&
-                                                                                                            policy.native_proxy_access_mode ===
-                                                                                                                'write'
-                                                                                                          ? 'read'
-                                                                                                          : policy.native_proxy_access_mode,
+                                                                                                    capWorkflowAccessMode(
+                                                                                                        policy.native_proxy_access_mode,
+                                                                                                        accessMode,
+                                                                                                    ),
                                                                                                 write_requires_approval:
                                                                                                     accessMode ===
                                                                                                     'write',
@@ -601,50 +582,72 @@ export default function RoleForm({
                                                                                     )}
                                                                                 </select>
                                                                             </div>
-                                                                            <div className="grid gap-2">
-                                                                                <QueryAccessModeField
+                                                                            {accessFeatures.query_access_enabled ? (
+                                                                                <div className="grid content-start gap-2">
+                                                                                    <WorkflowAccessModeField
+                                                                                        label="Query Access"
+                                                                                        name={`group_policies[${index}][query_access_mode]`}
+                                                                                        accessMode={
+                                                                                            policy.access_mode
+                                                                                        }
+                                                                                        workflowAccessMode={
+                                                                                            policy.query_access_mode
+                                                                                        }
+                                                                                        onChange={(
+                                                                                            queryAccessMode,
+                                                                                        ) =>
+                                                                                            updateGroupPolicy(
+                                                                                                index,
+                                                                                                {
+                                                                                                    query_access_mode:
+                                                                                                        queryAccessMode,
+                                                                                                },
+                                                                                            )
+                                                                                        }
+                                                                                    />
+                                                                                </div>
+                                                                            ) : (
+                                                                                <input
+                                                                                    type="hidden"
                                                                                     name={`group_policies[${index}][query_access_mode]`}
-                                                                                    accessMode={
-                                                                                        policy.access_mode
-                                                                                    }
-                                                                                    queryAccessMode={
+                                                                                    value={
                                                                                         policy.query_access_mode
                                                                                     }
-                                                                                    onChange={(
-                                                                                        queryAccessMode,
-                                                                                    ) =>
-                                                                                        updateGroupPolicy(
-                                                                                            index,
-                                                                                            {
-                                                                                                query_access_mode:
-                                                                                                    queryAccessMode,
-                                                                                            },
-                                                                                        )
-                                                                                    }
                                                                                 />
-                                                                            </div>
-                                                                            <div className="grid gap-2">
-                                                                                <NativeProxyAccessModeField
+                                                                            )}
+                                                                            {accessFeatures.native_client_access_enabled ? (
+                                                                                <div className="grid content-start gap-2">
+                                                                                    <WorkflowAccessModeField
+                                                                                        label="Native Client Access"
+                                                                                        name={`group_policies[${index}][native_proxy_access_mode]`}
+                                                                                        accessMode={
+                                                                                            policy.access_mode
+                                                                                        }
+                                                                                        workflowAccessMode={
+                                                                                            policy.native_proxy_access_mode
+                                                                                        }
+                                                                                        onChange={(
+                                                                                            nativeProxyAccessMode,
+                                                                                        ) =>
+                                                                                            updateGroupPolicy(
+                                                                                                index,
+                                                                                                {
+                                                                                                    native_proxy_access_mode:
+                                                                                                        nativeProxyAccessMode,
+                                                                                                },
+                                                                                            )
+                                                                                        }
+                                                                                    />
+                                                                                </div>
+                                                                            ) : (
+                                                                                <input
+                                                                                    type="hidden"
                                                                                     name={`group_policies[${index}][native_proxy_access_mode]`}
-                                                                                    accessMode={
-                                                                                        policy.access_mode
-                                                                                    }
-                                                                                    nativeProxyAccessMode={
+                                                                                    value={
                                                                                         policy.native_proxy_access_mode
                                                                                     }
-                                                                                    onChange={(
-                                                                                        nativeProxyAccessMode,
-                                                                                    ) =>
-                                                                                        updateGroupPolicy(
-                                                                                            index,
-                                                                                            {
-                                                                                                native_proxy_access_mode:
-                                                                                                    nativeProxyAccessMode,
-                                                                                            },
-                                                                                        )
-                                                                                    }
                                                                                 />
-                                                                            </div>
+                                                                            )}
                                                                             <div className="grid gap-2">
                                                                                 <Label>
                                                                                     Reviewer
@@ -869,15 +872,19 @@ export default function RoleForm({
                                                                                 <th className="py-2.5 pr-4 font-medium">
                                                                                     Reviewer
                                                                                 </th>
-                                                                                <th className="py-2.5 pr-4 font-medium">
-                                                                                    Query
-                                                                                    Access
-                                                                                </th>
-                                                                                <th className="py-2.5 pr-4 font-medium">
-                                                                                    Native
-                                                                                    Client
-                                                                                    Access
-                                                                                </th>
+                                                                                {accessFeatures.query_access_enabled && (
+                                                                                    <th className="py-2.5 pr-4 font-medium">
+                                                                                        Query
+                                                                                        Access
+                                                                                    </th>
+                                                                                )}
+                                                                                {accessFeatures.native_client_access_enabled && (
+                                                                                    <th className="py-2.5 pr-4 font-medium">
+                                                                                        Native
+                                                                                        Client
+                                                                                        Access
+                                                                                    </th>
+                                                                                )}
                                                                                 <th className="py-2.5 pr-4 font-medium">
                                                                                     Read
                                                                                     approval
@@ -921,7 +928,7 @@ export default function RoleForm({
                                                                                             key={
                                                                                                 connection.id
                                                                                             }
-                                                                                            className="relative mb-3 grid grid-cols-1 gap-4 rounded-md border bg-muted/10 p-4 text-left transition-colors last:mb-0 hover:bg-muted/20 sm:grid-cols-2 xl:grid-cols-6"
+                                                                                            className="relative mb-3 grid grid-cols-1 items-start gap-4 rounded-md border bg-muted/10 p-4 text-left transition-colors last:mb-0 hover:bg-muted/20 sm:grid-cols-2 xl:grid-cols-6"
                                                                                         >
                                                                                             <td className="col-span-full min-w-0 border-b pr-12 pb-3">
                                                                                                 <input
@@ -1004,20 +1011,15 @@ export default function RoleForm({
                                                                                                                 access_mode:
                                                                                                                     accessMode,
                                                                                                                 query_access_mode:
-                                                                                                                    accessMode ===
-                                                                                                                    'write'
-                                                                                                                        ? policy.query_access_mode
-                                                                                                                        : 'read',
+                                                                                                                    capWorkflowAccessMode(
+                                                                                                                        policy.query_access_mode,
+                                                                                                                        accessMode,
+                                                                                                                    ),
                                                                                                                 native_proxy_access_mode:
-                                                                                                                    accessMode ===
-                                                                                                                    'none'
-                                                                                                                        ? 'none'
-                                                                                                                        : accessMode ===
-                                                                                                                                'read' &&
-                                                                                                                            policy.native_proxy_access_mode ===
-                                                                                                                                'write'
-                                                                                                                          ? 'read'
-                                                                                                                          : policy.native_proxy_access_mode,
+                                                                                                                    capWorkflowAccessMode(
+                                                                                                                        policy.native_proxy_access_mode,
+                                                                                                                        accessMode,
+                                                                                                                    ),
                                                                                                                 write_requires_approval:
                                                                                                                     accessMode ===
                                                                                                                     'write',
@@ -1058,50 +1060,76 @@ export default function RoleForm({
                                                                                                     }
                                                                                                 />
                                                                                             </td>
-                                                                                            <td className="grid gap-2">
-                                                                                                <QueryAccessModeField
-                                                                                                    name={`policies[${index}][query_access_mode]`}
-                                                                                                    accessMode={
-                                                                                                        policy.access_mode
-                                                                                                    }
-                                                                                                    queryAccessMode={
-                                                                                                        policy.query_access_mode
-                                                                                                    }
-                                                                                                    onChange={(
-                                                                                                        queryAccessMode,
-                                                                                                    ) =>
-                                                                                                        updatePolicy(
-                                                                                                            index,
-                                                                                                            {
-                                                                                                                query_access_mode:
-                                                                                                                    queryAccessMode,
-                                                                                                            },
-                                                                                                        )
-                                                                                                    }
-                                                                                                />
-                                                                                            </td>
-                                                                                            <td className="grid gap-2">
-                                                                                                <NativeProxyAccessModeField
-                                                                                                    name={`policies[${index}][native_proxy_access_mode]`}
-                                                                                                    accessMode={
-                                                                                                        policy.access_mode
-                                                                                                    }
-                                                                                                    nativeProxyAccessMode={
-                                                                                                        policy.native_proxy_access_mode
-                                                                                                    }
-                                                                                                    onChange={(
-                                                                                                        nativeProxyAccessMode,
-                                                                                                    ) =>
-                                                                                                        updatePolicy(
-                                                                                                            index,
-                                                                                                            {
-                                                                                                                native_proxy_access_mode:
-                                                                                                                    nativeProxyAccessMode,
-                                                                                                            },
-                                                                                                        )
-                                                                                                    }
-                                                                                                />
-                                                                                            </td>
+                                                                                            {accessFeatures.query_access_enabled ? (
+                                                                                                <td className="grid content-start gap-2">
+                                                                                                    <WorkflowAccessModeField
+                                                                                                        label="Query Access"
+                                                                                                        name={`policies[${index}][query_access_mode]`}
+                                                                                                        accessMode={
+                                                                                                            policy.access_mode
+                                                                                                        }
+                                                                                                        workflowAccessMode={
+                                                                                                            policy.query_access_mode
+                                                                                                        }
+                                                                                                        onChange={(
+                                                                                                            queryAccessMode,
+                                                                                                        ) =>
+                                                                                                            updatePolicy(
+                                                                                                                index,
+                                                                                                                {
+                                                                                                                    query_access_mode:
+                                                                                                                        queryAccessMode,
+                                                                                                                },
+                                                                                                            )
+                                                                                                        }
+                                                                                                    />
+                                                                                                </td>
+                                                                                            ) : (
+                                                                                                <td className="hidden">
+                                                                                                    <input
+                                                                                                        type="hidden"
+                                                                                                        name={`policies[${index}][query_access_mode]`}
+                                                                                                        value={
+                                                                                                            policy.query_access_mode
+                                                                                                        }
+                                                                                                    />
+                                                                                                </td>
+                                                                                            )}
+                                                                                            {accessFeatures.native_client_access_enabled ? (
+                                                                                                <td className="grid content-start gap-2">
+                                                                                                    <WorkflowAccessModeField
+                                                                                                        label="Native Client Access"
+                                                                                                        name={`policies[${index}][native_proxy_access_mode]`}
+                                                                                                        accessMode={
+                                                                                                            policy.access_mode
+                                                                                                        }
+                                                                                                        workflowAccessMode={
+                                                                                                            policy.native_proxy_access_mode
+                                                                                                        }
+                                                                                                        onChange={(
+                                                                                                            nativeProxyAccessMode,
+                                                                                                        ) =>
+                                                                                                            updatePolicy(
+                                                                                                                index,
+                                                                                                                {
+                                                                                                                    native_proxy_access_mode:
+                                                                                                                        nativeProxyAccessMode,
+                                                                                                                },
+                                                                                                            )
+                                                                                                        }
+                                                                                                    />
+                                                                                                </td>
+                                                                                            ) : (
+                                                                                                <td className="hidden">
+                                                                                                    <input
+                                                                                                        type="hidden"
+                                                                                                        name={`policies[${index}][native_proxy_access_mode]`}
+                                                                                                        value={
+                                                                                                            policy.native_proxy_access_mode
+                                                                                                        }
+                                                                                                    />
+                                                                                                </td>
+                                                                                            )}
                                                                                             <td className="grid gap-2">
                                                                                                 <Label>
                                                                                                     Reviewer

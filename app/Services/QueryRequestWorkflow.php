@@ -14,6 +14,7 @@ use App\Models\DatabaseConnection;
 use App\Models\QueryRequest;
 use App\Models\QueryReview;
 use App\Models\User;
+use App\Services\NativeProxy\LeaseWorkflow;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -26,8 +27,10 @@ class QueryRequestWorkflow
     public function __construct(
         private readonly AuditLogger $auditLogger,
         private readonly DeploymentPreflight $deploymentPreflight,
-        private readonly QueryGuard $queryGuard,
+        private readonly DeploymentStatementPolicy $deploymentStatementPolicy,
         private readonly NotificationDispatcher $notificationDispatcher,
+        private readonly LeaseWorkflow $nativeProxyLeaseWorkflow,
+        private readonly ApplicationSettings $applicationSettings,
     ) {}
 
     /**
@@ -52,12 +55,13 @@ class QueryRequestWorkflow
         $requestKind = QueryRequestKind::from($data['request_kind']);
         $accessTransport = $this->accessTransport($data);
         $this->ensureAccessTransportIsValidForRequestKind($accessTransport, $requestKind);
+        $this->ensureAccessWorkflowIsEnabled($requestKind, $accessTransport);
         $statements = $requestKind === QueryRequestKind::SingleExecution
             ? $this->validateStatements($this->statementInput($data))
             : [];
         $usesEmergencySqlFallback = $requestKind === QueryRequestKind::SingleExecution
             && collect($statements)->contains(
-                fn (array $statement): bool => $this->queryGuard->usesEmergencySqlFallback($statement['sql']),
+                fn (array $statement): bool => $statement['policy_source'] === 'emergency_fallback',
             );
         $databaseConnections = $requestKind === QueryRequestKind::SingleExecution
             ? $this->databaseConnectionsForStatements($statements)
@@ -171,7 +175,7 @@ class QueryRequestWorkflow
             if ($usesEmergencySqlFallback) {
                 $this->auditLogger->log('query_request.emergency_sql_fallback_used', $requester, $queryRequest, [
                     'statement_positions' => collect($statements)
-                        ->filter(fn (array $statement): bool => $this->queryGuard->usesEmergencySqlFallback($statement['sql']))
+                        ->filter(fn (array $statement): bool => $statement['policy_source'] === 'emergency_fallback')
                         ->pluck('position')
                         ->values()
                         ->all(),
@@ -253,12 +257,13 @@ class QueryRequestWorkflow
         $requestKind = QueryRequestKind::from($data['request_kind']);
         $accessTransport = $this->accessTransport($data);
         $this->ensureAccessTransportIsValidForRequestKind($accessTransport, $requestKind);
+        $this->ensureAccessWorkflowIsEnabled($requestKind, $accessTransport);
         $statements = $requestKind === QueryRequestKind::SingleExecution
             ? $this->validateStatements($this->statementInput($data))
             : [];
         $usesEmergencySqlFallback = $requestKind === QueryRequestKind::SingleExecution
             && collect($statements)->contains(
-                fn (array $statement): bool => $this->queryGuard->usesEmergencySqlFallback($statement['sql']),
+                fn (array $statement): bool => $statement['policy_source'] === 'emergency_fallback',
             );
         $databaseConnections = $requestKind === QueryRequestKind::SingleExecution
             ? $this->databaseConnectionsForStatements($statements)
@@ -408,7 +413,7 @@ class QueryRequestWorkflow
             if ($usesEmergencySqlFallback) {
                 $this->auditLogger->log('query_request.emergency_sql_fallback_used', $actor, $lockedQueryRequest, [
                     'statement_positions' => collect($statements)
-                        ->filter(fn (array $statement): bool => $this->queryGuard->usesEmergencySqlFallback($statement['sql']))
+                        ->filter(fn (array $statement): bool => $statement['policy_source'] === 'emergency_fallback')
                         ->pluck('position')
                         ->values()
                         ->all(),
@@ -687,6 +692,11 @@ class QueryRequestWorkflow
         }, attempts: 3);
 
         $this->notificationDispatcher->requestCancelled($cancelledRequest, $actor);
+        $this->nativeProxyLeaseWorkflow->revokeForQueryRequest(
+            $cancelledRequest,
+            $actor,
+            'Query request was cancelled.',
+        );
 
         return $cancelledRequest;
     }
@@ -773,6 +783,8 @@ class QueryRequestWorkflow
 
     private function createRetryRequest(QueryRequest $sourceRequest, User $actor, ?int $retryFromPosition): QueryRequest
     {
+        $this->ensureAccessWorkflowIsEnabled($sourceRequest->request_kind, $sourceRequest->access_transport);
+
         $statements = $sourceRequest->request_kind === QueryRequestKind::SingleExecution
             ? $sourceRequest->statements
                 ->filter(fn ($statement): bool => $statement->position >= ($retryFromPosition ?? 1))
@@ -1050,7 +1062,7 @@ class QueryRequestWorkflow
 
     /**
      * @param  array<int, array{sql?:string,database_connection_id?:int}>  $statements
-     * @return array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int}>
+     * @return array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int, policy_source:string}>
      *
      * @throws ValidationException
      */
@@ -1107,6 +1119,18 @@ class QueryRequestWorkflow
         }
 
         $validated = [];
+        $databaseConnections = DatabaseConnection::query()
+            ->whereIn(
+                'id',
+                collect($statements)
+                    ->pluck('database_connection_id')
+                    ->filter()
+                    ->map(fn (mixed $id): int => (int) $id)
+                    ->unique()
+                    ->values(),
+            )
+            ->get()
+            ->keyBy('id');
 
         foreach (array_values($statements) as $index => $statement) {
             $databaseConnectionId = (int) ($statement['database_connection_id'] ?? 0);
@@ -1117,9 +1141,19 @@ class QueryRequestWorkflow
                 ]);
             }
 
+            $databaseConnection = $databaseConnections->get($databaseConnectionId);
+
+            if (! $databaseConnection instanceof DatabaseConnection) {
+                throw ValidationException::withMessages([
+                    "statements.{$index}.database_connection_id" => 'Select a valid database connection.',
+                ]);
+            }
+
             try {
-                $sql = $this->queryGuard->validateExecutable((string) ($statement['sql'] ?? ''));
-                $queryType = $this->queryGuard->classify($sql);
+                $inspection = $this->deploymentStatementPolicy->inspect(
+                    (string) ($statement['sql'] ?? ''),
+                    $databaseConnection,
+                );
             } catch (ValidationException $exception) {
                 $message = collect($exception->errors())->flatten()->first() ?? 'The SQL statement is invalid.';
 
@@ -1131,8 +1165,9 @@ class QueryRequestWorkflow
             $validated[] = [
                 'position' => $index + 1,
                 'database_connection_id' => $databaseConnectionId,
-                'sql' => $sql,
-                'query_type' => $queryType,
+                'sql' => $inspection['sql'],
+                'query_type' => $inspection['query_type'],
+                'policy_source' => $inspection['source'],
             ];
         }
 
@@ -1284,6 +1319,28 @@ class QueryRequestWorkflow
         if ($accessTransport === AccessTransport::NativeProxy && $requestKind !== QueryRequestKind::QueryAccess) {
             throw ValidationException::withMessages([
                 'access_transport' => 'Native Client Access is available only for Query Access requests.',
+            ]);
+        }
+    }
+
+    /**
+     * @throws ValidationException
+     */
+    private function ensureAccessWorkflowIsEnabled(QueryRequestKind $requestKind, AccessTransport $accessTransport): void
+    {
+        if ($requestKind !== QueryRequestKind::QueryAccess) {
+            return;
+        }
+
+        if ($accessTransport === AccessTransport::NativeProxy && ! $this->applicationSettings->nativeClientAccessEnabled()) {
+            throw ValidationException::withMessages([
+                'access_transport' => 'Native Client Access is currently disabled by an administrator.',
+            ]);
+        }
+
+        if ($accessTransport === AccessTransport::Browser && ! $this->applicationSettings->queryAccessEnabled()) {
+            throw ValidationException::withMessages([
+                'request_kind' => 'Query Access is currently disabled by an administrator.',
             ]);
         }
     }

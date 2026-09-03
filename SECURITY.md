@@ -25,6 +25,8 @@ Include, when possible:
 - relevant logs with credentials, tokens, SQL results, and personal data removed; and
 - any known mitigation or workaround.
 
+For Native Client access, identify the affected CLI/proxy version, target protocol (PostgreSQL or MySQL), and whether the report concerns device authorization, loopback listening, tunnel routing, control-request verification, revocation, statement policy, or secret handling. Do not include a temporary password, device code, bearer token, HMAC control secret, target credential, SQL parameter value, or query result in the report. Release checksums are signed with GitHub OIDC; include the archive checksum and signature verification result when the issue concerns a distributed CLI artifact.
+
 Maintainers will acknowledge the report, assess severity and affected versions, coordinate a fix and disclosure, and credit the reporter when requested. Please allow a reasonable remediation window before public disclosure.
 
 ## Operational incidents

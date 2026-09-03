@@ -10,7 +10,7 @@ The application does not currently implement a database protocol proxy for exter
 
 ## Runtime and deployment
 
-- **Backend:** Laravel 13 on PHP 8.3+.
+- **Backend:** Laravel 13 on PHP 8.5+.
 - **Frontend:** Inertia v3 with React 19 and TypeScript.
 - **Styling:** Tailwind CSS v4 and the local Crucible design system.
 - **Production HTTP runtime:** FrankenPHP through Laravel Octane.

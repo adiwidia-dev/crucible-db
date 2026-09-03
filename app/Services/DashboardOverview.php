@@ -2,10 +2,13 @@
 
 namespace App\Services;
 
+use App\Enums\NativeProxyConnectionStatus;
 use App\Enums\QueryRequestStatus;
+use App\Models\NativeProxyConnection;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\User;
+use App\Services\NativeProxy\ProxyHealth;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -35,9 +38,12 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class DashboardOverview
 {
+    public function __construct(private readonly ProxyHealth $proxyHealth) {}
+
     /**
      * @return array{
-     *     summary: array{pending_reviews: int, scheduled: int, failed: int, active_sessions: int},
+     *     summary: array{pending_reviews: int, scheduled: int, failed: int, active_sessions: int, native_proxy_connections: int, native_proxy_instances: int},
+     *     native_proxy_health: array{status: 'disabled'|'healthy'|'unhealthy'|'version_mismatch', checked_at: string|null, proxy_id: string|null, version: string|null, message: string|null},
      *     pending_reviews: array<int, RequestQueueItem>,
      *     scheduled_requests: array<int, RequestQueueItem>,
      *     failed_requests: array<int, RequestQueueItem>,
@@ -73,6 +79,10 @@ class DashboardOverview
             ->whereNull('ended_at')
             ->where('expires_at', '>', now())
             ->orderBy('expires_at');
+        $visibleSessionIds = (clone $this->visibleSessions($user, $isAdmin, $reviewableConnectionIds))->select('id');
+        $activeNativeConnections = NativeProxyConnection::query()
+            ->whereIn('query_session_id', $visibleSessionIds)
+            ->whereIn('status', [NativeProxyConnectionStatus::Reserved, NativeProxyConnectionStatus::Active]);
 
         return [
             'summary' => [
@@ -80,7 +90,10 @@ class DashboardOverview
                 'scheduled' => (clone $scheduledRequests)->count(),
                 'failed' => (clone $failedRequests)->count(),
                 'active_sessions' => (clone $expiringSessions)->count(),
+                'native_proxy_connections' => (clone $activeNativeConnections)->count(),
+                'native_proxy_instances' => (clone $activeNativeConnections)->distinct('proxy_instance_id')->count('proxy_instance_id'),
             ],
+            'native_proxy_health' => $this->proxyHealth->latest(),
             'pending_reviews' => $this->requestQueue($pendingReviews),
             'scheduled_requests' => $this->requestQueue($scheduledRequests),
             'failed_requests' => $this->requestQueue($failedRequests),

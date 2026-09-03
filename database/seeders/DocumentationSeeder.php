@@ -3,8 +3,13 @@
 namespace Database\Seeders;
 
 use App\Enums\AccessMode;
+use App\Enums\AccessTransport;
 use App\Enums\AuthProviderType;
+use App\Enums\DatabaseDriver;
+use App\Enums\DatabaseTlsMode;
 use App\Enums\ExecutionStatus;
+use App\Enums\NativeProxyConnectionStatus;
+use App\Enums\NativeProxyLeaseStatus;
 use App\Enums\PreflightStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
@@ -13,6 +18,8 @@ use App\Models\AuditLog;
 use App\Models\AuthProvider;
 use App\Models\ConnectionGroup;
 use App\Models\DatabaseConnection;
+use App\Models\NativeProxyConnection;
+use App\Models\NativeProxyLease;
 use App\Models\NotificationSubscription;
 use App\Models\QueryExecution;
 use App\Models\QueryRequest;
@@ -122,6 +129,7 @@ class DocumentationSeeder extends Seeder
                 [
                     'access_mode' => AccessMode::Write,
                     'query_access_mode' => AccessMode::Read,
+                    'native_proxy_access_mode' => AccessMode::Read,
                     'can_review' => false,
                     'requires_approval' => true,
                     'read_requires_approval' => true,
@@ -137,6 +145,7 @@ class DocumentationSeeder extends Seeder
                 [
                     'access_mode' => AccessMode::Write,
                     'query_access_mode' => AccessMode::Read,
+                    'native_proxy_access_mode' => AccessMode::Read,
                     'can_review' => false,
                     'requires_approval' => true,
                     'read_requires_approval' => true,
@@ -152,6 +161,7 @@ class DocumentationSeeder extends Seeder
                 [
                     'access_mode' => AccessMode::Read,
                     'query_access_mode' => AccessMode::Read,
+                    'native_proxy_access_mode' => AccessMode::Read,
                     'can_review' => true,
                     'requires_approval' => false,
                     'read_requires_approval' => false,
@@ -320,6 +330,93 @@ class DocumentationSeeder extends Seeder
                 ],
             );
 
+            $nativeQueryAccess = QueryRequest::query()->updateOrCreate(
+                ['title' => 'Native Client: investigate checkout timing'],
+                [
+                    'requester_id' => $requester->id,
+                    'database_connection_id' => $postgres->id,
+                    'approved_by_id' => $reviewer->id,
+                    'description' => 'Inspect synthetic checkout timing through a local-only desktop client tunnel.',
+                    'sql' => '',
+                    'query_type' => QueryType::Read,
+                    'request_kind' => QueryRequestKind::QueryAccess,
+                    'access_transport' => AccessTransport::NativeProxy,
+                    'requested_access_mode' => AccessMode::Read,
+                    'status' => QueryRequestStatus::Approved,
+                    'requires_approval' => true,
+                    'preflight_status' => PreflightStatus::NotRun,
+                    'access_duration_minutes' => 60,
+                    'approved_at' => now()->subMinutes(5),
+                ],
+            );
+            $nativeQueryAccess->accessConnections()->sync([$postgres->id]);
+            $nativeSession = QuerySession::query()->updateOrCreate(
+                ['query_request_id' => $nativeQueryAccess->id, 'user_id' => $requester->id],
+                [
+                    'database_connection_id' => $postgres->id,
+                    'started_at' => now()->subMinutes(5),
+                    'expires_at' => now()->addMinutes(55),
+                    'ended_at' => null,
+                ],
+            );
+            $nativeLease = NativeProxyLease::query()->updateOrCreate(
+                ['query_session_id' => $nativeSession->id],
+                [
+                    'query_request_id' => $nativeQueryAccess->id,
+                    'user_id' => $requester->id,
+                    'database_connection_id' => $postgres->id,
+                    'protocol' => DatabaseDriver::PostgreSql,
+                    'access_mode' => AccessMode::Read,
+                    'synthetic_username' => 'docs-native-client',
+                    'synthetic_password_hash' => hash('sha256', 'not-a-real-password'),
+                    'protocol_auth_secret' => null,
+                    'credential_version' => 1,
+                    'status' => NativeProxyLeaseStatus::Active,
+                    'max_concurrent_connections' => 3,
+                    'activated_at' => now()->subMinutes(5),
+                    'expires_at' => $nativeSession->expires_at,
+                ],
+            );
+            $nativeConnection = NativeProxyConnection::query()->updateOrCreate(
+                ['proxy_connection_id' => 'documentation-native-connection'],
+                [
+                    'lease_id' => $nativeLease->id,
+                    'query_session_id' => $nativeSession->id,
+                    'query_request_id' => $nativeQueryAccess->id,
+                    'user_id' => $requester->id,
+                    'database_connection_id' => $postgres->id,
+                    'protocol' => DatabaseDriver::PostgreSql,
+                    'proxy_instance_id' => 'documentation-proxy',
+                    'client_application' => 'DBeaver',
+                    'upstream_tls_mode' => DatabaseTlsMode::VerifyIdentity,
+                    'upstream_tls_verified' => true,
+                    'status' => NativeProxyConnectionStatus::Active,
+                    'connected_at' => now()->subMinutes(3),
+                    'authenticated_at' => now()->subMinutes(3),
+                    'last_activity_at' => now()->subMinute(),
+                    'statement_count' => 1,
+                ],
+            );
+            QuerySessionQuery::query()->updateOrCreate(
+                ['query_session_id' => $nativeSession->id, 'native_proxy_connection_id' => $nativeConnection->id],
+                [
+                    'database_connection_id' => $postgres->id,
+                    'user_id' => $requester->id,
+                    'sql' => '',
+                    'native_protocol_command' => 'query',
+                    'native_sql_fingerprint' => 'f6d7b3ca6bbf8469',
+                    'native_parameter_count' => 0,
+                    'query_type' => QueryType::Read,
+                    'status' => ExecutionStatus::Succeeded,
+                    'started_at' => now()->subMinute(),
+                    'finished_at' => now()->subMinute()->addMilliseconds(28),
+                    'duration_ms' => 28,
+                    'row_count' => 3,
+                    'result_truncated' => false,
+                    'sample_rows' => null,
+                ],
+            );
+
             NotificationSubscription::query()->updateOrCreate([
                 'user_id' => $requester->id,
                 'subscribable_type' => QueryRequest::class,
@@ -376,6 +473,7 @@ class DocumentationSeeder extends Seeder
                 [$blockedDraft, $requester, 'query_request.draft_saved'],
                 [$queryAccess, $requester, 'query_access.requested'],
                 [$activeQueryAccess, $reviewer, 'query_session.started'],
+                [$nativeQueryAccess, $requester, 'native_proxy.lease_created'],
             ];
 
             foreach ($auditEntries as [$queryRequest, $actor, $action]) {

@@ -15,8 +15,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['query_session_id', 'query_request_id', 'user_id', 'database_connection_id', 'protocol', 'access_mode', 'synthetic_username', 'synthetic_password_hash', 'protocol_auth_secret', 'credential_version', 'status', 'max_concurrent_connections', 'credentials_revealed_at', 'activated_at', 'expires_at', 'last_used_at', 'revoked_at', 'revocation_reason', 'revoked_by_id'])]
-#[Hidden(['synthetic_password_hash', 'protocol_auth_secret'])]
+#[Fillable(['query_session_id', 'query_request_id', 'user_id', 'database_connection_id', 'protocol', 'access_mode', 'synthetic_username', 'synthetic_password_hash', 'protocol_auth_secret', 'credential_creation_idempotency_key', 'credential_version', 'status', 'max_concurrent_connections', 'credentials_revealed_at', 'activated_at', 'expires_at', 'last_used_at', 'revoked_at', 'revocation_reason', 'revoked_by_id'])]
+#[Hidden(['synthetic_password_hash', 'protocol_auth_secret', 'credential_creation_idempotency_key'])]
 class NativeProxyLease extends Model
 {
     /** @use HasFactory<NativeProxyLeaseFactory> */
