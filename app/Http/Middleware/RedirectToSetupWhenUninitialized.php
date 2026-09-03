@@ -25,7 +25,7 @@ class RedirectToSetupWhenUninitialized
         }
 
         if ($this->applicationDatabaseManager->requiresRestart()) {
-            if ($request->routeIs('setup.database.restart')) {
+            if ($request->routeIs('setup.database.restart', 'application-database-migrations.*')) {
                 return $next($request);
             }
 

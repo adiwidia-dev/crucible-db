@@ -2,10 +2,53 @@
 
 namespace App\Services;
 
+use Closure;
 use RuntimeException;
 
 final class ApplicationDatabaseMigrationFence
 {
+    /**
+     * @template TReturn
+     *
+     * @param  Closure(): TReturn  $operation
+     * @return TReturn
+     */
+    public function runExclusive(?string $planId, Closure $operation): mixed
+    {
+        $directory = dirname($this->path());
+
+        if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+            throw new RuntimeException('The application database migration fence directory could not be created.');
+        }
+
+        $lockPath = $this->path().'.operation.lock';
+        $lock = fopen($lockPath, 'c');
+
+        if ($lock === false) {
+            throw new RuntimeException('The application database migration operation lock could not be opened.');
+        }
+
+        try {
+            if (! chmod($lockPath, 0600)) {
+                throw new RuntimeException('The application database migration operation lock could not be secured.');
+            }
+
+            if (! flock($lock, LOCK_EX | LOCK_NB)) {
+                $suffix = $planId === null ? '' : " for plan {$planId}";
+
+                throw new RuntimeException("Another application database migration operation{$suffix} is already running.");
+            }
+
+            try {
+                return $operation();
+            } finally {
+                flock($lock, LOCK_UN);
+            }
+        } finally {
+            fclose($lock);
+        }
+    }
+
     /** @return array{plan_id: string, activated_at: string}|null */
     public function active(): ?array
     {

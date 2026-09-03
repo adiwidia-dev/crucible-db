@@ -30,36 +30,38 @@ final class ApplicationDatabaseMigrationManager
      */
     public function plan(array $destinationPayload): array
     {
-        $this->assertManagedConfiguration();
-        $sourcePayload = $this->configuration->activePayload();
-        $sourceFingerprint = $this->configuration->fingerprint($sourcePayload);
-        $destinationFingerprint = $this->configuration->fingerprint($destinationPayload);
+        return $this->fence->runExclusive(null, function () use ($destinationPayload): array {
+            $this->assertManagedConfiguration();
+            $sourcePayload = $this->configuration->activePayload();
+            $sourceFingerprint = $this->configuration->fingerprint($sourcePayload);
+            $destinationFingerprint = $this->configuration->fingerprint($destinationPayload);
 
-        if (hash_equals($sourceFingerprint, $destinationFingerprint)) {
-            throw new RuntimeException('Source and destination application databases are the same.');
-        }
+            if (hash_equals($sourceFingerprint, $destinationFingerprint)) {
+                throw new RuntimeException('Source and destination application databases are the same.');
+            }
 
-        $this->assertDestinationIsEmpty($destinationPayload);
-        $tables = $this->inspectSource($sourcePayload);
+            $this->assertDestinationIsEmpty($destinationPayload);
+            $tables = $this->inspectSource($sourcePayload);
 
-        return $this->store->create([
-            'status' => ApplicationDatabaseMigrationStatus::Planned->value,
-            'source' => [
-                'driver' => $sourcePayload['driver'],
-                'database' => $sourcePayload['database'] ?? null,
-                'fingerprint' => $sourceFingerprint,
-                'payload' => $sourcePayload,
-            ],
-            'destination' => [
-                'driver' => $destinationPayload['driver'],
-                'database' => $destinationPayload['database'] ?? null,
-                'fingerprint' => $destinationFingerprint,
-                'payload' => $destinationPayload,
-            ],
-            'excluded_tables' => ['cache', 'cache_locks', 'jobs', 'migrations', 'sessions'],
-            'planned_tables' => $tables,
-            'tables' => [],
-        ]);
+            return $this->store->create([
+                'status' => ApplicationDatabaseMigrationStatus::Planned->value,
+                'source' => [
+                    'driver' => $sourcePayload['driver'],
+                    'database' => $sourcePayload['database'] ?? null,
+                    'fingerprint' => $sourceFingerprint,
+                    'payload' => $sourcePayload,
+                ],
+                'destination' => [
+                    'driver' => $destinationPayload['driver'],
+                    'database' => $destinationPayload['database'] ?? null,
+                    'fingerprint' => $destinationFingerprint,
+                    'payload' => $destinationPayload,
+                ],
+                'excluded_tables' => ['cache', 'cache_locks', 'jobs', 'migrations', 'sessions'],
+                'planned_tables' => $tables,
+                'tables' => [],
+            ]);
+        });
     }
 
     /** @return array<string, mixed> */
@@ -79,22 +81,33 @@ final class ApplicationDatabaseMigrationManager
     /** @return array<string, mixed> */
     public function recordOperatorEvent(string $id, string $event, User $actor): array
     {
-        return $this->store->update($id, function (array $state) use ($actor, $event): array {
-            $state['events'][] = [
-                'at' => now()->toIso8601String(),
-                'event' => $event,
-                'actor' => [
-                    'id' => $actor->getKey(),
-                    'name' => $actor->name,
-                ],
-            ];
+        return $this->fence->runExclusive($id, function () use ($actor, $event, $id): array {
+            return $this->store->update($id, function (array $state) use ($actor, $event): array {
+                $state['events'][] = [
+                    'at' => now()->toIso8601String(),
+                    'event' => $event,
+                    'actor' => [
+                        'id' => $actor->getKey(),
+                        'name' => $actor->name,
+                    ],
+                ];
 
-            return $state;
+                return $state;
+            });
         });
     }
 
     /** @return array<string, mixed> */
     public function migrate(?string $id, int $drainTimeoutSeconds): array
+    {
+        return $this->fence->runExclusive(
+            $id,
+            fn (): array => $this->migrateWithoutLock($id, $drainTimeoutSeconds),
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function migrateWithoutLock(?string $id, int $drainTimeoutSeconds): array
     {
         $state = $this->store->read($id);
         $id = (string) $state['id'];
@@ -171,6 +184,15 @@ final class ApplicationDatabaseMigrationManager
     /** @return array<string, mixed> */
     public function verify(?string $id): array
     {
+        return $this->fence->runExclusive(
+            $id,
+            fn (): array => $this->verifyWithoutLock($id),
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function verifyWithoutLock(?string $id): array
+    {
         $state = $this->store->read($id);
         $id = (string) $state['id'];
         $status = ApplicationDatabaseMigrationStatus::from((string) $state['status']);
@@ -211,6 +233,15 @@ final class ApplicationDatabaseMigrationManager
 
     /** @return array<string, mixed> */
     public function activate(?string $id, bool $finalize): array
+    {
+        return $this->fence->runExclusive(
+            $id,
+            fn (): array => $this->activateWithoutLock($id, $finalize),
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function activateWithoutLock(?string $id, bool $finalize): array
     {
         $this->assertManagedConfiguration();
         $state = $this->store->read($id);
@@ -269,6 +300,15 @@ final class ApplicationDatabaseMigrationManager
 
     /** @return array<string, mixed> */
     public function rollback(?string $id, bool $finalize, int $drainTimeoutSeconds = 30): array
+    {
+        return $this->fence->runExclusive(
+            $id,
+            fn (): array => $this->rollbackWithoutLock($id, $finalize, $drainTimeoutSeconds),
+        );
+    }
+
+    /** @return array<string, mixed> */
+    private function rollbackWithoutLock(?string $id, bool $finalize, int $drainTimeoutSeconds): array
     {
         $this->assertManagedConfiguration();
         $state = $this->store->read($id);

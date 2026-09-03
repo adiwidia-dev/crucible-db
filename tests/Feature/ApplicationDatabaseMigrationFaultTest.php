@@ -80,6 +80,28 @@ class ApplicationDatabaseMigrationFaultTest extends TestCase
         }
     }
 
+    public function test_a_concurrent_copy_is_rejected_before_it_can_change_or_release_the_fence(): void
+    {
+        $this->prepareSource();
+        $manager = app(ApplicationDatabaseMigrationManager::class);
+        $state = $manager->plan($this->sqlitePayload($this->directory.'/destination.sqlite'));
+        $planId = (string) $state['id'];
+        $fence = app(ApplicationDatabaseMigrationFence::class);
+        $fence->engage($planId);
+
+        $fence->runExclusive($planId, function () use ($manager, $planId): void {
+            try {
+                $manager->migrate($planId, 0);
+                $this->fail('A concurrent copy must be rejected.');
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('already running', $exception->getMessage());
+            }
+        });
+
+        $this->assertSame('planned', app(ApplicationDatabaseMigrationStore::class)->read($planId)['status']);
+        $this->assertTrue($fence->isActive());
+    }
+
     public function test_a_genuinely_partial_copy_resumes_from_verified_tables(): void
     {
         $source = $this->prepareSource();

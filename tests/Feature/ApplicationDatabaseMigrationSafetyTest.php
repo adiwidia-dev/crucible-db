@@ -45,11 +45,36 @@ class ApplicationDatabaseMigrationSafetyTest extends TestCase
     {
         app(ApplicationDatabaseMigrationFence::class)->engage('01K4A1B2C3D4E5F6G7H8J9K0MN');
 
+        $this->get('/health')
+            ->assertOk()
+            ->assertJsonPath('database', 'ok');
+        $this->get('/up')->assertOk();
         $this->get('/login')->assertServiceUnavailable();
         $this->getJson(route('internal.native-proxy.health'))->assertServiceUnavailable();
 
         $this->expectException(RuntimeException::class);
         Event::dispatch(new JobQueueing('sync', 'default', 'TestJob', '{}', null));
+    }
+
+    public function test_a_concurrent_operation_for_the_same_plan_is_rejected_without_releasing_the_fence(): void
+    {
+        $planId = '01K4A1B2C3D4E5F6G7H8J9K0MN';
+        $fence = app(ApplicationDatabaseMigrationFence::class);
+        $fence->engage($planId);
+
+        $fence->runExclusive($planId, function () use ($fence, $planId): void {
+            try {
+                $fence->runExclusive($planId, static fn (): null => null);
+                $this->fail('A second operation must not share the active operation lock.');
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString('already running', $exception->getMessage());
+            }
+
+            $this->assertTrue($fence->isActive());
+        });
+
+        $fence->runExclusive($planId, static fn (): null => null);
+        $this->assertTrue($fence->isActive());
     }
 
     public function test_safety_refuses_active_sessions_and_releases_the_fence(): void

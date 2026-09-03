@@ -119,6 +119,27 @@ class ApplicationDatabaseMigrationAdministrationTest extends TestCase
         $this->getJson(route('internal.native-proxy.health'))->assertServiceUnavailable();
     }
 
+    public function test_migration_console_remains_available_when_managed_configuration_requires_a_restart(): void
+    {
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
+        $pendingPayload = app(ApplicationDatabaseConfiguration::class)
+            ->payloadFromConnection((array) config('database.connections.control'));
+        $pendingPayload['database'] = $this->directory.'/pending-restart.sqlite';
+        ApplicationDatabaseBootstrap::write(
+            $pendingPayload,
+            $this->directory.'/active.enc',
+            (string) config('app.key'),
+            (string) config('app.cipher'),
+        );
+        app(ApplicationDatabaseMigrationFence::class)->engage('01K4A1B2C3D4E5F6G7H8J9K0MN');
+
+        $this->actingAs($admin)
+            ->get(route('application-database-migrations.edit'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('settings/admin/application-database'));
+    }
+
     public function test_destructive_actions_require_the_exact_confirmation_phrase(): void
     {
         $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();

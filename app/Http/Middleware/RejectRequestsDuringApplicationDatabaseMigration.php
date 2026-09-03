@@ -20,6 +20,10 @@ final class RejectRequestsDuringApplicationDatabaseMigration
             return $next($request);
         }
 
+        if ($request->routeIs('health') || $request->is('up')) {
+            return $next($request);
+        }
+
         if ($request->routeIs('application-database-migrations.*')) {
             return $next($request);
         }
