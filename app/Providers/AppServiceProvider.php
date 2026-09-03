@@ -7,6 +7,7 @@ use App\Events\NativeProxyLeaseRevoked;
 use App\Services\ApplicationSettings;
 use App\Services\NativeProxy\LeaseRevocationPublisher;
 use App\Services\NotificationDispatcher;
+use App\Support\ApplicationDatabaseBootstrap;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -27,7 +28,26 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        if ($this->isBuildingConfigurationCache()) {
+            return;
+        }
+
+        $controlDatabase = ApplicationDatabaseBootstrap::resolve(
+            base_path(),
+            (string) config('database.control_metadata.mode'),
+            (string) config('database.control_metadata.path'),
+            (array) config('database.connections.control'),
+            (string) config('app.key'),
+            (string) config('app.cipher'),
+        );
+
+        config([
+            'database.connections.control' => $controlDatabase['connection'],
+            'database.control_metadata.mode' => $controlDatabase['mode'],
+            'database.control_metadata.path' => $controlDatabase['path'],
+            'database.control_metadata.configured' => $controlDatabase['configured'],
+            'database.control_metadata.fingerprint' => $controlDatabase['fingerprint'],
+        ]);
     }
 
     /**
@@ -125,5 +145,14 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(NativeProxyLeaseRevoked::class, function (NativeProxyLeaseRevoked $event): void {
             app(NotificationDispatcher::class)->nativeProxyLeasesRevoked($event->leaseIds, $event->reason);
         });
+    }
+
+    private function isBuildingConfigurationCache(): bool
+    {
+        if (! $this->app->runningInConsole()) {
+            return false;
+        }
+
+        return in_array($_SERVER['argv'][1] ?? null, ['config:cache', 'optimize'], true);
     }
 }
