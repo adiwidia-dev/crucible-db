@@ -37,11 +37,11 @@ export default function AuthenticationMethods({
 }: Props) {
     return (
         <>
-            <Head title="Authentication" />
+            <Head title="Sign-in methods" />
 
             <div className="crucible-page">
                 <PageHeader
-                    title="Authentication"
+                    title="Sign-in methods"
                     description="Manage sign-in methods and the SSO providers available to invited users."
                 />
 
@@ -130,7 +130,7 @@ export default function AuthenticationMethods({
                             />
                             <Button disabled={processing}>
                                 {processing ? <Spinner /> : <Save />}
-                                Save authentication settings
+                                Save sign-in methods
                             </Button>
                         </>
                     )}
@@ -147,7 +147,7 @@ export default function AuthenticationMethods({
                         </div>
                         <Button variant="outline" size="sm" asChild>
                             <Link href={authProvidersIndex()}>
-                                Manage providers
+                                Manage SSO providers
                             </Link>
                         </Button>
                     </CardHeader>
@@ -192,5 +192,5 @@ export default function AuthenticationMethods({
 }
 
 AuthenticationMethods.layout = {
-    breadcrumbs: [{ title: 'Authentication', href: edit() }],
+    breadcrumbs: [{ title: 'Sign-in Methods', href: edit() }],
 };

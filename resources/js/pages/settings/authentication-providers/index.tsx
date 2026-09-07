@@ -39,11 +39,11 @@ type Props = {
 export default function AuthProvidersIndex({ providers }: Props) {
     return (
         <>
-            <Head title="Authentication providers" />
+            <Head title="SSO providers" />
 
             <div className="crucible-page">
                 <PageHeader
-                    title="Authentication providers"
+                    title="SSO providers"
                     description="Manage invitation-gated SSO and verify OAuth configuration."
                     actions={
                         <Button asChild>
@@ -264,7 +264,7 @@ export default function AuthProvidersIndex({ providers }: Props) {
 AuthProvidersIndex.layout = {
     breadcrumbs: [
         {
-            title: 'Authentication providers',
+            title: 'SSO Providers',
             href: index(),
         },
     ],
