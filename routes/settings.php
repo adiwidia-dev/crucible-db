@@ -54,6 +54,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('application-database-migrations.store');
         Route::post('application-database/{migration}/copy', [ApplicationDatabaseMigrationController::class, 'migrate'])
             ->name('application-database-migrations.migrate');
+        Route::delete('application-database/{migration}', [ApplicationDatabaseMigrationController::class, 'destroy'])
+            ->name('application-database-migrations.destroy');
         Route::post('application-database/{migration}/verify', [ApplicationDatabaseMigrationController::class, 'verify'])
             ->name('application-database-migrations.verify');
         Route::post('application-database/{migration}/activate', [ApplicationDatabaseMigrationController::class, 'activate'])

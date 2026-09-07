@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Enums\ApplicationDatabaseDriver;
+use App\Enums\ApplicationDatabaseMigrationStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ConfirmApplicationDatabaseMigrationRequest;
 use App\Http\Requests\PlanApplicationDatabaseMigrationRequest;
@@ -29,17 +30,40 @@ class ApplicationDatabaseMigrationController extends Controller
         abort_unless(request()->user()->isAdmin(), 403);
 
         $migration = null;
+        $migrationHistory = [];
         $migrationError = null;
 
         try {
-            if ($store->currentId() !== null) {
-                $migration = $manager->inspect();
-                unset(
-                    $migration['active_fingerprint'],
-                    $migration['source']['fingerprint'],
-                    $migration['destination']['fingerprint'],
-                );
+            $currentId = $store->currentId();
+
+            if ($currentId !== null) {
+                $currentState = $store->read($currentId);
+                $currentStatus = ApplicationDatabaseMigrationStatus::from((string) $currentState['status']);
+
+                if (! $currentStatus->isTerminal()) {
+                    $migration = $manager->inspect();
+                    unset(
+                        $migration['active_fingerprint'],
+                        $migration['source']['fingerprint'],
+                        $migration['destination']['fingerprint'],
+                    );
+                }
             }
+
+            $migrationHistory = array_values(array_map(
+                fn (array $state): array => $this->migrationHistorySummary(
+                    $state,
+                    (string) $state['id'] === $currentId,
+                ),
+                array_filter(
+                    $store->all(),
+                    static function (array $state) use ($currentId): bool {
+                        $status = ApplicationDatabaseMigrationStatus::from((string) $state['status']);
+
+                        return (string) $state['id'] !== $currentId || $status->isTerminal();
+                    },
+                ),
+            ));
         } catch (Throwable $exception) {
             report($exception);
             $migrationError = $exception->getMessage();
@@ -58,6 +82,7 @@ class ApplicationDatabaseMigrationController extends Controller
                 'port' => $active['port'] ?? null,
             ],
             'migration' => $migration,
+            'migration_history' => $migrationHistory,
             'migration_error' => $migrationError,
             'drivers' => array_map(fn (ApplicationDatabaseDriver $driver): array => [
                 'value' => $driver->value,
@@ -71,6 +96,34 @@ class ApplicationDatabaseMigrationController extends Controller
                 'rollback' => ConfirmApplicationDatabaseMigrationRequest::RollbackPhrase,
             ],
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     * @return array<string, mixed>
+     */
+    private function migrationHistorySummary(array $state, bool $isCurrent): array
+    {
+        $status = ApplicationDatabaseMigrationStatus::from((string) $state['status']);
+
+        return [
+            'id' => (string) $state['id'],
+            'status' => $status->value,
+            'source' => [
+                'driver' => (string) $state['source']['driver'],
+                'database' => $state['source']['database'] ?? null,
+            ],
+            'destination' => [
+                'driver' => (string) $state['destination']['driver'],
+                'database' => $state['destination']['database'] ?? null,
+            ],
+            'tables_copied' => count((array) ($state['tables'] ?? [])),
+            'tables_planned' => count((array) ($state['planned_tables'] ?? [])),
+            'created_at' => (string) $state['created_at'],
+            'updated_at' => (string) $state['updated_at'],
+            'is_current' => $isCurrent,
+            'can_rollback' => $isCurrent && $status === ApplicationDatabaseMigrationStatus::Active,
+        ];
     }
 
     public function store(
@@ -102,6 +155,23 @@ class ApplicationDatabaseMigrationController extends Controller
             ]);
             $manager->migrate($migration, (int) $request->validated('drain_timeout_seconds'));
         }, 'Application data copied. Verify it before cutover.');
+    }
+
+    public function destroy(
+        Request $request,
+        string $migration,
+        ApplicationDatabaseMigrationManager $manager,
+        AuditLogger $auditLogger,
+    ): RedirectResponse {
+        $actor = $this->admin($request);
+
+        return $this->perform(function () use ($actor, $auditLogger, $manager, $migration): void {
+            $state = $manager->cancel($migration);
+            $auditLogger->log('application_database_migration.cancelled', $actor, null, [
+                'plan_id' => $migration,
+                'destination_driver' => $state['destination']['driver'],
+            ]);
+        }, 'Migration plan cancelled. The active application database was not changed.');
     }
 
     public function verify(Request $request, string $migration, ApplicationDatabaseMigrationManager $manager): RedirectResponse

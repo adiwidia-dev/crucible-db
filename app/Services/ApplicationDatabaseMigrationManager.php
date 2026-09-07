@@ -70,6 +70,15 @@ final class ApplicationDatabaseMigrationManager
         $state = $this->store->read($id);
         $state['maintenance_fence'] = $this->fence->active();
         $state['active_fingerprint'] = $this->configuration->activeFingerprint();
+        $status = ApplicationDatabaseMigrationStatus::from((string) $state['status']);
+        $expectedRestartFingerprint = match ($status) {
+            ApplicationDatabaseMigrationStatus::ActivationPendingRestart => $state['destination']['fingerprint'],
+            ApplicationDatabaseMigrationStatus::RollbackPendingRestart => $state['source']['fingerprint'],
+            default => null,
+        };
+        $state['restart_ready'] = is_string($expectedRestartFingerprint)
+            ? hash_equals($expectedRestartFingerprint, $state['active_fingerprint'])
+            : null;
         $state['activity'] = $this->safety->activity();
         $state['queue_sizes'] = $this->safety->queueSizes();
 
@@ -104,6 +113,34 @@ final class ApplicationDatabaseMigrationManager
             $id,
             fn (): array => $this->migrateWithoutLock($id, $drainTimeoutSeconds),
         );
+    }
+
+    /** @return array<string, mixed> */
+    public function cancel(?string $id): array
+    {
+        return $this->fence->runExclusive($id, function () use ($id): array {
+            $this->assertManagedConfiguration();
+            $state = $this->store->read($id);
+            $id = (string) $state['id'];
+            $status = ApplicationDatabaseMigrationStatus::from((string) $state['status']);
+
+            if (! in_array($status, [
+                ApplicationDatabaseMigrationStatus::Planned,
+                ApplicationDatabaseMigrationStatus::Failed,
+            ], true)) {
+                throw new RuntimeException("Migration {$id} cannot be cancelled from status {$status->value}.");
+            }
+
+            if ($this->configuration->activeFingerprint() !== $state['source']['fingerprint']) {
+                throw new RuntimeException('The active application database no longer matches this migration source.');
+            }
+
+            $this->safety->release($id);
+            $state = $this->transition($id, ApplicationDatabaseMigrationStatus::Cancelled, 'cancelled');
+            $this->store->clearCurrent($id);
+
+            return $state;
+        });
     }
 
     /** @return array<string, mixed> */

@@ -68,6 +68,7 @@ class ApplicationDatabaseMigrationWorkflowTest extends TestCase
         $this->assertSame('verified', $verified['status']);
         $pending = $manager->activate($planned['id'], false);
         $this->assertSame('activation_pending_restart', $pending['status']);
+        $this->assertFalse($manager->inspect($planned['id'])['restart_ready']);
 
         $this->expectExceptionMessage('destination is not active yet');
         $manager->activate($planned['id'], true);
@@ -90,7 +91,9 @@ class ApplicationDatabaseMigrationWorkflowTest extends TestCase
         $manager->migrate($state['id'], 0);
         $manager->verify($state['id']);
         $manager->activate($state['id'], false);
+        $this->assertFalse($manager->inspect($state['id'])['restart_ready']);
         $this->activateForTest($destination);
+        $this->assertTrue($manager->inspect($state['id'])['restart_ready']);
         $active = $manager->activate($state['id'], true);
         $this->assertSame('active', $active['status']);
         $this->assertFileDoesNotExist($this->directory.'/migration.fence');
@@ -149,6 +152,14 @@ class ApplicationDatabaseMigrationWorkflowTest extends TestCase
         $this->assertSame(ApplicationDatabaseBootstrap::fingerprint($source), ApplicationDatabaseBootstrap::fingerprint($active));
         $this->assertSame('failed', app(ApplicationDatabaseMigrationStore::class)->read($state['id'])['status']);
         $this->assertFileDoesNotExist($this->directory.'/migration.fence');
+
+        $cancelled = $manager->cancel($state['id']);
+
+        $this->assertSame('cancelled', $cancelled['status']);
+        $this->assertNull(app(ApplicationDatabaseMigrationStore::class)->currentId());
+        $this->assertSame('cancelled', app(ApplicationDatabaseMigrationStore::class)->read($state['id'])['status']);
+        $this->configureForTest('tampered_destination', $destination);
+        $this->assertTrue(Schema::connection('tampered_destination')->hasTable('unexpected_table'));
     }
 
     public function test_an_interrupted_copy_can_resume_while_it_owns_the_fence(): void
@@ -194,6 +205,13 @@ class ApplicationDatabaseMigrationWorkflowTest extends TestCase
             'database.control_metadata.fingerprint' => ApplicationDatabaseBootstrap::fingerprint($payload),
         ]);
         DB::purge('control');
+    }
+
+    /** @param array<string, mixed> $payload */
+    private function configureForTest(string $connection, array $payload): void
+    {
+        config(['database.connections.'.$connection => ApplicationDatabaseBootstrap::connection($payload, base_path())]);
+        DB::purge($connection);
     }
 
     /** @return array<string, mixed> */

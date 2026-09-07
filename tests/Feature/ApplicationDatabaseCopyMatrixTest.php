@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\NativeProxyLease;
+use App\Models\User;
 use App\Services\ApplicationDatabaseCopyEngine;
 use App\Support\ApplicationDatabaseBootstrap;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -65,6 +67,9 @@ class ApplicationDatabaseCopyMatrixTest extends TestCase
                 '--force' => true,
                 '--no-interaction' => true,
             ]));
+            if ($sourceDriver === 'sqlite') {
+                $this->restoreLegacySqliteAuditLogSchema();
+            }
             $nativeLease = $this->seedSource();
 
             $copied = app(ApplicationDatabaseCopyEngine::class)->copy(
@@ -101,6 +106,20 @@ class ApplicationDatabaseCopyMatrixTest extends TestCase
                     ->table('native_proxy_leases')
                     ->where('id', $nativeLease['id'])
                     ->value('protocol_auth_secret'),
+            );
+            $this->assertSame(
+                $nativeLease['id'],
+                (string) DB::connection('matrix_destination')
+                    ->table('audit_logs')
+                    ->where('action', 'native_proxy.matrix_tested')
+                    ->value('auditable_id'),
+            );
+            $this->assertSame(
+                '97',
+                (string) DB::connection('matrix_destination')
+                    ->table('audit_logs')
+                    ->where('action', 'matrix.tested')
+                    ->value('auditable_id'),
             );
 
             DB::setDefaultConnection('matrix_destination');
@@ -165,8 +184,8 @@ class ApplicationDatabaseCopyMatrixTest extends TestCase
             'created_at' => $now, 'updated_at' => $now,
         ]);
         $database->table('audit_logs')->insert([
-            'id' => 61, 'actor_id' => 97, 'action' => 'matrix.tested', 'auditable_type' => null,
-            'auditable_id' => null, 'ip_address' => null, 'user_agent' => null,
+            'id' => 61, 'actor_id' => 97, 'action' => 'matrix.tested', 'auditable_type' => User::class,
+            'auditable_id' => 97, 'ip_address' => null, 'user_agent' => null,
             'metadata' => '{"label":"matrix","array":[1,null,true]}', 'created_at' => $now, 'updated_at' => $now,
         ]);
 
@@ -181,11 +200,39 @@ class ApplicationDatabaseCopyMatrixTest extends TestCase
             $ciphertext = (string) $database->table('native_proxy_leases')
                 ->where('id', $lease->getKey())
                 ->value('protocol_auth_secret');
+            $database->table('audit_logs')->insert([
+                'id' => 62,
+                'actor_id' => 97,
+                'action' => 'native_proxy.matrix_tested',
+                'auditable_type' => NativeProxyLease::class,
+                'auditable_id' => $lease->getKey(),
+                'ip_address' => null,
+                'user_agent' => null,
+                'metadata' => '{}',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
 
             return ['id' => (string) $lease->getKey(), 'ciphertext' => $ciphertext];
         } finally {
             DB::setDefaultConnection($originalDefault);
         }
+    }
+
+    private function restoreLegacySqliteAuditLogSchema(): void
+    {
+        Schema::connection('matrix_source')->drop('audit_logs');
+        Schema::connection('matrix_source')->create('audit_logs', function (Blueprint $table): void {
+            $table->id();
+            $table->foreignId('actor_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->string('action')->index();
+            $table->nullableMorphs('auditable');
+            $table->string('ip_address')->nullable();
+            $table->string('user_agent')->nullable();
+            $table->json('metadata')->nullable();
+            $table->timestamps();
+            $table->index(['actor_id', 'created_at']);
+        });
     }
 
     /**

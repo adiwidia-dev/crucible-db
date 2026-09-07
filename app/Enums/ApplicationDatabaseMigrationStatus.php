@@ -13,9 +13,10 @@ enum ApplicationDatabaseMigrationStatus: string
     case RollbackPendingRestart = 'rollback_pending_restart';
     case RolledBack = 'rolled_back';
     case Failed = 'failed';
+    case Cancelled = 'cancelled';
 
     public function isTerminal(): bool
     {
-        return in_array($this, [self::Active, self::RolledBack], true);
+        return in_array($this, [self::Active, self::RolledBack, self::Cancelled], true);
     }
 }

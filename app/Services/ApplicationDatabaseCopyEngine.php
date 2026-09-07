@@ -348,6 +348,8 @@ final class ApplicationDatabaseCopyEngine
                 $row[$column] = (int) $value;
             } elseif (in_array($type, ['json', 'jsonb'], true) && is_string($value)) {
                 $row[$column] = $this->canonicalJson($value);
+            } elseif ($this->isTextualType($type) && is_scalar($value)) {
+                $row[$column] = (string) $value;
             } elseif (is_resource($value)) {
                 $contents = stream_get_contents($value);
                 $row[$column] = $contents === false ? '' : $contents;
@@ -384,6 +386,13 @@ final class ApplicationDatabaseCopyEngine
         }
 
         return $row;
+    }
+
+    private function isTextualType(string $type): bool
+    {
+        return in_array($type, ['enum', 'set', 'uuid'], true)
+            || str_contains($type, 'char')
+            || str_ends_with($type, 'text');
     }
 
     private function canonicalJson(string $value): string

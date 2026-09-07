@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Enums\ApplicationDatabaseMigrationStatus;
 use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Str;
 use JsonException;
@@ -36,8 +37,9 @@ final class ApplicationDatabaseMigrationStore
 
             if ($current !== null) {
                 $existing = $this->readUnlocked($current);
+                $status = ApplicationDatabaseMigrationStatus::tryFrom((string) ($existing['status'] ?? ''));
 
-                if (! in_array($existing['status'] ?? null, ['active', 'rolled_back'], true)) {
+                if (! $status?->isTerminal()) {
                     throw new RuntimeException("Application database migration {$current} is still in progress.");
                 }
             }
@@ -62,6 +64,36 @@ final class ApplicationDatabaseMigrationStore
             }
 
             return $this->readUnlocked($id);
+        });
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function all(): array
+    {
+        return $this->withLock(function (): array {
+            $paths = glob($this->directory().'/*.enc');
+
+            if ($paths === false) {
+                throw new RuntimeException('Application database migration plans could not be listed.');
+            }
+
+            $plans = array_map(function (string $path): array {
+                $id = pathinfo($path, PATHINFO_FILENAME);
+
+                return $this->readUnlocked($this->validatedId($id));
+            }, $paths);
+
+            usort($plans, static function (array $left, array $right): int {
+                $createdAtComparison = strcmp((string) $right['created_at'], (string) $left['created_at']);
+
+                return $createdAtComparison !== 0
+                    ? $createdAtComparison
+                    : strcmp((string) $right['id'], (string) $left['id']);
+            });
+
+            return $plans;
         });
     }
 
@@ -91,6 +123,26 @@ final class ApplicationDatabaseMigrationStore
         $id = trim((string) file_get_contents($path));
 
         return $id === '' ? null : $this->validatedId($id);
+    }
+
+    public function clearCurrent(string $id): void
+    {
+        $this->withLock(function () use ($id): void {
+            $id = $this->validatedId($id);
+            $current = $this->currentId();
+
+            if ($current === null) {
+                return;
+            }
+
+            if ($current !== $id) {
+                throw new RuntimeException('Another application database migration plan is current.');
+            }
+
+            if (! unlink($this->pointerPath()) && is_file($this->pointerPath())) {
+                throw new RuntimeException('The current migration plan pointer could not be cleared.');
+            }
+        });
     }
 
     /**

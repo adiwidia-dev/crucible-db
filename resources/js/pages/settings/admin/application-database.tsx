@@ -1,18 +1,23 @@
 import { Form, Head, usePoll } from '@inertiajs/react';
 import {
+    Activity,
     AlertTriangle,
+    ArrowRight,
     ArrowRightLeft,
+    Ban,
     CheckCircle2,
+    ChevronDown,
     CircleDashed,
     Copy,
     Database,
     HardDrive,
+    History as HistoryIcon,
     RefreshCw,
     RotateCcw,
     Server,
     ShieldCheck,
 } from 'lucide-react';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import ApplicationDatabaseMigrationController from '@/actions/App/Http/Controllers/Settings/ApplicationDatabaseMigrationController';
 import { PageHeader } from '@/components/crucible/page-header';
@@ -79,7 +84,8 @@ type MigrationState = {
         | 'active'
         | 'rollback_pending_restart'
         | 'rolled_back'
-        | 'failed';
+        | 'failed'
+        | 'cancelled';
     source: MigrationEndpoint;
     destination: MigrationEndpoint;
     planned_tables: Record<string, { rows: number }>;
@@ -93,14 +99,29 @@ type MigrationState = {
     };
     queue_sizes: Record<string, number>;
     maintenance_fence: { plan_id: string; engaged_at: string } | null;
+    restart_ready: boolean | null;
     created_at: string;
     updated_at: string;
+};
+
+type MigrationHistoryItem = {
+    id: string;
+    status: MigrationState['status'];
+    source: MigrationEndpoint;
+    destination: MigrationEndpoint;
+    tables_copied: number;
+    tables_planned: number;
+    created_at: string;
+    updated_at: string;
+    is_current: boolean;
+    can_rollback: boolean;
 };
 
 type Props = {
     configuration_mode: 'managed' | 'environment';
     active_database: DatabaseSummary;
     migration: MigrationState | null;
+    migration_history: MigrationHistoryItem[];
     migration_error: string | null;
     drivers: Driver[];
     sqlite_path: string;
@@ -151,12 +172,17 @@ const statusPresentation: Record<
         label: 'Copy failed',
         className: 'border-red-200 bg-red-50 text-red-800',
     },
+    cancelled: {
+        label: 'Cancelled',
+        className: 'border-slate-200 bg-slate-50 text-slate-700',
+    },
 };
 
 export default function ApplicationDatabase({
     configuration_mode: configurationMode,
     active_database: activeDatabase,
     migration,
+    migration_history: migrationHistory,
     migration_error: migrationError,
     drivers,
     sqlite_path: sqlitePath,
@@ -165,25 +191,33 @@ export default function ApplicationDatabase({
     const { start, stop } = usePoll(
         3000,
         {
-            only: ['active_database', 'migration', 'migration_error'],
+            only: [
+                'active_database',
+                'migration',
+                'migration_history',
+                'migration_error',
+            ],
             preserveErrors: true,
         },
         { autoStart: false, mode: 'rest' },
     );
+    const shouldPoll = [
+        'copying',
+        'activation_pending_restart',
+        'rollback_pending_restart',
+    ].includes(migration?.status ?? '');
 
     useEffect(() => {
-        if (migration?.status === 'copying') {
+        if (shouldPoll) {
             start();
         } else {
             stop();
         }
 
         return stop;
-    }, [migration?.status, start, stop]);
+    }, [shouldPoll, start, stop]);
 
-    const canPlan =
-        configurationMode === 'managed' &&
-        (!migration || ['active', 'rolled_back'].includes(migration.status));
+    const canPlan = configurationMode === 'managed' && !migration;
 
     return (
         <>
@@ -272,9 +306,145 @@ export default function ApplicationDatabase({
                         sqlitePath={sqlitePath}
                     />
                 )}
+
+                {migrationHistory.length > 0 && !migrationError && (
+                    <MigrationHistory
+                        migrations={migrationHistory}
+                        rollbackPhrase={confirmations.rollback}
+                    />
+                )}
             </div>
         </>
     );
+}
+
+function MigrationHistory({
+    migrations,
+    rollbackPhrase,
+}: {
+    migrations: MigrationHistoryItem[];
+    rollbackPhrase: string;
+}) {
+    return (
+        <Card className="max-w-4xl gap-0 overflow-hidden py-0">
+            <details className="group">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset sm:px-5">
+                    <div className="min-w-0">
+                        <CardTitle className="flex items-center gap-2">
+                            <HistoryIcon className="size-4 text-muted-foreground" />
+                            Migration history
+                            <span className="font-normal text-muted-foreground">
+                                ({migrations.length})
+                            </span>
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                            Completed and cancelled application database moves.
+                        </CardDescription>
+                    </div>
+                    <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none" />
+                </summary>
+
+                <div className="divide-y border-t">
+                    {migrations.map((migration) => {
+                        const presentation =
+                            statusPresentation[migration.status];
+
+                        return (
+                            <div
+                                key={migration.id}
+                                className="grid gap-4 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-5"
+                            >
+                                <div className="min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <Badge
+                                            variant="outline"
+                                            className={presentation.className}
+                                        >
+                                            {presentation.label}
+                                        </Badge>
+                                        {migration.is_current && (
+                                            <Badge variant="outline">
+                                                Current rollback point
+                                            </Badge>
+                                        )}
+                                        <time className="text-xs text-muted-foreground">
+                                            {formatDateTime(
+                                                migration.updated_at,
+                                            )}
+                                        </time>
+                                    </div>
+
+                                    <div className="mt-3 grid items-start gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+                                        <HistoryEndpoint
+                                            endpoint={migration.source}
+                                        />
+                                        <ArrowRight className="mt-0.5 size-4 rotate-90 text-muted-foreground sm:rotate-0" />
+                                        <HistoryEndpoint
+                                            endpoint={migration.destination}
+                                        />
+                                    </div>
+
+                                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-muted-foreground">
+                                        <span>{migration.id}</span>
+                                        <span>
+                                            {migration.tables_copied} /{' '}
+                                            {migration.tables_planned} tables
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {migration.can_rollback && (
+                                    <ConfirmationAction
+                                        form={ApplicationDatabaseMigrationController.rollback.form(
+                                            { migration: migration.id },
+                                        )}
+                                        phrase={rollbackPhrase}
+                                        title="Synchronize and prepare rollback?"
+                                        description="Current destination data will be copied back to the original database and verified before the active configuration changes. Access must be idle and queued jobs must drain."
+                                        triggerLabel="Prepare rollback"
+                                        submitLabel="Prepare rollback"
+                                        destructive
+                                    />
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </details>
+        </Card>
+    );
+}
+
+function HistoryEndpoint({ endpoint }: { endpoint: MigrationEndpoint }) {
+    return (
+        <div className="min-w-0">
+            <p className="text-sm font-medium">
+                {driverLabel(endpoint.driver)}
+            </p>
+            <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
+                {endpoint.database ?? 'Not configured'}
+            </p>
+        </div>
+    );
+}
+
+function driverLabel(driver: Driver['value']): string {
+    if (driver === 'pgsql') {
+        return 'PostgreSQL';
+    }
+
+    if (driver === 'mysql') {
+        return 'MySQL';
+    }
+
+    return 'SQLite';
+}
+
+function formatDateTime(value: string): string {
+    return new Intl.DateTimeFormat(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    }).format(new Date(value));
 }
 
 ApplicationDatabase.layout = {
@@ -295,6 +465,10 @@ function MigrationPanel({
         (total, size) => total + size,
         0,
     );
+    const liveAccess =
+        migration.activity.query_sessions +
+        migration.activity.native_leases +
+        migration.activity.native_connections;
 
     return (
         <Card className="max-w-4xl gap-0 overflow-hidden py-0">
@@ -318,39 +492,63 @@ function MigrationPanel({
                 </div>
             </CardHeader>
 
-            <CardContent className="grid gap-5 px-4 py-5 sm:px-5">
-                <div className="grid items-center gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+            <CardContent className="p-0">
+                <div className="grid items-center gap-4 px-4 py-5 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:px-5">
                     <Endpoint label="Source" endpoint={migration.source} />
-                    <ArrowRightLeft className="mx-auto size-5 text-muted-foreground" />
+                    <ArrowRight className="mx-auto size-5 rotate-90 text-muted-foreground sm:rotate-0" />
                     <Endpoint
                         label="Destination"
                         endpoint={migration.destination}
                     />
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
-                    <Metric
+                <div className="grid border-y bg-muted/15 sm:grid-cols-3 sm:divide-x">
+                    <MigrationSignal
+                        icon={<Copy className="size-4 text-blue-600" />}
                         label="Tables copied"
                         value={`${copiedCount} / ${plannedCount}`}
+                        detail={
+                            copiedCount === plannedCount
+                                ? 'Copy set complete'
+                                : `${plannedCount - copiedCount} remaining`
+                        }
                     />
-                    <Metric
+                    <MigrationSignal
+                        icon={
+                            liveAccess === 0 ? (
+                                <CheckCircle2 className="size-4 text-emerald-600" />
+                            ) : (
+                                <AlertTriangle className="size-4 text-amber-600" />
+                            )
+                        }
                         label="Live access"
-                        value={String(
-                            migration.activity.query_sessions +
-                                migration.activity.native_leases +
-                                migration.activity.native_connections,
-                        )}
-                        detail="Must be zero before copy or rollback"
+                        value={liveAccess === 0 ? 'Idle' : String(liveAccess)}
+                        detail={
+                            liveAccess === 0
+                                ? 'Ready for migration'
+                                : 'End access before continuing'
+                        }
                     />
-                    <Metric
+                    <MigrationSignal
+                        icon={
+                            queueSize === 0 ? (
+                                <CheckCircle2 className="size-4 text-emerald-600" />
+                            ) : (
+                                <CircleDashed className="size-4 text-amber-600" />
+                            )
+                        }
                         label="Queued jobs"
-                        value={String(queueSize)}
-                        detail="Must drain before the fence stays active"
+                        value={queueSize === 0 ? 'Drained' : String(queueSize)}
+                        detail={
+                            queueSize === 0
+                                ? 'Ready for migration'
+                                : 'Wait for jobs to finish'
+                        }
                     />
                 </div>
 
                 {migration.maintenance_fence && (
-                    <div className="flex gap-3 rounded-md border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-950">
+                    <div className="mx-4 mt-5 flex gap-3 rounded-md border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-950 sm:mx-5">
                         <ShieldCheck className="mt-0.5 size-4 shrink-0 text-amber-600" />
                         <p>
                             Maintenance fence is active. Normal web requests,
@@ -360,16 +558,25 @@ function MigrationPanel({
                     </div>
                 )}
 
-                <MigrationActions
-                    migration={migration}
-                    confirmations={confirmations}
-                />
+                <div className="px-4 py-5 sm:px-5">
+                    <MigrationActions
+                        migration={migration}
+                        confirmations={confirmations}
+                    />
+                </div>
 
-                <div className="border-t pt-4">
-                    <h3 className="text-sm font-medium">
-                        Recent migration activity
-                    </h3>
-                    <div className="mt-3 divide-y rounded-md border">
+                <details className="group border-t">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset sm:px-5">
+                        <span className="flex items-center gap-2">
+                            <Activity className="size-4 text-muted-foreground" />
+                            Recent activity
+                            <span className="font-normal text-muted-foreground">
+                                ({Math.min(migration.events.length, 8)})
+                            </span>
+                        </span>
+                        <ChevronDown className="size-4 text-muted-foreground transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none" />
+                    </summary>
+                    <div className="divide-y border-t">
                         {migration.events
                             .slice(-8)
                             .reverse()
@@ -383,9 +590,14 @@ function MigrationPanel({
                                             {event.event.replaceAll('_', ' ')}
                                         </p>
                                         {event.message && (
-                                            <p className="mt-0.5 text-xs break-words text-red-700">
-                                                {event.message}
-                                            </p>
+                                            <details className="mt-1 text-xs text-red-700">
+                                                <summary className="w-fit cursor-pointer font-medium hover:underline">
+                                                    View error details
+                                                </summary>
+                                                <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-red-50 p-3 font-mono text-[11px] leading-5 break-words whitespace-pre-wrap">
+                                                    {event.message}
+                                                </pre>
+                                            </details>
                                         )}
                                         {event.actor && (
                                             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -402,7 +614,7 @@ function MigrationPanel({
                                 </div>
                             ))}
                     </div>
-                </div>
+                </details>
             </CardContent>
         </Card>
     );
@@ -417,51 +629,60 @@ function MigrationActions({
 }) {
     if (['planned', 'copying', 'failed'].includes(migration.status)) {
         return (
-            <Form
-                {...ApplicationDatabaseMigrationController.migrate.form({
-                    migration: migration.id,
-                })}
-                disableWhileProcessing
-                className="grid gap-3 rounded-md border bg-muted/20 p-4 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-end"
-            >
-                {({ processing, errors }) => (
-                    <>
-                        <div>
-                            <p className="font-medium">
-                                {migration.status === 'failed'
-                                    ? 'Retry a clean copy'
-                                    : migration.status === 'copying'
-                                      ? 'Resume interrupted copy'
-                                      : 'Copy application data'}
-                            </p>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                                Access must be idle and queues must drain first.
-                            </p>
-                            <InputError message={errors.migration_operation} />
-                        </div>
-                        <div className="grid gap-2">
-                            <Label htmlFor="drain_timeout_seconds">
-                                Drain timeout
-                            </Label>
-                            <Input
-                                id="drain_timeout_seconds"
-                                name="drain_timeout_seconds"
-                                type="number"
-                                min="0"
-                                max="3600"
-                                defaultValue="30"
-                                required
-                            />
-                        </div>
-                        <Button disabled={processing}>
-                            {processing ? <Spinner /> : <Copy />}
-                            {migration.status === 'planned'
-                                ? 'Start copy'
-                                : 'Retry copy'}
-                        </Button>
-                    </>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <Form
+                    {...ApplicationDatabaseMigrationController.migrate.form({
+                        migration: migration.id,
+                    })}
+                    disableWhileProcessing
+                    className="grid flex-1 gap-4 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-end"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <div>
+                                <p className="font-medium">
+                                    {migration.status === 'failed'
+                                        ? 'Retry the copy'
+                                        : migration.status === 'copying'
+                                          ? 'Resume interrupted copy'
+                                          : 'Copy application data'}
+                                </p>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                    {migration.status === 'failed'
+                                        ? 'The destination is cleaned before the copy starts again.'
+                                        : 'Access must be idle and queues must drain first.'}
+                                </p>
+                                <InputError
+                                    message={errors.migration_operation}
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor="drain_timeout_seconds">
+                                    Drain timeout
+                                </Label>
+                                <Input
+                                    id="drain_timeout_seconds"
+                                    name="drain_timeout_seconds"
+                                    type="number"
+                                    min="0"
+                                    max="3600"
+                                    defaultValue="30"
+                                    required
+                                />
+                            </div>
+                            <Button disabled={processing}>
+                                {processing ? <Spinner /> : <Copy />}
+                                {migration.status === 'planned'
+                                    ? 'Start copy'
+                                    : 'Retry copy'}
+                            </Button>
+                        </>
+                    )}
+                </Form>
+                {['planned', 'failed'].includes(migration.status) && (
+                    <CancelPlanAction migration={migration} />
                 )}
-            </Form>
+            </div>
         );
     }
 
@@ -472,7 +693,7 @@ function MigrationActions({
                     migration: migration.id,
                 })}
                 disableWhileProcessing
-                className="flex flex-col gap-3 rounded-md border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
             >
                 {({ processing, errors }) => (
                     <>
@@ -520,6 +741,7 @@ function MigrationActions({
                 phrase={confirmations.finalize}
                 title="Finalize destination activation?"
                 submitLabel="Finalize activation"
+                restartReady={migration.restart_ready === true}
             />
         );
     }
@@ -549,7 +771,22 @@ function MigrationActions({
                 phrase={confirmations.finalize}
                 title="Finalize rollback?"
                 submitLabel="Finalize rollback"
+                restartReady={migration.restart_ready === true}
             />
+        );
+    }
+
+    if (migration.status === 'cancelled') {
+        return (
+            <div className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50/70 p-4 text-slate-950">
+                <Ban className="mt-0.5 size-5 shrink-0 text-slate-600" />
+                <div>
+                    <p className="font-medium">Migration plan cancelled</p>
+                    <p className="mt-1 text-sm text-slate-700">
+                        The application database was not changed.
+                    </p>
+                </div>
+            </div>
         );
     }
 
@@ -567,16 +804,69 @@ function MigrationActions({
     );
 }
 
+function CancelPlanAction({ migration }: { migration: MigrationState }) {
+    return (
+        <Dialog>
+            <DialogTrigger asChild>
+                <Button type="button" variant="outline" className="w-fit">
+                    <Ban />
+                    Cancel plan
+                </Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Cancel this migration plan?</DialogTitle>
+                    <DialogDescription>
+                        The active database will not change. Data already copied
+                        to {migration.destination.driver.toUpperCase()} remains
+                        there and must be removed before that database can be
+                        used in a new migration plan.
+                    </DialogDescription>
+                </DialogHeader>
+                <Form
+                    {...ApplicationDatabaseMigrationController.destroy.form({
+                        migration: migration.id,
+                    })}
+                    disableWhileProcessing
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <InputError message={errors.migration_operation} />
+                            <DialogFooter>
+                                <DialogClose asChild>
+                                    <Button type="button" variant="outline">
+                                        Keep plan
+                                    </Button>
+                                </DialogClose>
+                                <Button
+                                    type="submit"
+                                    variant="destructive"
+                                    disabled={processing}
+                                >
+                                    {processing ? <Spinner /> : <Ban />}
+                                    Cancel plan
+                                </Button>
+                            </DialogFooter>
+                        </>
+                    )}
+                </Form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function RestartAction({
     form,
     phrase,
     title,
     submitLabel,
+    restartReady,
 }: {
     form: { action: string; method: 'post' };
     phrase: string;
     title: string;
     submitLabel: string;
+    restartReady: boolean;
 }) {
     return (
         <div className="grid gap-4 rounded-md border border-amber-200 bg-amber-50/60 p-4">
@@ -589,9 +879,9 @@ function RestartAction({
                     <p className="mt-1 text-sm leading-6 text-amber-900/75">
                         Production Compose runs Octane, Horizon, and the
                         scheduler in the app container. Development uses
-                        separate app, worker, and scheduler containers. Do not
-                        finalize until every process reports healthy on the new
-                        configuration.
+                        separate app, worker, and scheduler containers. Restart
+                        every listed runtime, then wait for this page to confirm
+                        that the web runtime loaded the new database.
                     </p>
                     <div className="mt-3 grid gap-2 font-mono text-xs">
                         <code className="overflow-x-auto rounded bg-amber-100/70 px-2 py-1.5">
@@ -602,6 +892,37 @@ function RestartAction({
                             docker compose restart app worker scheduler
                         </code>
                     </div>
+                    <div
+                        className={`mt-3 flex items-start gap-2 rounded-md border px-3 py-2.5 text-sm ${
+                            restartReady
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                                : 'border-amber-200 bg-amber-100/60 text-amber-950'
+                        }`}
+                    >
+                        {restartReady ? (
+                            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                        ) : (
+                            <CircleDashed className="mt-0.5 size-4 shrink-0 animate-spin text-amber-700 motion-reduce:animate-none" />
+                        )}
+                        <div>
+                            <p className="font-medium">
+                                {restartReady
+                                    ? 'Ready to finalize'
+                                    : 'Waiting for the restarted web runtime'}
+                            </p>
+                            <p className="mt-0.5 text-xs leading-5 opacity-80">
+                                {restartReady
+                                    ? 'The active runtime is using the expected application database.'
+                                    : 'This status updates automatically after the app container is ready.'}
+                            </p>
+                        </div>
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-amber-900/75">
+                        The native-proxy container may report unhealthy during
+                        this step because the maintenance fence intentionally
+                        blocks its control requests. It should recover after
+                        finalization releases the fence.
+                    </p>
                 </div>
             </div>
             <ConfirmationAction
@@ -611,6 +932,7 @@ function RestartAction({
                 description="Finalization checks that this running process has actually loaded the expected database fingerprint before it removes the maintenance fence."
                 triggerLabel={submitLabel}
                 submitLabel={submitLabel}
+                disabled={!restartReady}
             />
         </div>
     );
@@ -624,6 +946,7 @@ function ConfirmationAction({
     triggerLabel,
     submitLabel,
     destructive = false,
+    disabled = false,
 }: {
     form: { action: string; method: 'post' };
     phrase: string;
@@ -632,6 +955,7 @@ function ConfirmationAction({
     triggerLabel: string;
     submitLabel: string;
     destructive?: boolean;
+    disabled?: boolean;
 }) {
     const [confirmation, setConfirmation] = useState('');
 
@@ -641,6 +965,7 @@ function ConfirmationAction({
                 <Button
                     variant={destructive ? 'destructive' : 'default'}
                     className="w-fit"
+                    disabled={disabled}
                 >
                     {destructive ? <RotateCcw /> : <ArrowRightLeft />}
                     {triggerLabel}
@@ -937,7 +1262,7 @@ function Detail({
         <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{label}</p>
             <p
-                className={`mt-1 truncate text-sm font-medium ${mono ? 'font-mono' : ''}`}
+                className={`mt-1 text-sm leading-5 font-medium break-all ${mono ? 'font-mono' : ''}`}
             >
                 {value}
             </p>
@@ -953,32 +1278,37 @@ function Endpoint({
     endpoint: MigrationEndpoint;
 }) {
     return (
-        <div className="min-w-0 rounded-md border bg-muted/20 p-3">
+        <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="mt-1 font-medium uppercase">{endpoint.driver}</p>
-            <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                {endpoint.database}
+            <p className="mt-1 text-lg font-medium uppercase">
+                {endpoint.driver}
+            </p>
+            <p className="mt-1 font-mono text-xs leading-5 break-all text-muted-foreground">
+                {endpoint.database ?? 'Not configured'}
             </p>
         </div>
     );
 }
 
-function Metric({
+function MigrationSignal({
+    icon,
     label,
     value,
     detail,
 }: {
+    icon: ReactNode;
     label: string;
     value: string;
-    detail?: string;
+    detail: string;
 }) {
     return (
-        <div className="rounded-md border px-3 py-2.5">
-            <p className="text-xs text-muted-foreground">{label}</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
-            {detail && (
-                <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-            )}
+        <div className="flex min-w-0 items-start gap-3 border-b px-4 py-3 last:border-b-0 sm:border-b-0 sm:px-5">
+            <span className="mt-0.5 shrink-0">{icon}</span>
+            <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className="mt-0.5 font-medium tabular-nums">{value}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>
+            </div>
         </div>
     );
 }

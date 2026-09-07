@@ -72,6 +72,7 @@ class ApplicationDatabaseMigrationAdministrationTest extends TestCase
                 ->where('configuration_mode', 'managed')
                 ->where('active_database.driver', 'sqlite')
                 ->where('migration', null)
+                ->where('migration_history', [])
                 ->missing('active_database.password')
                 ->missing('active_database.fingerprint'));
     }
@@ -95,16 +96,110 @@ class ApplicationDatabaseMigrationAdministrationTest extends TestCase
         $this->assertSame('sqlite', $state['destination']['driver']);
         $this->assertStringNotContainsString($destination, $encrypted);
         $this->assertSame(1, AuditLog::query()->where('action', 'application_database_migration.planned')->count());
-        $this->assertSame('admin_plan_created', collect($state['events'])->last()['event']);
+        $this->assertSame('admin_plan_created', collect((array) $state['events'])->last()['event']);
 
         $this->actingAs($admin)
             ->get(route('application-database-migrations.edit'))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('migration.id', $state['id'])
+                ->where('migration_history', [])
                 ->missing('migration.source.payload')
                 ->missing('migration.destination.payload')
                 ->missing('migration.source.fingerprint')
                 ->missing('migration.destination.fingerprint'));
+    }
+
+    public function test_only_an_admin_can_cancel_a_planned_migration(): void
+    {
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
+        $developer = User::factory()->withRole(Role::factory()->developer()->create())->create();
+        $destination = $this->directory.'/cancelled-destination.sqlite';
+
+        $this->actingAs($admin)
+            ->post(route('application-database-migrations.store'), [
+                'driver' => 'sqlite',
+                'sqlite_database' => $destination,
+            ])
+            ->assertRedirect();
+
+        $store = app(ApplicationDatabaseMigrationStore::class);
+        $state = $store->read();
+
+        $this->actingAs($developer)
+            ->delete(route('application-database-migrations.destroy', [
+                'migration' => $state['id'],
+            ]))
+            ->assertForbidden();
+        $this->assertSame($state['id'], $store->currentId());
+
+        $this->actingAs($admin)
+            ->delete(route('application-database-migrations.destroy', [
+                'migration' => $state['id'],
+            ]))
+            ->assertRedirect();
+
+        $this->assertNull($store->currentId());
+        $this->assertSame('cancelled', $store->read($state['id'])['status']);
+        $this->assertSame(1, AuditLog::query()->where('action', 'application_database_migration.cancelled')->count());
+
+        $this->actingAs($admin)
+            ->get(route('application-database-migrations.edit'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('migration', null)
+                ->has('migration_history', 1)
+                ->where('migration_history.0.id', $state['id'])
+                ->where('migration_history.0.status', 'cancelled')
+                ->where('migration_history.0.is_current', false)
+                ->where('migration_history.0.can_rollback', false)
+                ->missing('migration_history.0.source.payload')
+                ->missing('migration_history.0.destination.payload'));
+    }
+
+    public function test_terminal_current_migration_is_moved_to_history_with_rollback_available(): void
+    {
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
+        $destination = $this->directory.'/active-destination.sqlite';
+
+        $this->actingAs($admin)
+            ->post(route('application-database-migrations.store'), [
+                'driver' => 'sqlite',
+                'sqlite_database' => $destination,
+            ])
+            ->assertRedirect();
+
+        $store = app(ApplicationDatabaseMigrationStore::class);
+        $state = $store->read();
+        $store->update((string) $state['id'], function (array $state): array {
+            $state['status'] = 'active';
+
+            return $state;
+        });
+
+        $this->actingAs($admin)
+            ->get(route('application-database-migrations.edit'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('migration', null)
+                ->has('migration_history', 1)
+                ->where('migration_history.0.id', $state['id'])
+                ->where('migration_history.0.status', 'active')
+                ->where('migration_history.0.is_current', true)
+                ->where('migration_history.0.can_rollback', true));
+    }
+
+    public function test_migration_history_keeps_multiple_plans_in_newest_first_order(): void
+    {
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
+
+        $firstId = $this->planAndCancel($admin, $this->directory.'/first-destination.sqlite');
+        $secondId = $this->planAndCancel($admin, $this->directory.'/second-destination.sqlite');
+
+        $this->actingAs($admin)
+            ->get(route('application-database-migrations.edit'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('migration', null)
+                ->has('migration_history', 2)
+                ->where('migration_history.0.id', $secondId)
+                ->where('migration_history.1.id', $firstId));
     }
 
     public function test_migration_console_remains_available_while_normal_and_native_requests_are_fenced(): void
@@ -161,5 +256,26 @@ class ApplicationDatabaseMigrationAdministrationTest extends TestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->where('configuration_mode', 'environment'));
+    }
+
+    private function planAndCancel(User $admin, string $destination): string
+    {
+        $this->actingAs($admin)
+            ->post(route('application-database-migrations.store'), [
+                'driver' => 'sqlite',
+                'sqlite_database' => $destination,
+            ])
+            ->assertRedirect();
+
+        $store = app(ApplicationDatabaseMigrationStore::class);
+        $id = (string) $store->read()['id'];
+
+        $this->actingAs($admin)
+            ->delete(route('application-database-migrations.destroy', [
+                'migration' => $id,
+            ]))
+            ->assertRedirect();
+
+        return $id;
     }
 }
