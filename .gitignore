@@ -29,6 +29,7 @@ yarn-error.log
 /.vscode
 /.zed
 /graphify-out/
+/docs/security-reports/
 /.codex/
 /.venv-docs/
 /site/

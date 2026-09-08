@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -96,6 +97,67 @@ class ProfileUpdateTest extends TestCase
 
         $this->assertGuest();
         $this->assertNull($user->fresh());
+    }
+
+    public function test_only_active_administrator_cannot_delete_their_account(): void
+    {
+        $adminRole = Role::factory()->admin()->create();
+        $administrator = User::factory()->withRole($adminRole)->create();
+
+        $response = $this
+            ->actingAs($administrator)
+            ->from(route('profile.edit'))
+            ->delete(route('profile.destroy'), [
+                'password' => 'password',
+            ]);
+
+        $response
+            ->assertSessionHasErrors('password')
+            ->assertRedirect(route('profile.edit'));
+
+        $this->assertAuthenticatedAs($administrator);
+        $this->assertModelExists($administrator);
+    }
+
+    public function test_administrator_can_delete_their_account_when_another_active_administrator_exists(): void
+    {
+        $adminRole = Role::factory()->admin()->create();
+        $administrator = User::factory()->withRole($adminRole)->create();
+        User::factory()->withRole($adminRole)->create();
+
+        $response = $this
+            ->actingAs($administrator)
+            ->delete(route('profile.destroy'), [
+                'password' => 'password',
+            ]);
+
+        $response
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('home'));
+
+        $this->assertGuest();
+        $this->assertModelMissing($administrator);
+    }
+
+    public function test_disabled_administrator_does_not_allow_the_only_active_administrator_to_delete_their_account(): void
+    {
+        $adminRole = Role::factory()->admin()->create();
+        $administrator = User::factory()->withRole($adminRole)->create();
+        User::factory()->disabled()->withRole($adminRole)->create();
+
+        $response = $this
+            ->actingAs($administrator)
+            ->from(route('profile.edit'))
+            ->delete(route('profile.destroy'), [
+                'password' => 'password',
+            ]);
+
+        $response
+            ->assertSessionHasErrors('password')
+            ->assertRedirect(route('profile.edit'));
+
+        $this->assertAuthenticatedAs($administrator);
+        $this->assertModelExists($administrator);
     }
 
     public function test_correct_password_must_be_provided_to_delete_account()
