@@ -37,3 +37,18 @@ State labels describe whether work may proceed; they do not replace the latest p
 | Reserved connection | The proxy admitted a client and is awaiting protocol authentication. | Wait briefly; stale reservations are pruned. |
 | Active connection | A native database client is connected through the lease. | Observe the safe statement history or revoke if necessary. |
 | Closed / failed | The client disconnected, was denied, or its reservation timed out. | Review audit metadata and reconnect only while the lease remains active. |
+
+## Application database migration states
+
+| State | Meaning | Typical next action |
+| --- | --- | --- |
+| Planned | Destination connectivity and empty-database prerequisites passed; the active database is unchanged. | Start copy or cancel the plan. |
+| Copying | Durable tables are being copied while the maintenance fence blocks mutations. | Wait; an interrupted copy can resume. |
+| Copied | Per-table copy checks completed. | Run independent verification. |
+| Verified | Source and destination match and the source remained unchanged while fenced. | Confirm activation. |
+| Restart required | The destination selection is saved, but this runtime has not loaded it. | Restart every Laravel runtime and wait for fingerprint confirmation. |
+| Active | Activation is finalized and the destination is the control database. | Operate normally or use the retained rollback point. |
+| Rollback restart required | Current durable data has been synchronized back and the original selection is prepared. | Restart every Laravel runtime and finalize rollback. |
+| Rolled back | The original control database is active and the fence is released. | Operate normally; the plan remains in history. |
+| Copy failed | The source remains active and the fence was released. | Use the correlation reference to investigate, then retry or cancel. |
+| Cancelled | An unactivated plan was abandoned without changing the active database. | Create a new plan when needed. |

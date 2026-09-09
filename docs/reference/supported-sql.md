@@ -33,6 +33,8 @@ The following submitted SQL statement categories remain blocked in browser Query
 - multi-statement input; and
 - `EXPLAIN ANALYZE`.
 
+MySQL executable comments, including versioned forms such as `/*! ... */`, and optimizer hints such as `/*+ ... */` are rejected before classification. They can change server behavior while looking like comments, so neither browser execution nor Native client access treats them as inert text.
+
 Emergency fallback only applies to one otherwise unsupported Deployment Batch statement. It treats that statement as write access, creates a warning, and keeps all permission, approval, and audit requirements. It never applies to Query Access.
 
 ## Query Access boundary

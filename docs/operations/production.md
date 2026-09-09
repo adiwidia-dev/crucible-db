@@ -97,7 +97,7 @@ available.
 
 ## Migrate an existing installation
 
-Open **Admin > Application Database**, create a plan for a dedicated empty
+Open **Manage → Administration → Application → Database**, create a plan for a dedicated empty
 destination, and follow the copy, verification, and cutover steps. Before copy
 or rollback, Crucible requires zero active query sessions, native leases, and
 native connections, then drains queued work and engages a maintenance fence.
@@ -112,8 +112,12 @@ curl --fail http://127.0.0.1:8000/health
 ```
 
 Return to the migration page and finalize only after the app is healthy. The
-native proxy is deliberately not restarted: it keeps rejecting admissions while
-the Laravel maintenance fence is active and resumes after finalization.
+page checks the running web process's database fingerprint and keeps the button
+disabled until it matches the prepared destination. `/health` remains available
+while the maintenance fence is active so the control database and Redis can be
+verified. The native proxy may report unhealthy during this window because its
+signed control checks are intentionally blocked; it should recover after
+finalization releases the fence.
 
 ## Upgrade safely
 

@@ -1,6 +1,6 @@
 # Audit log
 
-**Who sees it:** workspace administrators under **Admin → Governance → Audit Log**.
+**Who sees it:** workspace administrators under **Manage → Administration → Governance → Audit Log**.
 
 ![Audit Log page](../assets/screenshots/admin-audit-log.png){ .docs-screenshot }
 

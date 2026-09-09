@@ -24,16 +24,14 @@ A reviewer sees the same menus as an ordinary user. Reviewer authority does not 
 
 ## Workspace administrator
 
-An administrator sees every ordinary menu plus:
+An administrator sees every ordinary menu plus **Data → Connection Groups** and the collapsible **Manage → Administration** tree:
 
-- **Data → Connection Groups**.
-- **Admin → Access → People**.
-- **Admin → Access → Access Roles**.
-- **Admin → Authentication → Authentication**.
-- **Admin → Workspace → Application**.
-- **Admin → Workspace → Notification Policy**.
-- **Admin → Governance → SQL Policy**.
-- **Admin → Governance → Audit Log**.
+- **Access & identity**: People, Access Roles, and Access Workflows.
+- **Security & policy**: Sign-in Methods, SSO Providers, and SQL Policy.
+- **Application**: General, Notification Policy, and Database.
+- **Governance**: Audit Log.
+
+Administration and Account are independent disclosures, so both can remain open. Each administration subsection is expanded or collapsed manually; opening another subsection does not close the current one.
 
 ![Administrator navigation](../assets/screenshots/admin-navigation.png){ .docs-screenshot }
 

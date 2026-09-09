@@ -1,6 +1,6 @@
 # Application settings
 
-**Who sees it:** workspace administrators under **Admin → Workspace → Application**.
+**Who sees it:** workspace administrators under **Manage → Administration → Application → General**.
 
 ![Application settings](../assets/screenshots/admin-application.png){ .docs-screenshot }
 
@@ -19,3 +19,5 @@ Factory reset removes control-plane data and returns the application to first-ti
 ![Factory reset safety section](../assets/screenshots/admin-factory-reset.png){ .docs-screenshot }
 
 The action removes users, roles, providers, connections, requests, sessions, notifications, settings, and audit records from the control plane. Target databases are not changed. The confirmation dialog enables its destructive action only after the exact phrase `RESET CRUCIBLE` is entered.
+
+Factory reset preserves the application-database selection files needed to start the service, then returns the browser to token-protected initial setup. See [Application database](application-database.md) before resetting an installation that uses PostgreSQL or MySQL.

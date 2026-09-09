@@ -19,7 +19,7 @@ Crucible stores synthetic passwords and bearer tokens only as hashes, encrypts c
 | Database client → CLI | A TCP listener restricted to `127.0.0.1` or `::1`; no LAN listener is accepted. |
 | CLI → Crucible | Same-origin device authorization and authenticated WebSocket tunnel. The client uses the configured `APP_URL`; no proxy subdomain is required. |
 | Gateway → native proxy | Internal Compose network only. The discovery and `/native-tunnel/*` paths are the sole externally routed proxy paths. |
-| Native proxy → Laravel | Signed control requests with timestamp, nonce replay prevention, proxy identity, authorization checks, and rate limits. |
+| Native proxy → Laravel | Signed and AES-256-GCM-encrypted control messages with timestamp, nonce replay prevention, proxy identity/IP allowlists, authorization checks, and rate limits. |
 | Native proxy → target database | Target credential and independent upstream TLS configuration. The proxy does not create target users or roles. |
 | Laravel → Redis | Immediate revocation publish/subscribe; durable heartbeat checks remain the fail-closed authorization backstop. |
 

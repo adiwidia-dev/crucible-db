@@ -1,12 +1,14 @@
 # SQL policy
 
-**Who sees it:** workspace administrators under **Admin → Governance → SQL Policy**.
+**Who sees it:** workspace administrators under **Manage → Administration → Security & policy → SQL Policy**.
 
 ![SQL Policy settings](../assets/screenshots/admin-sql-policy.png){ .docs-screenshot }
 
 ## Statement families
 
 Enable read, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, and `TRUNCATE TABLE` individually according to workspace policy.
+
+There is no separate all-families override. Every enabled family shown on this page is part of the effective policy.
 
 ## Emergency SQL fallback
 

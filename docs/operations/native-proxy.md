@@ -14,7 +14,9 @@ flowchart LR
 
 ## Health and monitoring
 
-The proxy exposes private `GET /healthz`, `GET /readyz`, and `/metrics` endpoints on its internal gateway port. Liveness reports that the process is serving. Readiness is true only after a signed Laravel control-health request and a Redis ping both succeed; the check is repeated at `NATIVE_PROXY_READINESS_INTERVAL`. The public tunnel handler returns `503` while dependencies are unavailable.
+The proxy exposes private `GET /healthz`, `GET /readyz`, and `/metrics` endpoints on its internal gateway port. Liveness reports that the process is serving. Readiness is true only after an encrypted, HMAC-authenticated Laravel control-health request and a Redis ping both succeed; the check is repeated at `NATIVE_PROXY_READINESS_INTERVAL`. The public tunnel handler returns `503` while dependencies are unavailable.
+
+During an application-database activation or rollback, the maintenance fence intentionally rejects native control requests. The proxy can therefore report not ready until the administrator finalizes the operation and releases the fence. This is expected; do not bypass the fence or expose a database port to restore readiness.
 
 The metrics endpoint exposes the bounded `crucible_native_proxy_active_connections` gauge plus Go runtime and process collectors. Labels never contain a user, lease, connection, database, or SQL identifier. Per-connection byte counters, client application/version, CLI platform, upstream TLS verification, and privacy-safe statement counts are retained in the Laravel control-plane records rather than Prometheus labels. The Laravel scheduler checks readiness with a two-second bounded request and stores a short-lived snapshot. Dashboard health is cached and never performs a live proxy call during a user page request.
 
@@ -24,7 +26,7 @@ An unhealthy or version-mismatched result notifies operational recipients when t
 
 Redis publishes immediate lease-revocation messages. Each proxy connection also calls the Laravel control plane heartbeat every two seconds. This durable heartbeat is the fail-closed backstop if Redis, a process, or a network path misses the immediate message. Laravel reconciles expired device approvals and reservations, stale active connections, and running statements every minute; it later removes expired, consumed, closed, revoked, and failed disposable state according to the configured retention window.
 
-Control-plane mutations have an HMAC-signed request ID. Repeating the same signed mutation after an uncertain network failure replays the original encrypted response; reusing that ID for a different payload is rejected. Upstream connection material is retrieved only through the separate post-reservation control endpoint, is never logged, and is sent only to the private proxy process.
+Control-plane requests carry an HMAC-authenticated request ID and AES-256-GCM encrypted body. Responses are encrypted too. Repeating the same authenticated mutation after an uncertain network failure replays the original encrypted response; reusing that ID for a different payload is rejected. Laravel also checks the configured proxy instance IDs and source IP allowlist. Upstream connection material is retrieved only through the separate post-reservation control endpoint, is never logged, and is sent only to the private proxy process.
 
 Database sockets are closed after `NATIVE_PROXY_IDLE_TIMEOUT` without traffic. During shutdown, the service stops accepting new connections, reports not-ready, and permits active sessions to finish for `NATIVE_PROXY_DRAIN_TIMEOUT`; remaining sockets are then force-closed. Keep the container stop grace period longer than the drain timeout.
 

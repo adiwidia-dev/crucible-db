@@ -9,10 +9,10 @@ Native client access extends Query Access rather than introducing a second autho
 | Desktop client to CLI | Loopback-only protocol listener. No inbound network exposure. |
 | CLI to gateway | Same-origin, authenticated WebSocket tunnel after device authorization. |
 | Gateway to proxy | Private Compose network route only. |
-| Proxy to Laravel | HMAC-authenticated control API, replay-safe request IDs, clock-skew checks, and rate limiting. |
+| Proxy to Laravel | HMAC-authenticated, AES-256-GCM-encrypted control messages with replay-safe request IDs, clock-skew checks, proxy allowlists, and rate limiting. |
 | Proxy to target | Uses the encrypted target connection configuration and configured upstream TLS mode. |
 
-The proxy never creates or manages target-database users. It authenticates synthetic temporary credentials, then connects using the preconfigured target credential. Target credentials, synthetic password hashes, protocol secrets, device codes, and bearer tokens are encrypted or hashed and are not included in browser page properties, audits, notifications, logs, or statement history.
+The proxy never creates or manages target-database users. It authenticates synthetic temporary credentials, then connects using the preconfigured target credential. Sensitive proxy-to-Laravel request and response bodies are encrypted as well as signed. Target credentials, synthetic password hashes, protocol secrets, device codes, and bearer tokens are encrypted or hashed and are not included in browser page properties, audits, notifications, logs, or statement history.
 
 ## Protocol enforcement
 

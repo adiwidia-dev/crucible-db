@@ -14,6 +14,7 @@ Use this documentation to request and review SQL work, grant time-bounded browse
 | Use DBeaver, DataGrip, `psql`, or another desktop client | [Native Client access](guides/native-client-access.md) |
 | Approve or reject someone else's work | [Review requests](guides/review-requests.md) |
 | Configure roles, connections, and SQL guardrails | [Roles, groups, and connections](concepts/access-policy.md) |
+| Choose or migrate Crucible's own control database | [Application database](admin-guide/application-database.md) |
 | Upgrade the production installation | [Production deployment and upgrades](operations/production.md) |
 | Recover or secure your account | [Sign in and secure your account](getting-started/account-security.md) |
 | Monitor queues and scheduled work | [Queues, workers, and schedules](operations/queues-and-workers.md) |

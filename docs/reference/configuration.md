@@ -11,9 +11,7 @@ Production loads application configuration from `.env.production` through `compo
 | `CRUCIBLE_ENV_FILE` | Selects the environment file. Defaults to `.env.production`. |
 | `APP_ENV` | Set by Compose to `production`. |
 | `APP_DEBUG` | Set by Compose to `false`. |
-| `DB_CONNECTION` | Set by Compose to `sqlite`. |
-| `DB_DATABASE` | Set by Compose to the persistent `/app/storage/database/crucible.sqlite` path. |
-| `DB_BUSY_TIMEOUT`, `DB_JOURNAL_MODE`, `DB_SYNCHRONOUS`, `DB_TRANSACTION_MODE` | Keep SQLite on a bounded busy wait, WAL journaling, durable synchronization, and `IMMEDIATE` writer transactions so concurrent native-control requests serialize instead of failing during lock upgrades. |
+| `CRUCIBLE_CONTROL_DATABASE_NAME`, `CRUCIBLE_CONTROL_DATABASE_USERNAME`, `CRUCIBLE_CONTROL_DATABASE_PASSWORD` | Provision the optional `control-postgres` or `control-mysql` profile. The password must be set before either profile is enabled. |
 | `QUEUE_CONNECTION` | Set by Compose to `redis`. |
 | `SESSION_DRIVER` | Set by Compose to `redis`. |
 | `REDIS_HOST` | Set by Compose to the internal `redis` service. |
@@ -30,6 +28,15 @@ The production environment file supplies the application key, public URL, mail d
 | `CRUCIBLE_INITIAL_SETUP_TOKEN` | One-time deployment secret (at least 32 characters) required before initial database selection or first-administrator creation. |
 | `CRUCIBLE_BIND_ADDRESS`, `CRUCIBLE_HTTP_PORT` | Host binding for the bundled HTTP origin. Keep the address on `127.0.0.1` behind an administrator-managed TLS terminator. |
 | `TRUSTED_PROXIES` | Comma-separated private proxy networks allowed to supply forwarded host, client, port, and HTTPS scheme headers. |
+| `CRUCIBLE_DATABASE_CONFIG_MODE` | `managed` lets initial setup and the administrator migration UI own the encrypted selection. `environment` uses `DB_*` and makes the UI read-only. |
+| `CRUCIBLE_DATABASE_CONFIG_FILE` | Persistent encrypted managed database selection. Defaults to `storage/app/crucible/application-database.enc`; production uses the corresponding absolute path in `crucible_storage`. |
+| `CRUCIBLE_DATABASE_MIGRATION_DIRECTORY` | Persistent encrypted migration-plan history and progress records. |
+| `CRUCIBLE_DATABASE_MIGRATION_FENCE_FILE` | Filesystem maintenance fence used to block mutations across copy, cutover, and rollback. Keep it outside every migratable database. |
+| `DATABASE_STARTUP_ATTEMPTS` | Number of two-second startup migration attempts before the application container exits. Defaults to `30`. |
+| `DB_CONNECTION`, `DB_URL`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` | Fallback connection before a managed selection exists, and the authoritative control connection in `environment` mode. Supported drivers are `sqlite`, `pgsql`, and `mysql`. |
+| `DB_SSLMODE` | PostgreSQL control-database SSL mode. Defaults to `prefer`; production network databases should use the verification mode required by the operator. |
+| `MYSQL_ATTR_SSL_CA` | Optional CA path inside the application container for a MySQL control database. |
+| `DB_BUSY_TIMEOUT`, `DB_JOURNAL_MODE`, `DB_SYNCHRONOUS`, `DB_TRANSACTION_MODE` | SQLite contention and durability controls. Defaults are `5000`, `WAL`, `FULL`, and `IMMEDIATE`. |
 | `APP_LOCALE`, `APP_FALLBACK_LOCALE` | Application localization defaults. |
 | `BCRYPT_ROUNDS` | Password hashing work factor. |
 | `LOG_CHANNEL`, `LOG_LEVEL` | Container log destination and minimum severity. |
@@ -40,6 +47,9 @@ The production environment file supplies the application key, public URL, mail d
 | `OCTANE_MAX_REQUESTS` | Requests served before an Octane worker recycles. Defaults to `500`. |
 | `NATIVE_PROXY_ENABLED` | Enables Native client Query Access in the workspace deployment. Keep it `true` only when the native-proxy service is present. |
 | `NATIVE_PROXY_CONTROL_SECRET` | Required long random shared secret for the proxy-to-Laravel control API. Do not reuse `APP_KEY` or expose this value to clients. |
+| `NATIVE_PROXY_CONTROL_ENCRYPTED_RESPONSES_REQUIRED` | Requires authenticated AES-256-GCM control responses. Production and development Compose force this to `true`; keep application and proxy images on the same release. |
+| `NATIVE_PROXY_ALLOWED_IDS` | Comma-separated proxy instance IDs allowed to call the internal control API. Compose sets this to `NATIVE_PROXY_ID`. |
+| `NATIVE_PROXY_ALLOWED_IPS` | Optional comma-separated source-IP allowlist for internal control calls. Evaluation uses the direct peer address rather than forwarded client headers. |
 | `NATIVE_PROXY_MAX_CONNECTIONS` | Distributed global ceiling reserved by Laravel before upstream credentials are released. Defaults to `100`. Configure the same value on every proxy replica. |
 | `NATIVE_PROXY_MAX_CONNECTIONS_PER_LEASE` | Per-lease connection ceiling enforced by Laravel and again in the proxy process. Defaults to `3`. |
 | `NATIVE_PROXY_MAX_CONNECTIONS_PER_USER` | Distributed per-user ceiling reserved by Laravel before upstream credentials are released. Defaults to `10`. Configure the same value on every proxy replica. |
@@ -55,7 +65,7 @@ The production environment file supplies the application key, public URL, mail d
 | `NATIVE_PROXY_CONNECTION_STALE_SECONDS` | Fail an active connection whose durable heartbeat/activity is older than this value. Defaults to `60` seconds. |
 | `NATIVE_PROXY_STATEMENT_STALE_SECONDS` | Fail a running native statement that has no completion record after this value. Defaults to `900` seconds. |
 
-Do not override the Compose-managed database, Redis, queue, or session settings unless you deliberately redesign and validate the deployment topology.
+Do not override the Compose-managed Redis, queue, or session settings unless you deliberately redesign and validate the deployment topology. Keep every Laravel runtime on the same application-database selection; managed cutover requires a coordinated restart.
 
 ## Security handling
 

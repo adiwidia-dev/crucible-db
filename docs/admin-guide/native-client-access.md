@@ -4,7 +4,7 @@ Native client access reuses the Query Access approval workflow. Administrators d
 
 ## Set the policy
 
-1. Open **Settings → Access roles** and edit a role policy for a connection group or explicit connection.
+1. Open **Manage → Administration → Access & identity → Access Roles** and edit a role policy for a connection group or explicit connection.
 2. Set the role's maximum access. A read-only maximum access permits only native read access.
 3. When the maximum access is write, choose **Native client access** as **Read-only** or **Read + write**.
 4. Configure reviewer authority and read/write approval requirements as usual.

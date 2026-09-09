@@ -32,11 +32,11 @@ Crucible DB gives engineering teams a safer path to production database work wit
 - **Native client access** — approved Query Access sessions can issue short-lived credentials through the loopback-only Crucible CLI tunnel. The PostgreSQL/MySQL listeners are private, every statement remains policy-checked, and lease revocation closes connected clients. See the [compatibility matrix](docs/reference/native-client-compatibility.md) for the current desktop-client qualification status.
 - **Clear accountability** — record requests, reviews, executions, session activity, and administrative actions.
 - **Role-scoped access** — grant users the maximum deployment read/write access, reviewer authority, approval requirements, and optional write-session duration through reusable connection groups, with individual connection exceptions where needed. Write-capable policies default Query Access to read-only until an administrator explicitly permits read + write sessions.
-- **Controlled SQL surface** — administrators can enable each governed statement family or allow all of them. An audited emergency fallback can admit one otherwise unsupported Deployment Batch statement as write access, while administrative, file-access, security-management, procedural, transaction-control, and EXPLAIN ANALYZE SQL remain blocked.
+- **Controlled SQL surface** — administrators enable governed statement families individually. An audited emergency fallback can admit one otherwise unsupported Deployment Batch statement as write access, while administrative, file-access, security-management, procedural, transaction-control, and EXPLAIN ANALYZE SQL remain blocked.
 - **Operational guardrails** — show conservative per-statement preflight findings, require fresh preflight immediately before a deployment runs, and block definite safety violations.
 - **Follow-up and visibility** — cancel eligible work, create linked retries with fresh policy evaluation, watch important requests or connections, and receive in-app or optional email notifications.
 - **Practical authentication** — support password login, invitations, passkeys, two-factor authentication, and Google, GitHub, or Microsoft sign-in.
-- **Portable operations** — deploy the complete control plane as one application container plus Redis; application metadata is stored in a persistent SQLite volume.
+- **Portable operations** — deploy the complete control plane as one application container, Redis, the private native proxy, and a loopback HTTP gateway. Store control-plane data in SQLite, PostgreSQL, or MySQL and move between supported drivers through a fenced, verified administrator workflow.
 
 ## How it works
 
@@ -58,7 +58,7 @@ Crucible DB supports PostgreSQL and MySQL target connections. For an approved **
 
 ### Governed SQL behavior
 
-The workspace SQL policy controls the supported read, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP TABLE, and TRUNCATE TABLE families. The **Allow all governed statement families** switch overrides the individual family settings without discarding them.
+The workspace SQL policy controls the supported read, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP TABLE, and TRUNCATE TABLE families. Each family is enabled or disabled explicitly so the effective policy is always visible.
 
 Common-table expressions are classified by their top-level executable statement, so `WITH ... UPDATE`, `WITH ... INSERT`, `WITH ... DELETE`, and `WITH ... SELECT` receive the same policy and preflight treatment as their non-CTE forms.
 
@@ -92,11 +92,11 @@ The setup command installs PHP and JavaScript dependencies, creates the local en
 docker compose up --build
 ```
 
-The development Compose stack includes Crucible DB, Redis, Vite, and disposable PostgreSQL/MySQL targets for local testing. The application is available at `http://localhost:8000`. Fresh local installations use the development-only setup token `crucible-local-initial-setup-token`; replace it when the stack is reachable beyond your machine.
+The development Compose stack includes Crucible DB, Redis, Vite, disposable PostgreSQL/MySQL targets, and opt-in PostgreSQL/MySQL control-database fixtures. The application is available at `http://localhost:8000`. Fresh local installations use the development-only setup token `crucible-local-initial-setup-token`; replace it when the stack is reachable beyond your machine.
 
 ## Production deployment
 
-Production uses four persistent services:
+Production uses four core services, plus the selected control database when it is not SQLite:
 
 ```text
 Crucible DB application
@@ -142,10 +142,10 @@ printf 'APP_KEY=base64:%s\n' "$(openssl rand -base64 32)"
 Then start the stack:
 
 ```bash
-docker compose -f compose.production.yaml up -d
+docker compose --env-file .env.production -f compose.production.yaml up -d
 ```
 
-Compose waits for the Redis health check before starting the application. On startup, the application creates the local SQLite file when necessary, runs database migrations, and starts FrankenPHP through Laravel Octane, Horizon, and the scheduler under Supervisor. The `crucible_storage` named volume persists the application SQLite database and storage; `crucible_redis` persists Redis data. Confirm it is healthy with:
+Compose waits for the Redis health check before starting the application. On startup, the application resolves the managed SQLite, PostgreSQL, or MySQL control-database selection, creates the SQLite fallback file when necessary, runs database migrations, and starts FrankenPHP through Laravel Octane, Horizon, and the scheduler under Supervisor. The `crucible_storage` named volume persists encrypted database configuration, migration plans, local SQLite data, and application storage; `crucible_redis` persists Redis data. A selected network database must be backed up independently. Confirm the local origin is healthy with:
 
 ```bash
 curl --fail http://localhost:8000/health
@@ -154,10 +154,10 @@ curl --fail http://localhost:8000/health
 For a production update, back up the persistent storage and Redis volumes first. Then pull the exact production Compose stack and recreate its services:
 
 ```bash
-docker compose -f compose.production.yaml pull
-docker compose -f compose.production.yaml up -d --remove-orphans
-docker compose -f compose.production.yaml ps
-docker compose -f compose.production.yaml logs --tail=100 app redis
+docker compose --env-file .env.production -f compose.production.yaml pull
+docker compose --env-file .env.production -f compose.production.yaml up -d --remove-orphans
+docker compose --env-file .env.production -f compose.production.yaml ps
+docker compose --env-file .env.production -f compose.production.yaml logs --tail=100 app redis
 ```
 
 The application entrypoint runs forward-only migrations before Supervisor starts Octane/FrankenPHP, Horizon, and the scheduler. Verify the application health after the services are ready:
