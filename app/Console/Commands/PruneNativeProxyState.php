@@ -11,6 +11,7 @@ use App\Models\NativeProxyDeviceAuthorization;
 use App\Models\NativeProxyToken;
 use App\Models\QueryExecution;
 use App\Models\QuerySessionQuery;
+use App\Services\ApplicationDatabaseMigrationFence;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -19,7 +20,20 @@ use Illuminate\Console\Command;
 #[Description('Prune disposable native client authorization and abandoned execution state.')]
 class PruneNativeProxyState extends Command
 {
-    public function handle(): int
+    public function handle(ApplicationDatabaseMigrationFence $fence): int
+    {
+        $ran = $fence->runScheduledMutation(fn (): bool => $this->prune());
+
+        if (! $ran) {
+            $this->info('Skipped native proxy pruning while an application database migration is fenced.');
+
+            return self::SUCCESS;
+        }
+
+        return self::SUCCESS;
+    }
+
+    private function prune(): bool
     {
         $now = now();
         $cutoff = now()->subDays(max(1, (int) $this->option('days')));
@@ -103,6 +117,6 @@ class PruneNativeProxyState extends Command
 
         $this->info("Reconciled {$expiredAuthorizations} expired device authorization(s), {$reservations} expired reservation(s), {$staleConnections} stale connection(s), and ".($abandonedSessionStatements + $abandonedExecutions)." stale statement(s). Pruned {$deviceAuthorizations} device authorization(s), {$tokens} token(s), {$attempts} auth attempt(s), and {$connections} connection(s).");
 
-        return self::SUCCESS;
+        return true;
     }
 }

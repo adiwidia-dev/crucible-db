@@ -10,6 +10,7 @@ use App\Http\Requests\PlanApplicationDatabaseMigrationRequest;
 use App\Http\Requests\RunApplicationDatabaseMigrationRequest;
 use App\Models\User;
 use App\Services\ApplicationDatabaseConfiguration;
+use App\Services\ApplicationDatabaseMigrationFailureReporter;
 use App\Services\ApplicationDatabaseMigrationManager;
 use App\Services\AuditLogger;
 use App\Support\ApplicationDatabaseMigrationStore;
@@ -22,6 +23,8 @@ use Throwable;
 
 class ApplicationDatabaseMigrationController extends Controller
 {
+    public function __construct(private readonly ApplicationDatabaseMigrationFailureReporter $failureReporter) {}
+
     public function edit(
         ApplicationDatabaseConfiguration $configuration,
         ApplicationDatabaseMigrationManager $manager,
@@ -65,8 +68,7 @@ class ApplicationDatabaseMigrationController extends Controller
                 ),
             ));
         } catch (Throwable $exception) {
-            report($exception);
-            $migrationError = $exception->getMessage();
+            $migrationError = $this->failureReporter->capture($exception, 'status inspection')->getMessage();
         }
 
         $active = $configuration->activePayload();
@@ -248,10 +250,10 @@ class ApplicationDatabaseMigrationController extends Controller
         try {
             $operation();
         } catch (Throwable $exception) {
-            report($exception);
+            $failure = $this->failureReporter->capture($exception, 'operation');
 
             throw ValidationException::withMessages([
-                'migration_operation' => $exception->getMessage(),
+                'migration_operation' => $failure->getMessage(),
             ]);
         }
 

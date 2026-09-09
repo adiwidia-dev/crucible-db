@@ -2,8 +2,15 @@ package control_test
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +23,7 @@ import (
 )
 
 type retryingHTTPClient struct {
+	t        *testing.T
 	requests []*http.Request
 }
 
@@ -25,10 +33,12 @@ func (client *retryingHTTPClient) Do(request *http.Request) (*http.Response, err
 		return nil, errors.New("temporary control-plane network failure")
 	}
 
+	body := protectedResponseBody(client.t, request, http.StatusCreated, []byte(`{"device_code":"device","user_code":"ABCD-EFGH","expires_in":300,"interval":5}`))
+
 	return &http.Response{
 		StatusCode: http.StatusCreated,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"device_code":"device","user_code":"ABCD-EFGH","expires_in":300,"interval":5}`)),
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "X-Crucible-Control-Protocol": []string{"2"}},
+		Body:       io.NopCloser(strings.NewReader(string(body))),
 	}, nil
 }
 
@@ -36,18 +46,27 @@ func TestClientSignsEveryMutatingRequestWithANewRequestID(t *testing.T) {
 	var requestIDs []string
 	var mutex sync.Mutex
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		body := make([]byte, request.ContentLength)
-		_, _ = request.Body.Read(body)
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
 		requestID := request.Header.Get("X-Crucible-Request-Id")
 		want := control.Signature("secret", request.Method, request.URL.EscapedPath(), request.Header.Get("X-Crucible-Timestamp"), requestID, body)
 		if request.Header.Get("X-Crucible-Signature") != want {
 			t.Fatal("request signature did not match Laravel canonical format")
 		}
+		if strings.Contains(string(body), "lease-01") {
+			t.Fatal("sensitive request payload was sent in plaintext")
+		}
+		plaintext := decryptRequestBody(t, request, body)
+		var input control.DeviceAuthorizationRequest
+		if err := json.Unmarshal(plaintext, &input); err != nil || input.LeaseID != "lease-01" {
+			t.Fatalf("unexpected protected request payload: %s", plaintext)
+		}
 		mutex.Lock()
 		requestIDs = append(requestIDs, requestID)
 		mutex.Unlock()
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"device_code":"device","user_code":"ABCD-EFGH","expires_in":300,"interval":5}`))
+		writeProtectedJSON(t, writer, request, http.StatusOK, []byte(`{"device_code":"device","user_code":"ABCD-EFGH","expires_in":300,"interval":5}`))
 	}))
 	defer server.Close()
 
@@ -70,9 +89,11 @@ func TestClientSignsEveryMutatingRequestWithANewRequestID(t *testing.T) {
 
 func TestClientReturnsDeviceAuthorizationPollErrorsWithoutLeakingControlDetails(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "application/json")
-		writer.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(writer).Encode(control.DeviceTokenResponse{Error: "slow_down", Interval: 10})
+		payload, err := json.Marshal(control.DeviceTokenResponse{Error: "slow_down", Interval: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeProtectedJSON(t, writer, request, http.StatusBadRequest, payload)
 	}))
 	defer server.Close()
 
@@ -95,7 +116,7 @@ func TestClientRetriesAnUncertainMutatingRequestWithTheSameReplayIdentity(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	httpClient := &retryingHTTPClient{}
+	httpClient := &retryingHTTPClient{t: t}
 	client.HTTPClient = httpClient
 	client.Now = func() time.Time { return time.Unix(1_700_000_000, 0) }
 	client.NewRequestID = func() (string, error) { return "stable-retry-request-id", nil }
@@ -129,13 +150,16 @@ func TestClientUsesSignedHealthAndLifecycleEndpoints(t *testing.T) {
 			body   control.ConnectionTrafficRequest
 		}{method: request.Method, path: request.URL.Path}
 		if request.URL.Path == "/internal/native-proxy/v1/connections/traffic" {
-			if err := json.NewDecoder(request.Body).Decode(&captured.body); err != nil {
+			body, err := io.ReadAll(request.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(decryptRequestBody(t, request, body), &captured.body); err != nil {
 				t.Fatal(err)
 			}
 		}
 		requests = append(requests, captured)
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{}`))
+		writeProtectedJSON(t, writer, request, http.StatusOK, []byte(`{}`))
 	}))
 	defer server.Close()
 
@@ -161,4 +185,120 @@ func TestClientUsesSignedHealthAndLifecycleEndpoints(t *testing.T) {
 	if requests[3].body.ProxyID != "proxy-1" || requests[3].body.ProxyConnectionID != "client-visible-connection-1" || requests[3].body.BytesReceived != 128 || requests[3].body.BytesSent != 256 {
 		t.Fatalf("unexpected traffic payload: %#v", requests[3].body)
 	}
+}
+
+func TestClientRejectsTamperedControlResponses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body := protectedResponseBody(t, request, http.StatusOK, []byte(`{}`))
+		body[len(body)-3] ^= 1
+		writer.Header().Set("X-Crucible-Control-Protocol", "2")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write(body)
+	}))
+	defer server.Close()
+
+	client, err := control.NewClient(server.URL, "secret", "proxy-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Ping(context.Background()); err == nil || !strings.Contains(err.Error(), "decrypt native proxy control response") {
+		t.Fatalf("expected authenticated response rejection, got %v", err)
+	}
+}
+
+func decryptRequestBody(t testing.TB, request *http.Request, body []byte) []byte {
+	t.Helper()
+	var envelope struct {
+		Version    int    `json:"version"`
+		Nonce      string `json:"nonce"`
+		Ciphertext string `json:"ciphertext"`
+		Tag        string `json:"tag"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil || envelope.Version != 2 {
+		t.Fatalf("invalid encrypted request envelope: %v", err)
+	}
+	nonce, err := base64.StdEncoding.DecodeString(envelope.Nonce)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(envelope.Ciphertext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tag, err := base64.StdEncoding.DecodeString(envelope.Tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	keyDerivation := hmac.New(sha256.New, []byte("secret"))
+	_, _ = keyDerivation.Write([]byte("crucible-native-proxy-control-request-v2"))
+	block, err := aes.NewCipher(keyDerivation.Sum(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aad := strings.Join([]string{
+		"2",
+		request.Header.Get("X-Crucible-Proxy-Id"),
+		request.Method,
+		request.URL.EscapedPath(),
+		request.Header.Get("X-Crucible-Timestamp"),
+		request.Header.Get("X-Crucible-Request-Id"),
+	}, "\n")
+	plaintext, err := gcm.Open(nil, nonce, append(ciphertext, tag...), []byte(aad))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return plaintext
+}
+
+func writeProtectedJSON(t testing.TB, writer http.ResponseWriter, request *http.Request, statusCode int, plaintext []byte) {
+	t.Helper()
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Set("X-Crucible-Control-Protocol", "2")
+	writer.WriteHeader(statusCode)
+	_, _ = writer.Write(protectedResponseBody(t, request, statusCode, plaintext))
+}
+
+func protectedResponseBody(t testing.TB, request *http.Request, statusCode int, plaintext []byte) []byte {
+	t.Helper()
+	keyDerivation := hmac.New(sha256.New, []byte("secret"))
+	_, _ = keyDerivation.Write([]byte("crucible-native-proxy-control-response-v2"))
+	block, err := aes.NewCipher(keyDerivation.Sum(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		t.Fatal(err)
+	}
+	aad := strings.Join([]string{
+		"2",
+		request.Header.Get("X-Crucible-Proxy-Id"),
+		request.Header.Get("X-Crucible-Timestamp"),
+		request.Header.Get("X-Crucible-Request-Id"),
+		fmt.Sprintf("%d", statusCode),
+	}, "\n")
+	sealed := gcm.Seal(nil, nonce, plaintext, []byte(aad))
+	ciphertext := sealed[:len(sealed)-gcm.Overhead()]
+	tag := sealed[len(sealed)-gcm.Overhead():]
+	body, err := json.Marshal(map[string]any{
+		"version":    2,
+		"nonce":      base64.StdEncoding.EncodeToString(nonce),
+		"ciphertext": base64.StdEncoding.EncodeToString(ciphertext),
+		"tag":        base64.StdEncoding.EncodeToString(tag),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return body
 }

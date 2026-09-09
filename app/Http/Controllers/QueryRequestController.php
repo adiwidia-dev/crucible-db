@@ -70,6 +70,7 @@ class QueryRequestController extends Controller
                 'id' => $queryRequest->id,
                 'title' => $queryRequest->title,
                 'status' => $queryRequest->status->value,
+                'revision' => $queryRequest->revision,
                 'query_type' => $queryRequest->query_type->value,
                 'latest_query_type' => $queryRequest->latestExecution?->query_type?->value,
                 'effective_query_type' => $this->effectiveQueryType($queryRequest),
@@ -287,6 +288,7 @@ class QueryRequestController extends Controller
                 ])->values(),
                 'reviews' => $queryRequest->reviews->map(fn ($review): array => [
                     'id' => $review->id,
+                    'query_request_revision' => $review->query_request_revision,
                     'decision' => $review->decision,
                     'comment' => $review->comment,
                     'reviewer' => $review->reviewer->name,

@@ -5,8 +5,12 @@ services:
     command: ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000", "--workers=2", "--max-requests=500"]
     environment:
       OCTANE_SERVER: frankenphp
+      CRUCIBLE_INITIAL_SETUP_TOKEN: ${CRUCIBLE_INITIAL_SETUP_TOKEN:-crucible-local-initial-setup-token}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1/8,::1}
       NATIVE_PROXY_ENABLED: "true"
-      NATIVE_PROXY_CONTROL_SECRET: ${NATIVE_PROXY_CONTROL_SECRET:-change-me-before-production}
+      NATIVE_PROXY_CONTROL_SECRET: ${NATIVE_PROXY_CONTROL_SECRET:?NATIVE_PROXY_CONTROL_SECRET must be configured with at least 32 characters}
+      NATIVE_PROXY_CONTROL_ENCRYPTED_RESPONSES_REQUIRED: "true"
+      NATIVE_PROXY_ALLOWED_IDS: ${NATIVE_PROXY_ID:-crucible-dev}
       NATIVE_PROXY_HEALTH_URL: http://native-proxy:8081/readyz
     volumes:
       - .:/app
@@ -53,7 +57,7 @@ services:
     healthcheck:
       disable: true
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - .:/app
       - node_modules:/app/node_modules
@@ -61,7 +65,7 @@ services:
   gateway:
     image: caddy:2.10-alpine
     ports:
-      - "8000:8000"
+      - "${CRUCIBLE_BIND_ADDRESS:-127.0.0.1}:${CRUCIBLE_HTTP_PORT:-8000}:8000"
     volumes:
       - ./.docker/native-proxy.Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
@@ -78,7 +82,7 @@ services:
       APP_URL: ${APP_URL:-http://localhost:8000}
       NATIVE_PROXY_ID: ${NATIVE_PROXY_ID:-crucible-dev}
       NATIVE_PROXY_CONTROL_URL: http://app:8000
-      NATIVE_PROXY_CONTROL_SECRET: ${NATIVE_PROXY_CONTROL_SECRET:-change-me-before-production}
+      NATIVE_PROXY_CONTROL_SECRET: ${NATIVE_PROXY_CONTROL_SECRET:?NATIVE_PROXY_CONTROL_SECRET must be configured with at least 32 characters}
       NATIVE_PROXY_REDIS_URL: redis://redis:6379/0
       NATIVE_PROXY_REVOCATION_CHANNEL: ${NATIVE_PROXY_REVOCATION_CHANNEL:-native-proxy:lease-revoked}
     read_only: true
@@ -98,7 +102,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -112,7 +116,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: crucible_root
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - target_postgres_data:/var/lib/postgresql/data
       - ./.docker/target-postgres/init.sql:/docker-entrypoint-initdb.d/10-crucible-target.sql:ro
@@ -128,7 +132,7 @@ services:
       MYSQL_DATABASE: crucible_target
       MYSQL_ROOT_PASSWORD: crucible_root
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
     volumes:
       - target_mysql_data:/var/lib/mysql
       - ./.docker/target-mysql/init.sql:/docker-entrypoint-initdb.d/10-crucible-target.sql:ro

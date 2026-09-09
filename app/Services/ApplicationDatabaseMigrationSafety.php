@@ -26,6 +26,7 @@ final class ApplicationDatabaseMigrationSafety
         $this->fence->engage($planId);
 
         try {
+            $this->fence->waitForScheduledMutations($drainTimeoutSeconds);
             $this->assertNoActiveAccess();
             $this->waitUntilQueuesAreEmpty($drainTimeoutSeconds);
             $this->pauseQueues();

@@ -68,6 +68,10 @@ func (server *Server) handleExtended(ctx context.Context, backend *pgproto3.Back
 }
 
 func (server *Server) parse(ctx context.Context, backend *pgproto3.Backend, upstream *pgx.Conn, connectionID string, state *extendedState, message *pgproto3.Parse) error {
+	if hasUnsafeComment(message.Query) {
+		return state.writeError(backend, "statement is not allowed")
+	}
+
 	if len(message.ParameterOIDs) > maxPreparedStatements {
 		return state.writeError(backend, "too many prepared statement parameters")
 	}

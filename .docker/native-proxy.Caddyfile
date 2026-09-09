@@ -1,8 +1,18 @@
 {
 	auto_https off
+	servers {
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
 }
 
 :8000 {
+	@internal_control path /internal /internal/*
+
+	handle @internal_control {
+		respond 404
+	}
+
 	@native_client path /.well-known/crucible-native-client.json /native-tunnel/*
 
 	handle @native_client {

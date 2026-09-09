@@ -34,8 +34,11 @@ func (config Config) Validate() error {
 			return fmt.Errorf("%s address is invalid", name)
 		}
 	}
-	if config.ControlURL == "" || config.ControlSecret == "" || config.ProxyID == "" {
+	if config.ControlURL == "" || config.ProxyID == "" {
 		return errors.New("native proxy control configuration is required")
+	}
+	if len(config.ControlSecret) < 32 || config.ControlSecret == "change-me-before-production" {
+		return errors.New("native proxy control secret must contain at least 32 non-default characters")
 	}
 	if config.RedisURL == "" || config.RevocationChannel == "" {
 		return errors.New("native proxy revocation configuration is required")

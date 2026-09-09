@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\ApplicationDatabaseMigrationOperationException;
 use App\Services\ApplicationDatabaseCopyEngine;
 use App\Services\ApplicationDatabaseMigrationFence;
 use App\Services\ApplicationDatabaseMigrationManager;
@@ -155,11 +156,17 @@ class ApplicationDatabaseMigrationFaultTest extends TestCase
         try {
             $manager->verify((string) $state['id']);
             $this->fail('Source mutation after copy must fail verification.');
-        } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('Verification failed', $exception->getMessage());
+        } catch (ApplicationDatabaseMigrationOperationException $exception) {
+            $this->assertStringContainsString('Reference:', $exception->getMessage());
+            $this->assertStringNotContainsString('application_settings', $exception->getMessage());
         }
 
-        $this->assertSame('copied', app(ApplicationDatabaseMigrationStore::class)->read((string) $state['id'])['status']);
+        $stored = app(ApplicationDatabaseMigrationStore::class)->read((string) $state['id']);
+        $this->assertSame('copied', $stored['status']);
+        $failureEvent = collect($stored['events'])->firstWhere('event', 'verification_failed');
+        $this->assertIsArray($failureEvent);
+        $this->assertSame('verification', $failureEvent['phase']);
+        $this->assertStringNotContainsString('application_settings', $failureEvent['message']);
         $this->assertTrue(app(ApplicationDatabaseMigrationFence::class)->isActive());
     }
 

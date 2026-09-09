@@ -36,14 +36,19 @@ Route::get('/', fn () => auth()->check()
     : redirect()->route('login'))->name('home');
 
 Route::middleware(['guest', 'throttle:6,1'])->group(function (): void {
-    Route::get('setup/database', [SetupController::class, 'createApplicationDatabase'])
-        ->name('setup.database.create');
-    Route::post('setup/database', [SetupController::class, 'storeApplicationDatabase'])
-        ->name('setup.database.store');
-    Route::get('setup/database/restart', [SetupController::class, 'restartApplicationDatabase'])
-        ->name('setup.database.restart');
-    Route::get('setup', [SetupController::class, 'show'])->name('setup.show');
-    Route::post('setup', [SetupController::class, 'store'])->name('setup.store');
+    Route::get('setup/access', [SetupController::class, 'createAccess'])->name('setup.access.create');
+    Route::post('setup/access', [SetupController::class, 'authorizeAccess'])->name('setup.access.store');
+
+    Route::middleware('initial-setup-access')->group(function (): void {
+        Route::get('setup/database', [SetupController::class, 'createApplicationDatabase'])
+            ->name('setup.database.create');
+        Route::post('setup/database', [SetupController::class, 'storeApplicationDatabase'])
+            ->name('setup.database.store');
+        Route::get('setup/database/restart', [SetupController::class, 'restartApplicationDatabase'])
+            ->name('setup.database.restart');
+        Route::get('setup', [SetupController::class, 'show'])->name('setup.show');
+        Route::post('setup', [SetupController::class, 'store'])->name('setup.store');
+    });
 });
 
 Route::middleware(['auth'])->group(function (): void {

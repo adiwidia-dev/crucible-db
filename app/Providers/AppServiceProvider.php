@@ -57,6 +57,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->validateNativeProxyConfiguration();
         $this->configureDefaults();
         $this->configureApplicationSettings();
         $this->configureSocialiteProviders();
@@ -64,6 +65,19 @@ class AppServiceProvider extends ServiceProvider
         $this->configureNativeProxyRateLimiting();
         $this->configureNativeProxyRevocations();
         $this->configureApplicationDatabaseMigrationFence();
+    }
+
+    private function validateNativeProxyConfiguration(): void
+    {
+        if (! config('native_proxy.enabled')) {
+            return;
+        }
+
+        $secret = config('native_proxy.control_secret');
+
+        if (! is_string($secret) || strlen($secret) < 32 || $secret === 'change-me-before-production') {
+            throw new \RuntimeException('NATIVE_PROXY_CONTROL_SECRET must contain at least 32 non-default characters.');
+        }
     }
 
     protected function configureApplicationSettings(): void

@@ -1,11 +1,14 @@
 <?php
 
+use App\Http\Middleware\AddSecurityHeaders;
 use App\Http\Middleware\EnsureAuthenticationMethodIsEnabled;
+use App\Http\Middleware\EnsurePendingTwoFactorUserIsEnabled;
 use App\Http\Middleware\EnsureUserIsEnabled;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RedirectToSetupWhenUninitialized;
 use App\Http\Middleware\RejectRequestsDuringApplicationDatabaseMigration;
+use App\Http\Middleware\RequireInitialSetupAccess;
 use App\Http\Middleware\VerifyNativeProxyControlRequest;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -20,18 +23,29 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function (): void {
-            Route::middleware(['throttle:native-proxy-control', SubstituteBindings::class])
+            Route::middleware([SubstituteBindings::class])
                 ->group(base_path('routes/native-proxy.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO,
+        );
+
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
         $middleware->web(
-            prepend: [RejectRequestsDuringApplicationDatabaseMigration::class],
+            prepend: [
+                AddSecurityHeaders::class,
+                RejectRequestsDuringApplicationDatabaseMigration::class,
+            ],
             append: [
                 HandleAppearance::class,
                 RedirectToSetupWhenUninitialized::class,
+                EnsurePendingTwoFactorUserIsEnabled::class,
                 EnsureUserIsEnabled::class,
                 EnsureAuthenticationMethodIsEnabled::class,
                 HandleInertiaRequests::class,
@@ -39,6 +53,7 @@ return Application::configure(basePath: dirname(__DIR__))
         );
         $middleware->alias([
             'application-database-migration' => RejectRequestsDuringApplicationDatabaseMigration::class,
+            'initial-setup-access' => RequireInitialSetupAccess::class,
             'native-proxy-control' => VerifyNativeProxyControlRequest::class,
         ]);
     })

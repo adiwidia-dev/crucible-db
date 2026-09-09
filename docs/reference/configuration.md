@@ -27,6 +27,9 @@ The production environment file supplies the application key, public URL, mail d
 | `APP_NAME` | Default application identity before workspace settings override it. |
 | `APP_KEY` | Required encryption key for credentials, provider secrets, settings, sessions, and other encrypted values. |
 | `APP_URL` | Public origin used to generate invitation, password reset, SSO callback, and application links. |
+| `CRUCIBLE_INITIAL_SETUP_TOKEN` | One-time deployment secret (at least 32 characters) required before initial database selection or first-administrator creation. |
+| `CRUCIBLE_BIND_ADDRESS`, `CRUCIBLE_HTTP_PORT` | Host binding for the bundled HTTP origin. Keep the address on `127.0.0.1` behind an administrator-managed TLS terminator. |
+| `TRUSTED_PROXIES` | Comma-separated private proxy networks allowed to supply forwarded host, client, port, and HTTPS scheme headers. |
 | `APP_LOCALE`, `APP_FALLBACK_LOCALE` | Application localization defaults. |
 | `BCRYPT_ROUNDS` | Password hashing work factor. |
 | `LOG_CHANNEL`, `LOG_LEVEL` | Container log destination and minimum severity. |

@@ -19,6 +19,9 @@ class NativeProxyControlAuthenticationTest extends TestCase
         config([
             'native_proxy.enabled' => true,
             'native_proxy.control_secret' => self::ControlSecret,
+            'native_proxy.control_encrypted_responses_required' => false,
+            'native_proxy.allowed_proxy_ids' => [],
+            'native_proxy.allowed_proxy_ips' => [],
         ]);
     }
 

@@ -15,14 +15,50 @@ class InitialSetupTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const SetupToken = 'test-initial-setup-token-32-characters';
+
     public function test_uninitialized_application_redirects_guests_to_setup(): void
     {
+        $this->get(route('home'))
+            ->assertRedirect(route('setup.access.create'));
+
+        $this->unlockSetup();
+
         $this->get(route('home'))
             ->assertRedirect(route('setup.show'));
     }
 
+    public function test_setup_routes_require_the_deployment_token(): void
+    {
+        $this->get(route('setup.show'))
+            ->assertRedirect(route('setup.access.create'));
+
+        $this->post(route('setup.access.store'), [
+            'setup_token' => 'incorrect-setup-token-with-32-characters',
+        ])->assertSessionHasErrors('setup_token');
+
+        $this->get(route('setup.show'))
+            ->assertRedirect(route('setup.access.create'));
+
+        $this->unlockSetup();
+
+        $this->get(route('setup.show'))->assertOk();
+    }
+
+    public function test_setup_fails_closed_when_no_strong_token_is_configured(): void
+    {
+        config(['security.initial_setup_token' => 'short']);
+
+        $this->get(route('setup.access.create'))->assertServiceUnavailable();
+        $this->post(route('setup.access.store'), [
+            'setup_token' => 'short',
+        ])->assertSessionHasErrors('setup_token');
+    }
+
     public function test_setup_response_does_not_emit_asset_preload_headers(): void
     {
+        $this->unlockSetup();
+
         $this->get(route('setup.show'))
             ->assertOk()
             ->assertHeaderMissing('Link');
@@ -30,6 +66,8 @@ class InitialSetupTest extends TestCase
 
     public function test_setup_creates_the_first_administrator_and_moves_to_optional_connection_setup(): void
     {
+        $this->unlockSetup();
+
         $this->post(route('setup.store'), [
             'app_name' => 'Crucible DB',
             'first_name' => 'First',
@@ -49,7 +87,28 @@ class InitialSetupTest extends TestCase
         $this->assertSame($adminRole->id, $user->role_id);
         $this->assertSame('Crucible DB', ApplicationSetting::query()->where('key', 'app_name')->firstOrFail()->value);
         $this->assertSame('UTC', ApplicationSetting::query()->where('key', 'default_timezone')->firstOrFail()->value);
+        $this->assertSame('1', ApplicationSetting::query()->where('key', 'initial_setup_completed')->firstOrFail()->value);
         $this->assertDatabaseHas('audit_logs', ['action' => 'application.initialized']);
+    }
+
+    public function test_deleting_every_user_does_not_reopen_initial_setup(): void
+    {
+        $this->unlockSetup();
+
+        $this->post(route('setup.store'), [
+            'app_name' => 'Crucible DB',
+            'first_name' => 'First',
+            'last_name' => 'Admin',
+            'email' => 'admin@example.test',
+            'password' => 'password',
+            'password_confirmation' => 'password',
+        ])->assertRedirect();
+
+        User::query()->delete();
+        auth()->logout();
+        $this->flushSession();
+
+        $this->get(route('setup.show'))->assertNotFound();
     }
 
     public function test_setup_is_not_available_after_the_first_user_exists(): void
@@ -58,6 +117,13 @@ class InitialSetupTest extends TestCase
 
         $this->get(route('setup.show'))
             ->assertNotFound();
+    }
+
+    private function unlockSetup(): void
+    {
+        $this->post(route('setup.access.store'), [
+            'setup_token' => self::SetupToken,
+        ])->assertRedirect();
     }
 
     public function test_initial_owner_can_skip_the_optional_connection_step(): void

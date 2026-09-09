@@ -109,6 +109,7 @@ type QueryRequest = {
         execution_state: ExecutionStatus | 'skipped' | null;
     }>;
     status: QueryRequestStatus;
+    revision: number;
     query_type: QueryType;
     request_kind: QueryRequestKind;
     access_transport: AccessTransport;
@@ -172,6 +173,7 @@ type QueryRequest = {
     }>;
     reviews: Array<{
         id: number;
+        query_request_revision: number;
         decision: string;
         comment: string | null;
         reviewer: string;
@@ -1572,6 +1574,11 @@ export default function QueryRequestShow({
                             >
                                 {({ processing, errors }) => (
                                     <>
+                                        <input
+                                            type="hidden"
+                                            name="expected_revision"
+                                            value={query_request.revision}
+                                        />
                                         <div className="grid gap-2 md:w-80">
                                             <Label htmlFor="decision">
                                                 Decision

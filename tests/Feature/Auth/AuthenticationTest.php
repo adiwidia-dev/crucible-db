@@ -3,14 +3,34 @@
 namespace Tests\Feature\Auth;
 
 use App\Models\User;
+use App\Services\ApplicationSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Fortify\Features;
+use Laravel\Passkeys\Passkey;
+use Laravel\Passkeys\Passkeys;
 use Tests\TestCase;
 
 class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_passkey_login_authorization_rejects_disabled_users_and_disabled_passkey_login(): void
+    {
+        $user = User::factory()->create();
+        $passkey = new Passkey;
+        $passkey->setRelation('user', $user);
+
+        $this->assertTrue(Passkeys::allowsLogin(Request::create('/passkeys/login', 'POST'), $passkey));
+
+        $user->forceFill(['disabled_at' => now()])->save();
+        $this->assertFalse(Passkeys::allowsLogin(Request::create('/passkeys/login', 'POST'), $passkey));
+
+        $user->forceFill(['disabled_at' => null])->save();
+        app(ApplicationSettings::class)->put([ApplicationSettings::PasskeyLoginEnabled => false]);
+        $this->assertFalse(Passkeys::allowsLogin(Request::create('/passkeys/login', 'POST'), $passkey));
+    }
 
     protected function setUp(): void
     {

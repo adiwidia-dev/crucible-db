@@ -10,6 +10,8 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -52,15 +54,21 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
-        if ($user->isAdmin() && ! $this->anotherActiveAdministratorExists($user)) {
-            throw ValidationException::withMessages([
-                'password' => 'You cannot delete your account while you are the only administrator. Ask another administrator to take over or disable your account first.',
-            ]);
-        }
+        Cache::lock('users:administrator-continuity', 15)->block(5, function () use ($user): void {
+            DB::transaction(function () use ($user): void {
+                $lockedUser = User::query()->lockForUpdate()->findOrFail($user->id);
+
+                if ($lockedUser->isAdmin() && ! $this->anotherActiveAdministratorExists($lockedUser)) {
+                    throw ValidationException::withMessages([
+                        'password' => 'You cannot delete your account while you are the only administrator. Ask another administrator to take over or disable your account first.',
+                    ]);
+                }
+
+                $lockedUser->delete();
+            });
+        });
 
         Auth::logout();
-
-        $user->delete();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

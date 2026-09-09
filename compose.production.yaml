@@ -11,7 +11,13 @@ services:
       QUEUE_CONNECTION: redis
       REDIS_HOST: redis
       SESSION_DRIVER: redis
+      SESSION_SECURE_COOKIE: "true"
+      CRUCIBLE_INITIAL_SETUP_TOKEN: ${CRUCIBLE_INITIAL_SETUP_TOKEN:?CRUCIBLE_INITIAL_SETUP_TOKEN must contain at least 32 characters}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.1/8,::1}
       NATIVE_PROXY_ENABLED: "true"
+      NATIVE_PROXY_CONTROL_SECRET: ${NATIVE_PROXY_CONTROL_SECRET:?NATIVE_PROXY_CONTROL_SECRET must be configured}
+      NATIVE_PROXY_CONTROL_ENCRYPTED_RESPONSES_REQUIRED: "true"
+      NATIVE_PROXY_ALLOWED_IDS: ${NATIVE_PROXY_ID:-crucible-production}
       NATIVE_PROXY_HEALTH_URL: http://native-proxy:8081/readyz
     init: true
     restart: unless-stopped
@@ -92,7 +98,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 35s
     ports:
-      - "8000:8000"
+      - "${CRUCIBLE_BIND_ADDRESS:-127.0.0.1}:${CRUCIBLE_HTTP_PORT:-8000}:8000"
     volumes:
       - ./.docker/native-proxy.Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:

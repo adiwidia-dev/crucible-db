@@ -12,6 +12,8 @@ class ApplicationSettings
 {
     public const AppName = 'app_name';
 
+    public const InitialSetupCompleted = 'initial_setup_completed';
+
     public const DefaultTimezone = 'default_timezone';
 
     public const PasswordLoginEnabled = 'password_login_enabled';

@@ -288,6 +288,12 @@ class QueryGuard
             }
 
             if ($current === '/' && $next === '*') {
+                if (in_array(($sql[$index + 2] ?? ''), ['!', '+'], true)) {
+                    throw ValidationException::withMessages([
+                        'sql' => 'Executable comments and optimizer hints are not allowed in governed SQL.',
+                    ]);
+                }
+
                 $blockComment = true;
                 $executableSql .= ' ';
                 $index++;

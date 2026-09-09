@@ -19,7 +19,7 @@ func testConfig() proxy.Config {
 		MySQLListenAddress:      "127.0.0.1:0",
 		GatewayListenAddress:    "127.0.0.1:0",
 		ControlURL:              "http://laravel.test",
-		ControlSecret:           "secret",
+		ControlSecret:           "native-proxy-control-secret-for-tests",
 		RedisURL:                "redis://redis.test:6379/0",
 		RevocationChannel:       "native-proxy:lease-revoked",
 		ProxyID:                 "proxy-1",
@@ -134,6 +134,16 @@ func TestConfigRejectsUnsafeOrIncompleteValues(t *testing.T) {
 	config.PostgreSQLListenAddress = "bad-address"
 	if err := config.Validate(); err == nil {
 		t.Fatal("expected malformed listener to be rejected")
+	}
+	config = testConfig()
+	config.ControlSecret = "change-me-before-production"
+	if err := config.Validate(); err == nil {
+		t.Fatal("expected default control secret to be rejected")
+	}
+	config = testConfig()
+	config.ControlSecret = "too-short"
+	if err := config.Validate(); err == nil {
+		t.Fatal("expected short control secret to be rejected")
 	}
 }
 

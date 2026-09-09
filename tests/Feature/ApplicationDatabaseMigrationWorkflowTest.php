@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\ApplicationDatabaseMigrationOperationException;
 use App\Services\ApplicationDatabaseMigrationManager;
 use App\Support\ApplicationDatabaseBootstrap;
 use App\Support\ApplicationDatabaseMigrationStore;
@@ -11,7 +12,6 @@ use Illuminate\Queue\QueueManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use RuntimeException;
 use Tests\TestCase;
 
 class ApplicationDatabaseMigrationWorkflowTest extends TestCase
@@ -140,8 +140,9 @@ class ApplicationDatabaseMigrationWorkflowTest extends TestCase
         try {
             $manager->migrate($state['id'], 0);
             $this->fail('A destination changed after planning must fail safely.');
-        } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('destination database must be empty', $exception->getMessage());
+        } catch (ApplicationDatabaseMigrationOperationException $exception) {
+            $this->assertStringContainsString('Reference:', $exception->getMessage());
+            $this->assertStringNotContainsString('unexpected_table', $exception->getMessage());
         }
 
         $active = ApplicationDatabaseBootstrap::read(
@@ -150,7 +151,13 @@ class ApplicationDatabaseMigrationWorkflowTest extends TestCase
             (string) config('app.cipher'),
         );
         $this->assertSame(ApplicationDatabaseBootstrap::fingerprint($source), ApplicationDatabaseBootstrap::fingerprint($active));
-        $this->assertSame('failed', app(ApplicationDatabaseMigrationStore::class)->read($state['id'])['status']);
+        $failed = app(ApplicationDatabaseMigrationStore::class)->read($state['id']);
+        $this->assertSame('failed', $failed['status']);
+        $failureEvent = collect($failed['events'])->firstWhere('event', 'copy_failed');
+        $this->assertIsArray($failureEvent);
+        $this->assertSame('copy', $failureEvent['phase']);
+        $this->assertSame($exception->reference, $failureEvent['reference']);
+        $this->assertStringNotContainsString('unexpected_table', $failureEvent['message']);
         $this->assertFileDoesNotExist($this->directory.'/migration.fence');
 
         $cancelled = $manager->cancel($state['id']);

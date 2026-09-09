@@ -11,6 +11,7 @@ use App\Services\ApplicationDatabaseMigrationSafety;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Events\JobQueueing;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use RuntimeException;
@@ -75,6 +76,55 @@ class ApplicationDatabaseMigrationSafetyTest extends TestCase
 
         $fence->runExclusive($planId, static fn (): null => null);
         $this->assertTrue($fence->isActive());
+    }
+
+    public function test_scheduled_mutations_are_skipped_after_the_fence_is_engaged(): void
+    {
+        $fence = app(ApplicationDatabaseMigrationFence::class);
+        $fence->engage('01K4A1B2C3D4E5F6G7H8J9K0MN');
+        $mutated = false;
+
+        $ran = $fence->runScheduledMutation(function () use (&$mutated): void {
+            $mutated = true;
+        });
+
+        $this->assertFalse($ran);
+        $this->assertFalse($mutated);
+    }
+
+    public function test_safety_waits_for_an_in_flight_scheduled_mutation_before_copying(): void
+    {
+        $lockPath = config('database.control_metadata.migration_fence_path').'.scheduled-mutations.lock';
+        mkdir(dirname($lockPath), 0700, true);
+        $lock = fopen($lockPath, 'c');
+        $this->assertIsResource($lock);
+        $this->assertTrue(flock($lock, LOCK_SH));
+
+        try {
+            app(ApplicationDatabaseMigrationSafety::class)->engage('01K4A1B2C3D4E5F6G7H8J9K0MN', 0);
+            $this->fail('An in-flight scheduled mutation must block the migration barrier.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('Scheduled maintenance work did not finish', $exception->getMessage());
+            $this->assertFalse(app(ApplicationDatabaseMigrationFence::class)->isActive());
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    public function test_expiration_command_does_not_mutate_the_source_while_fenced(): void
+    {
+        $querySession = QuerySession::factory()->create([
+            'started_at' => now()->subMinutes(10),
+            'expires_at' => now()->subMinute(),
+            'ended_at' => null,
+        ]);
+        app(ApplicationDatabaseMigrationFence::class)->engage('01K4A1B2C3D4E5F6G7H8J9K0MN');
+
+        $this->assertSame(0, Artisan::call('crucible:expire-query-sessions'));
+
+        $this->assertNull($querySession->fresh()->ended_at);
+        $this->assertStringContainsString('Skipped session expiration', Artisan::output());
     }
 
     public function test_safety_refuses_active_sessions_and_releases_the_fence(): void

@@ -200,7 +200,7 @@ func isShowDatabases(query string) bool {
 
 func isUnsafeMySQLQuery(query string) bool {
 	statement := strings.ToUpper(strings.TrimSpace(query))
-	return strings.Contains(statement, "LOAD DATA") || strings.Contains(statement, "LOCAL INFILE") || strings.Contains(statement, "BINLOG") || strings.Contains(statement, "CHANGE USER")
+	return strings.Contains(statement, "LOAD DATA") || strings.Contains(statement, "LOCAL INFILE") || strings.Contains(statement, "BINLOG") || strings.Contains(statement, "CHANGE USER") || strings.Contains(statement, "/*!") || strings.Contains(statement, "/*+")
 }
 
 func affectedRows(result *mysqlproto.Result) int64 {

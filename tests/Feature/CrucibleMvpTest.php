@@ -32,6 +32,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Validation\ValidationException;
 use Inertia\Support\SessionKey;
 use Inertia\Testing\AssertableInertia as Assert;
 use RuntimeException;
@@ -574,8 +575,9 @@ class CrucibleMvpTest extends TestCase
         $execution = QueryExecution::factory()->create([
             'query_request_id' => $queryRequest->id,
             'sample_rows' => [
-                ['id' => 1, 'name' => 'Jane'],
-                ['id' => 2, 'name' => 'John'],
+                ['id' => 1, 'name' => '=HYPERLINK("https://attacker.test")'],
+                ['id' => 2, 'name' => "\t@SUM(1+1)"],
+                ['id' => -3, 'name' => 'Jane'],
             ],
         ]);
 
@@ -586,7 +588,15 @@ class CrucibleMvpTest extends TestCase
         $csv = $response->streamedContent();
 
         $this->assertStringContainsString('id,name', $csv);
-        $this->assertStringContainsString('1,Jane', $csv);
+        $lines = preg_split('/\r\n|\r|\n/', trim($csv));
+        $this->assertIsArray($lines);
+        $firstRow = str_getcsv($lines[1], escape: '');
+        $secondRow = str_getcsv($lines[2], escape: '');
+        $thirdRow = str_getcsv($lines[3], escape: '');
+        $this->assertSame('\'=HYPERLINK("https://attacker.test")', $firstRow[1]);
+        $this->assertSame("'\t@SUM(1+1)", $secondRow[1]);
+        $this->assertSame('-3', $thirdRow[0]);
+        $this->assertSame('Jane', $thirdRow[1]);
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'query_execution.exported',
             'auditable_id' => $execution->id,
@@ -1037,6 +1047,7 @@ SQL;
         ]);
 
         $this->actingAs($reviewer)->post(route('query-requests.reviews.store', $queryRequest), [
+            'expected_revision' => $queryRequest->revision,
             'decision' => 'approved',
             'comment' => 'Looks good.',
         ])->assertRedirect();
@@ -1068,6 +1079,48 @@ SQL;
             ->assertForbidden();
 
         Queue::assertPushed(ExecuteQueryRequest::class, 1);
+    }
+
+    public function test_reviewer_cannot_decide_using_a_stale_query_request_revision(): void
+    {
+        $requester = $this->developerUser();
+        $reviewer = $this->adminUser();
+        $queryRequest = QueryRequest::factory()->queryAccess()->create([
+            'requester_id' => $requester->id,
+            'revision' => 2,
+        ]);
+
+        $this->actingAs($reviewer)
+            ->from(route('query-requests.show', $queryRequest))
+            ->post(route('query-requests.reviews.store', $queryRequest), [
+                'expected_revision' => 1,
+                'decision' => 'approved',
+            ])
+            ->assertRedirect(route('query-requests.show', $queryRequest))
+            ->assertSessionHasErrors('decision');
+
+        $this->assertDatabaseCount('query_reviews', 0);
+        $this->assertSame(QueryRequestStatus::PendingReview, $queryRequest->refresh()->status);
+    }
+
+    public function test_query_access_request_cannot_start_more_than_one_session_from_a_stale_model(): void
+    {
+        $requester = $this->adminUser();
+        $queryRequest = QueryRequest::factory()->queryAccess()->approved()->create([
+            'requester_id' => $requester->id,
+        ]);
+        $staleQueryRequest = QueryRequest::query()->findOrFail($queryRequest->id);
+
+        app(QuerySessionWorkflow::class)->start($queryRequest, $requester);
+
+        try {
+            app(QuerySessionWorkflow::class)->start($staleQueryRequest, $requester);
+            $this->fail('A second session was started from stale approved state.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('query_request', $exception->errors());
+        }
+
+        $this->assertDatabaseCount('query_sessions', 1);
     }
 
     public function test_multiple_roles_use_first_ordered_database_policy(): void
@@ -1174,6 +1227,7 @@ SQL;
         ]);
 
         $this->actingAs($reviewer)->post(route('query-requests.reviews.store', $queryRequest), [
+            'expected_revision' => $queryRequest->revision,
             'decision' => 'approved',
         ])->assertForbidden();
 
@@ -1181,6 +1235,7 @@ SQL;
         $reviewer->refresh();
 
         $this->actingAs($reviewer)->post(route('query-requests.reviews.store', $queryRequest), [
+            'expected_revision' => $queryRequest->revision,
             'decision' => 'approved',
         ])->assertRedirect();
 
@@ -1239,6 +1294,7 @@ SQL;
         ]);
 
         $this->actingAs($reviewer)->post(route('query-requests.reviews.store', $queryRequest), [
+            'expected_revision' => $queryRequest->revision,
             'decision' => 'approved',
         ])->assertRedirect();
 

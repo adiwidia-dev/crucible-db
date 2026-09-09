@@ -66,6 +66,14 @@ func TestSplitPostgreSQLStatementsRejectsUnterminatedSyntax(t *testing.T) {
 	}
 }
 
+func TestSplitPostgreSQLStatementsRejectsExecutableAndHintComments(t *testing.T) {
+	for _, sql := range []string{"SELECT 1 /*! hidden */", "SELECT /*+ unsafe hint */ 1"} {
+		if _, err := splitPostgreSQLStatements(sql); err == nil {
+			t.Fatalf("expected unsafe comment to be rejected: %q", sql)
+		}
+	}
+}
+
 func TestSplitPostgreSQLStatementsSupportsPgAdminStartupBatch(t *testing.T) {
 	sql := `SET DateStyle=ISO;
 SET client_min_messages=notice;

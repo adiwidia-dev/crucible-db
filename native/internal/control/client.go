@@ -3,7 +3,12 @@ package control
 import (
 	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,6 +20,22 @@ import (
 )
 
 const maxResponseBytes = 1 << 20
+
+const controlProtocolVersion = "2"
+
+type responseEnvelope struct {
+	Version    int    `json:"version"`
+	Nonce      string `json:"nonce"`
+	Ciphertext string `json:"ciphertext"`
+	Tag        string `json:"tag"`
+}
+
+type requestEnvelope struct {
+	Version    int    `json:"version"`
+	Nonce      string `json:"nonce"`
+	Ciphertext string `json:"ciphertext"`
+	Tag        string `json:"tag"`
+}
 
 var ErrUnauthorized = errors.New("native proxy control request was rejected")
 
@@ -137,7 +158,7 @@ func (client *Client) doJSON(ctx context.Context, method, path string, input, ou
 		return errors.New("native proxy control client is not configured")
 	}
 
-	body, err := json.Marshal(input)
+	plaintextBody, err := json.Marshal(input)
 	if err != nil {
 		return fmt.Errorf("encode native proxy control request: %w", err)
 	}
@@ -147,6 +168,10 @@ func (client *Client) doJSON(ctx context.Context, method, path string, input, ou
 	}
 	timestamp := fmt.Sprintf("%d", client.Now().Unix())
 	target := client.BaseURL.ResolveReference(&url.URL{Path: path})
+	body, err := encryptRequest(plaintextBody, client.Secret, client.ProxyID, method, target.EscapedPath(), timestamp, requestID)
+	if err != nil {
+		return fmt.Errorf("encrypt native proxy control request: %w", err)
+	}
 	signature := Signature(client.Secret, method, target.EscapedPath(), timestamp, requestID, body)
 	var response *http.Response
 	for attempt := range 2 {
@@ -160,6 +185,7 @@ func (client *Client) doJSON(ctx context.Context, method, path string, input, ou
 		request.Header.Set("X-Crucible-Timestamp", timestamp)
 		request.Header.Set("X-Crucible-Request-Id", requestID)
 		request.Header.Set("X-Crucible-Signature", signature)
+		request.Header.Set("X-Crucible-Control-Protocol", controlProtocolVersion)
 
 		response, err = client.HTTPClient.Do(request)
 		if err != nil && response != nil && response.Body != nil {
@@ -186,6 +212,15 @@ func (client *Client) doJSON(ctx context.Context, method, path string, input, ou
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
 		return ErrUnauthorized
 	}
+	if response.Header.Get("X-Crucible-Control-Protocol") != controlProtocolVersion {
+		return errors.New("native proxy control response was not protected")
+	}
+
+	responseBody, err = decryptResponse(responseBody, client.Secret, client.ProxyID, timestamp, requestID, response.StatusCode)
+	if err != nil {
+		return fmt.Errorf("decrypt native proxy control response: %w", err)
+	}
+
 	if response.StatusCode == http.StatusBadRequest {
 		if tokenResponse, isTokenResponse := output.(*DeviceTokenResponse); isTokenResponse {
 			if err := json.Unmarshal(responseBody, tokenResponse); err != nil {
@@ -207,6 +242,83 @@ func (client *Client) doJSON(ctx context.Context, method, path string, input, ou
 	}
 
 	return nil
+}
+
+func encryptRequest(plaintext []byte, secret, proxyID, method, path, timestamp, requestID string) ([]byte, error) {
+	keyDerivation := hmac.New(sha256.New, []byte(secret))
+	_, _ = keyDerivation.Write([]byte("crucible-native-proxy-control-request-v2"))
+	block, err := aes.NewCipher(keyDerivation.Sum(nil))
+	if err != nil {
+		return nil, errors.New("initialize request cipher")
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, errors.New("initialize authenticated request cipher")
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, errors.New("create request nonce")
+	}
+
+	aad := fmt.Sprintf("%s\n%s\n%s\n%s\n%s\n%s", controlProtocolVersion, proxyID, method, path, timestamp, requestID)
+	sealed := gcm.Seal(nil, nonce, plaintext, []byte(aad))
+	ciphertext := sealed[:len(sealed)-gcm.Overhead()]
+	tag := sealed[len(sealed)-gcm.Overhead():]
+
+	body, err := json.Marshal(requestEnvelope{
+		Version:    2,
+		Nonce:      base64.StdEncoding.EncodeToString(nonce),
+		Ciphertext: base64.StdEncoding.EncodeToString(ciphertext),
+		Tag:        base64.StdEncoding.EncodeToString(tag),
+	})
+	if err != nil {
+		return nil, errors.New("encode encrypted request envelope")
+	}
+
+	return body, nil
+}
+
+func decryptResponse(body []byte, secret, proxyID, timestamp, requestID string, statusCode int) ([]byte, error) {
+	var envelope responseEnvelope
+	if err := json.Unmarshal(body, &envelope); err != nil || envelope.Version != 2 {
+		return nil, errors.New("invalid encrypted response envelope")
+	}
+
+	nonce, err := base64.StdEncoding.DecodeString(envelope.Nonce)
+	if err != nil {
+		return nil, errors.New("invalid encrypted response nonce")
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(envelope.Ciphertext)
+	if err != nil {
+		return nil, errors.New("invalid encrypted response ciphertext")
+	}
+	tag, err := base64.StdEncoding.DecodeString(envelope.Tag)
+	if err != nil {
+		return nil, errors.New("invalid encrypted response tag")
+	}
+
+	keyDerivation := hmac.New(sha256.New, []byte(secret))
+	_, _ = keyDerivation.Write([]byte("crucible-native-proxy-control-response-v2"))
+	block, err := aes.NewCipher(keyDerivation.Sum(nil))
+	if err != nil {
+		return nil, errors.New("initialize response cipher")
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, errors.New("initialize authenticated response cipher")
+	}
+	if len(nonce) != gcm.NonceSize() || len(tag) != gcm.Overhead() {
+		return nil, errors.New("invalid encrypted response parameters")
+	}
+
+	aad := fmt.Sprintf("%s\n%s\n%s\n%s\n%d", controlProtocolVersion, proxyID, timestamp, requestID, statusCode)
+	sealed := append(ciphertext, tag...)
+	plaintext, err := gcm.Open(nil, nonce, sealed, []byte(aad))
+	if err != nil {
+		return nil, errors.New("response authentication failed")
+	}
+
+	return plaintext, nil
 }
 
 func newRequestID() (string, error) {

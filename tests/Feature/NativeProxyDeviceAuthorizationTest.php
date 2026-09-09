@@ -28,6 +28,17 @@ class NativeProxyDeviceAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'native_proxy.control_encrypted_responses_required' => false,
+            'native_proxy.allowed_proxy_ids' => [],
+            'native_proxy.allowed_proxy_ips' => [],
+        ]);
+    }
+
     public function test_device_authorization_uses_one_time_codes_and_issues_a_single_token_after_owner_approval(): void
     {
         [$owner, $lease] = $this->activeLease();

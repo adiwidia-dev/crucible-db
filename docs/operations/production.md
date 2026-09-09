@@ -10,7 +10,7 @@ Prepare a deployment directory containing:
 - `.env.production.example`
 - a private `.env.production` generated from the example
 
-Set a unique application key, public URL, and email settings in `.env.production`.
+Set a unique application key, initial setup token, HTTPS public URL, and email settings in `.env.production`.
 Keep `CRUCIBLE_DATABASE_CONFIG_MODE=managed` when administrators should choose and
 migrate the application database through Crucible. The encrypted selection and
 migration records live in the persistent `crucible_storage` volume.
@@ -18,9 +18,32 @@ migration records live in the persistent `crucible_storage` volume.
 ```bash
 cp .env.production.example .env.production
 printf 'APP_KEY=base64:%s\n' "$(openssl rand -base64 32)"
+printf 'CRUCIBLE_INITIAL_SETUP_TOKEN=%s\n' "$(openssl rand -hex 32)"
 ```
 
-Copy the generated key into `.env.production`. Do not commit this file.
+Copy both generated values into `.env.production`. Do not commit this file. The
+setup token is required before the browser can choose a control database or
+create the first administrator. Rotate or remove it after initial setup; the
+completed-setup sentinel prevents the setup routes from reopening.
+
+## Terminate TLS in front of the local origin
+
+The supplied gateway is an HTTP origin and binds to `127.0.0.1:8000` by
+default. It is intentionally not a public TLS server. Remote deployments must
+place an administrator-managed TLS terminator such as Nginx or Cloudflare
+Tunnel in front of that loopback listener. Keep `APP_URL` set to the external
+`https://` origin and `SESSION_SECURE_COOKIE=true`.
+
+The terminator must preserve `Host`, `X-Forwarded-For`,
+`X-Forwarded-Proto=https`, and WebSocket upgrades. Do not apply buffering,
+compression, or a short request timeout to
+`/.well-known/crucible-native-client.json` or `/native-tunnel/*`. The bundled
+Caddy gateway accepts forwarded headers only from private proxy peers and then
+routes those fixed native-client paths to the private proxy.
+
+Set `CRUCIBLE_BIND_ADDRESS` to a non-loopback address only when a separate
+machine must reach the origin over a protected private network. Never publish
+the origin directly to an untrusted network.
 
 Set `OCTANE_WORKERS` and `OCTANE_MAX_REQUESTS` only after measuring the host. The defaults are two workers and 500 requests per worker. The supplied container and Composer package requirement use PHP 8.5 or later.
 
@@ -60,13 +83,13 @@ cutover remains a deployment operation.
 ```bash
 docker compose --env-file .env.production -f compose.production.yaml up -d
 docker compose --env-file .env.production -f compose.production.yaml ps
-curl --fail http://localhost:8000/health
+curl --fail http://127.0.0.1:8000/health
 ```
 
 The application entrypoint creates the SQLite file when needed, waits for the
 selected database, runs forward-only migrations, and starts Octane/FrankenPHP,
 Horizon, and the scheduler under Supervisor. Redis must pass its health check
-before the application starts. The Caddy gateway is the only public service; it
+before the application starts. The Caddy gateway is the only host-published service and remains loopback-only; it
 routes normal application traffic to the app and fixed Native client
 discovery/tunnel paths to the private proxy. Compose reports the app as healthy
 only after `/health` confirms the control database and Redis-backed cache are
@@ -85,7 +108,7 @@ Octane, Horizon, and the scheduler all load the encrypted connection selection:
 ```bash
 docker compose --env-file .env.production -f compose.production.yaml restart app
 docker compose --env-file .env.production -f compose.production.yaml ps
-curl --fail http://localhost:8000/health
+curl --fail http://127.0.0.1:8000/health
 ```
 
 Return to the migration page and finalize only after the app is healthy. The
@@ -96,7 +119,7 @@ the Laravel maintenance fence is active and resumes after finalization.
 
 1. Announce the maintenance window according to your operational policy.
 2. Back up the persistent application storage and Redis volumes.
-3. Compare the deployed environment with `.env.production.example`. For HTTPS deployments, keep `SESSION_SECURE_COOKIE=true`.
+3. Compare the deployed environment with `.env.production.example`. Keep the public `APP_URL` on HTTPS and `SESSION_SECURE_COOKIE=true`.
 4. Pull the approved image through the production Compose file.
 5. Recreate services and verify health and logs.
 
@@ -105,7 +128,7 @@ docker compose --env-file .env.production -f compose.production.yaml pull
 docker compose --env-file .env.production -f compose.production.yaml up -d --remove-orphans
 docker compose --env-file .env.production -f compose.production.yaml ps
 docker compose --env-file .env.production -f compose.production.yaml logs --tail=100 app redis native-proxy gateway
-curl --fail http://localhost:8000/health
+curl --fail http://127.0.0.1:8000/health
 ```
 
 !!! warning "Migrations are forward-only"

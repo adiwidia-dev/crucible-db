@@ -19,6 +19,20 @@ class ApplicationAdministrationTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_query_guard_rejects_mysql_executable_comments(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        app(QueryGuard::class)->classify('SELECT 1 /*!; DROP TABLE users */');
+    }
+
+    public function test_query_guard_rejects_optimizer_hint_comments(): void
+    {
+        $this->expectException(ValidationException::class);
+
+        app(QueryGuard::class)->classify('SELECT /*+ SET_VAR(foreign_key_checks=OFF) */ 1');
+    }
+
     public function test_security_settings_can_be_viewed_without_password_confirmation(): void
     {
         $user = User::factory()->create();

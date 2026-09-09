@@ -7,8 +7,10 @@ use App\Enums\ApplicationDatabaseMigrationStatus;
 use App\Models\User;
 use App\Support\ApplicationDatabaseBootstrap;
 use App\Support\ApplicationDatabaseMigrationStore;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PDOException;
 use RuntimeException;
 use Throwable;
 
@@ -22,6 +24,7 @@ final class ApplicationDatabaseMigrationManager
         private readonly ApplicationDatabaseMigrationSafety $safety,
         private readonly ApplicationDatabaseMigrationFence $fence,
         private readonly ApplicationDatabaseMigrationStore $store,
+        private readonly ApplicationDatabaseMigrationFailureReporter $failureReporter,
     ) {}
 
     /**
@@ -30,38 +33,42 @@ final class ApplicationDatabaseMigrationManager
      */
     public function plan(array $destinationPayload): array
     {
-        return $this->fence->runExclusive(null, function () use ($destinationPayload): array {
-            $this->assertManagedConfiguration();
-            $sourcePayload = $this->configuration->activePayload();
-            $sourceFingerprint = $this->configuration->fingerprint($sourcePayload);
-            $destinationFingerprint = $this->configuration->fingerprint($destinationPayload);
+        try {
+            return $this->fence->runExclusive(null, function () use ($destinationPayload): array {
+                $this->assertManagedConfiguration();
+                $sourcePayload = $this->configuration->activePayload();
+                $sourceFingerprint = $this->configuration->fingerprint($sourcePayload);
+                $destinationFingerprint = $this->configuration->fingerprint($destinationPayload);
 
-            if (hash_equals($sourceFingerprint, $destinationFingerprint)) {
-                throw new RuntimeException('Source and destination application databases are the same.');
-            }
+                if (hash_equals($sourceFingerprint, $destinationFingerprint)) {
+                    throw new RuntimeException('Source and destination application databases are the same.');
+                }
 
-            $this->assertDestinationIsEmpty($destinationPayload);
-            $tables = $this->inspectSource($sourcePayload);
+                $this->assertDestinationIsEmpty($destinationPayload);
+                $tables = $this->inspectSource($sourcePayload);
 
-            return $this->store->create([
-                'status' => ApplicationDatabaseMigrationStatus::Planned->value,
-                'source' => [
-                    'driver' => $sourcePayload['driver'],
-                    'database' => $sourcePayload['database'] ?? null,
-                    'fingerprint' => $sourceFingerprint,
-                    'payload' => $sourcePayload,
-                ],
-                'destination' => [
-                    'driver' => $destinationPayload['driver'],
-                    'database' => $destinationPayload['database'] ?? null,
-                    'fingerprint' => $destinationFingerprint,
-                    'payload' => $destinationPayload,
-                ],
-                'excluded_tables' => ['cache', 'cache_locks', 'jobs', 'migrations', 'sessions'],
-                'planned_tables' => $tables,
-                'tables' => [],
-            ]);
-        });
+                return $this->store->create([
+                    'status' => ApplicationDatabaseMigrationStatus::Planned->value,
+                    'source' => [
+                        'driver' => $sourcePayload['driver'],
+                        'database' => $sourcePayload['database'] ?? null,
+                        'fingerprint' => $sourceFingerprint,
+                        'payload' => $sourcePayload,
+                    ],
+                    'destination' => [
+                        'driver' => $destinationPayload['driver'],
+                        'database' => $destinationPayload['database'] ?? null,
+                        'fingerprint' => $destinationFingerprint,
+                        'payload' => $destinationPayload,
+                    ],
+                    'excluded_tables' => ['cache', 'cache_locks', 'jobs', 'migrations', 'sessions'],
+                    'planned_tables' => $tables,
+                    'tables' => [],
+                ]);
+            });
+        } catch (QueryException|PDOException $exception) {
+            throw $this->failureReporter->capture($exception, 'planning');
+        }
     }
 
     /** @return array<string, mixed> */
@@ -199,13 +206,17 @@ final class ApplicationDatabaseMigrationManager
                 return $state;
             });
         } catch (Throwable $exception) {
+            $failure = $this->failureReporter->capture($exception, 'copy', $id);
+
             try {
-                $this->store->update($id, function (array $state) use ($exception): array {
+                $this->store->update($id, function (array $state) use ($failure): array {
                     $state['status'] = ApplicationDatabaseMigrationStatus::Failed->value;
                     $state['events'][] = [
                         'at' => now()->toIso8601String(),
                         'event' => 'copy_failed',
-                        'message' => $exception->getMessage(),
+                        'message' => $failure->getMessage(),
+                        'reference' => $failure->reference,
+                        'phase' => $failure->phase,
                     ];
 
                     return $state;
@@ -214,7 +225,7 @@ final class ApplicationDatabaseMigrationManager
                 $this->safety->release($id);
             }
 
-            throw $exception;
+            throw $failure;
         }
     }
 
@@ -246,17 +257,20 @@ final class ApplicationDatabaseMigrationManager
                 $state['tables'],
             );
         } catch (Throwable $exception) {
-            $this->store->update($id, function (array $state) use ($exception): array {
+            $failure = $this->failureReporter->capture($exception, 'verification', $id);
+            $this->store->update($id, function (array $state) use ($failure): array {
                 $state['events'][] = [
                     'at' => now()->toIso8601String(),
                     'event' => 'verification_failed',
-                    'message' => $exception->getMessage(),
+                    'message' => $failure->getMessage(),
+                    'reference' => $failure->reference,
+                    'phase' => $failure->phase,
                 ];
 
                 return $state;
             });
 
-            throw $exception;
+            throw $failure;
         }
 
         return $this->store->update($id, function (array $state) use ($tables): array {
@@ -412,12 +426,16 @@ final class ApplicationDatabaseMigrationManager
                     return $state;
                 });
             } catch (Throwable $exception) {
+                $failure = $this->failureReporter->capture($exception, 'rollback copy', $id);
+
                 try {
-                    $this->store->update($id, function (array $state) use ($exception): array {
+                    $this->store->update($id, function (array $state) use ($failure): array {
                         $state['events'][] = [
                             'at' => now()->toIso8601String(),
                             'event' => 'rollback_copy_failed',
-                            'message' => $exception->getMessage(),
+                            'message' => $failure->getMessage(),
+                            'reference' => $failure->reference,
+                            'phase' => $failure->phase,
                         ];
 
                         return $state;
@@ -426,7 +444,7 @@ final class ApplicationDatabaseMigrationManager
                     $this->safety->release($id);
                 }
 
-                throw $exception;
+                throw $failure;
             }
 
             $this->writeActiveConfiguration($state['source']['payload']);

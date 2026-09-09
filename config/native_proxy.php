@@ -7,6 +7,18 @@ return [
 
     'control_secret' => env('NATIVE_PROXY_CONTROL_SECRET'),
 
+    'control_encrypted_responses_required' => (bool) env('NATIVE_PROXY_CONTROL_ENCRYPTED_RESPONSES_REQUIRED', true),
+
+    'allowed_proxy_ids' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('NATIVE_PROXY_ALLOWED_IDS', '')),
+    ))),
+
+    'allowed_proxy_ips' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('NATIVE_PROXY_ALLOWED_IPS', '')),
+    ))),
+
     'control_clock_skew_seconds' => 30,
 
     'control_nonce_ttl_seconds' => 60,

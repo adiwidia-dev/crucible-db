@@ -17,7 +17,9 @@ use App\Models\User;
 use App\Services\NativeProxy\LeaseWorkflow;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -378,6 +380,7 @@ class QueryRequestWorkflow
                 'completed_at' => null,
                 'result_summary' => null,
                 'last_error' => null,
+                'revision' => $lockedQueryRequest->revision + 1,
             ])->save();
 
             $this->replaceStatements($lockedQueryRequest, $statements);
@@ -481,6 +484,7 @@ class QueryRequestWorkflow
                 'completed_at' => null,
                 'result_summary' => null,
                 'last_error' => null,
+                'revision' => $lockedQueryRequest->revision + 1,
             ])->save();
 
             $this->replaceStatements($lockedQueryRequest, $statements);
@@ -529,53 +533,69 @@ class QueryRequestWorkflow
     /**
      * @throws ValidationException
      */
-    public function review(QueryRequest $queryRequest, User $reviewer, string $decision, ?string $comment = null): QueryReview
+    public function review(QueryRequest $queryRequest, User $reviewer, string $decision, ?string $comment, int $expectedRevision): QueryReview
     {
-        if ($queryRequest->status !== QueryRequestStatus::PendingReview) {
-            throw ValidationException::withMessages([
-                'decision' => 'Only pending requests can be reviewed.',
-            ]);
-        }
+        return Cache::lock('query-request:review:'.$queryRequest->id, 120)->block(5, function () use ($queryRequest, $reviewer, $decision, $comment, $expectedRevision): QueryReview {
+            return DB::transaction(function () use ($queryRequest, $reviewer, $decision, $comment, $expectedRevision): QueryReview {
+                $lockedQueryRequest = QueryRequest::query()
+                    ->lockForUpdate()
+                    ->findOrFail($queryRequest->id);
 
-        return DB::transaction(function () use ($queryRequest, $reviewer, $decision, $comment): QueryReview {
-            if ($decision === 'approved' && $queryRequest->request_kind === QueryRequestKind::SingleExecution) {
-                $report = $this->refreshDeploymentPreflight($queryRequest);
+                Gate::forUser($reviewer)->authorize('review', $lockedQueryRequest);
 
-                if ($report['status'] === PreflightStatus::Blocked) {
+                if ($lockedQueryRequest->status !== QueryRequestStatus::PendingReview) {
                     throw ValidationException::withMessages([
-                        'decision' => 'This deployment batch is blocked by preflight checks. Resolve the blocked statements before approving it.',
+                        'decision' => 'Only pending requests can be reviewed.',
                     ]);
                 }
-            }
 
-            $review = QueryReview::query()->create([
-                'query_request_id' => $queryRequest->id,
-                'reviewer_id' => $reviewer->id,
-                'decision' => $decision,
-                'comment' => $comment,
-            ]);
+                if ($lockedQueryRequest->revision !== $expectedRevision) {
+                    throw ValidationException::withMessages([
+                        'decision' => 'This request changed after you opened it. Review the latest revision before deciding.',
+                    ]);
+                }
 
-            if ($decision === 'approved') {
-                $queryRequest->forceFill([
-                    'status' => $queryRequest->scheduled_at?->isFuture() ? QueryRequestStatus::Scheduled : QueryRequestStatus::Approved,
-                    'approved_by_id' => $reviewer->id,
-                    'approved_at' => now(),
-                ])->save();
-            } else {
-                $queryRequest->forceFill([
-                    'status' => QueryRequestStatus::Rejected,
-                    'completed_at' => now(),
-                ])->save();
-            }
+                if ($decision === 'approved' && $lockedQueryRequest->request_kind === QueryRequestKind::SingleExecution) {
+                    $report = $this->refreshDeploymentPreflight($lockedQueryRequest);
 
-            $this->auditLogger->log('query_request.reviewed', $reviewer, $queryRequest, [
-                'decision' => $decision,
-                'review_id' => $review->id,
-            ]);
+                    if ($report['status'] === PreflightStatus::Blocked) {
+                        throw ValidationException::withMessages([
+                            'decision' => 'This deployment batch is blocked by preflight checks. Resolve the blocked statements before approving it.',
+                        ]);
+                    }
+                }
 
-            $this->notificationDispatcher->requestReviewed($queryRequest, $decision);
+                $review = QueryReview::query()->create([
+                    'query_request_id' => $lockedQueryRequest->id,
+                    'query_request_revision' => $lockedQueryRequest->revision,
+                    'reviewer_id' => $reviewer->id,
+                    'decision' => $decision,
+                    'comment' => $comment,
+                ]);
 
-            return $review;
+                if ($decision === 'approved') {
+                    $lockedQueryRequest->forceFill([
+                        'status' => $lockedQueryRequest->scheduled_at?->isFuture() ? QueryRequestStatus::Scheduled : QueryRequestStatus::Approved,
+                        'approved_by_id' => $reviewer->id,
+                        'approved_at' => now(),
+                    ])->save();
+                } else {
+                    $lockedQueryRequest->forceFill([
+                        'status' => QueryRequestStatus::Rejected,
+                        'completed_at' => now(),
+                    ])->save();
+                }
+
+                $this->auditLogger->log('query_request.reviewed', $reviewer, $lockedQueryRequest, [
+                    'decision' => $decision,
+                    'review_id' => $review->id,
+                    'query_request_revision' => $lockedQueryRequest->revision,
+                ]);
+
+                $this->notificationDispatcher->requestReviewed($lockedQueryRequest, $decision);
+
+                return $review;
+            });
         });
     }
 

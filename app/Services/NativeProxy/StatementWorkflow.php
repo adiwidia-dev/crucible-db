@@ -21,6 +21,10 @@ class StatementWorkflow
 
     public function validateTemplate(NativeProxyConnection $connection, NativeStatementData $data): ProxyStatementDecision
     {
+        if (preg_match('/\/\*[!+]/', $data->sql) === 1) {
+            return ProxyStatementDecision::deny('executable_comment');
+        }
+
         return $this->policy->decide(
             $connection->protocol,
             $connection->lease->access_mode,

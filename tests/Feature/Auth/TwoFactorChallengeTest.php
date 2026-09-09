@@ -47,4 +47,22 @@ class TwoFactorChallengeTest extends TestCase
                 ->component('auth/two-factor-challenge'),
             );
     }
+
+    public function test_disabled_user_cannot_complete_a_pending_two_factor_challenge(): void
+    {
+        $user = User::factory()->withTwoFactor()->create();
+
+        $this->post(route('login'), [
+            'email' => $user->email,
+            'password' => 'password',
+        ])->assertRedirect(route('two-factor.login'));
+
+        $user->forceFill(['disabled_at' => now()])->save();
+
+        $this->get(route('two-factor.login'))
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors('email');
+
+        $this->assertNull(session('login.id'));
+    }
 }

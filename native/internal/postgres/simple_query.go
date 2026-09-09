@@ -11,6 +11,10 @@ var errMalformedSimpleQuery = errors.New("malformed PostgreSQL simple query")
 // statements while respecting PostgreSQL strings, identifiers, dollar quotes,
 // and comments. Statements are still authorized individually before execution.
 func splitPostgreSQLStatements(sql string) ([]string, error) {
+	if hasUnsafeComment(sql) {
+		return nil, errMalformedSimpleQuery
+	}
+
 	statements := make([]string, 0, 1)
 	statementStart := 0
 	blockCommentDepth := 0
@@ -118,6 +122,10 @@ func splitPostgreSQLStatements(sql string) ([]string, error) {
 	appendStatement(len(sql))
 
 	return statements, nil
+}
+
+func hasUnsafeComment(sql string) bool {
+	return strings.Contains(sql, "/*!") || strings.Contains(sql, "/*+")
 }
 
 func hasPrefixAt(value string, index int, prefix string) bool {

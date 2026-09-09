@@ -20,6 +20,17 @@ class NativeProxyControlContractTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config([
+            'native_proxy.control_encrypted_responses_required' => false,
+            'native_proxy.allowed_proxy_ids' => [],
+            'native_proxy.allowed_proxy_ips' => [],
+        ]);
+    }
+
     public function test_same_origin_gateway_routes_are_private_and_fixed_in_the_compose_topology(): void
     {
         $caddyfile = file_get_contents(base_path('.docker/native-proxy.Caddyfile'));
@@ -32,11 +43,14 @@ class NativeProxyControlContractTest extends TestCase
         $this->assertStringContainsString('/.well-known/crucible-native-client.json', $caddyfile);
         $this->assertStringContainsString('/native-tunnel/*', $caddyfile);
         $this->assertStringContainsString('reverse_proxy native-proxy:8081', $caddyfile);
+        $this->assertStringContainsString('@internal_control path /internal /internal/*', $caddyfile);
+        $this->assertMatchesRegularExpression('/handle @internal_control \{\s*respond 404\s*\}/', $caddyfile);
         $this->assertStringNotContainsString('"5432:5432"', $developmentCompose);
         $this->assertStringNotContainsString('"3306:3306"', $developmentCompose);
         $this->assertStringNotContainsString('"5432:5432"', $productionCompose);
         $this->assertStringNotContainsString('"3306:3306"', $productionCompose);
         $this->assertMatchesRegularExpression('/  native-proxy:\n(?:(?!\nvolumes:).)*NATIVE_PROXY_CONTROL_SECRET/s', $productionCompose);
+        $this->assertStringNotContainsString('change-me-before-production', file_get_contents(base_path('compose.yaml')));
         preg_match('/  native-proxy:\n(?<service>.*?)(?=\nvolumes:)/s', $productionCompose, $nativeProxyService);
         $this->assertStringNotContainsString('env_file:', $nativeProxyService['service'] ?? '');
         $this->assertStringNotContainsString('APP_KEY:', $nativeProxyService['service'] ?? '');

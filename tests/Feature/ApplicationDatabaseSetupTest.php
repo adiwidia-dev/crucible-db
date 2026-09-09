@@ -13,6 +13,8 @@ class ApplicationDatabaseSetupTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const SetupToken = 'test-initial-setup-token-32-characters';
+
     private string $configurationDirectory;
 
     private string $configurationPath;
@@ -23,6 +25,9 @@ class ApplicationDatabaseSetupTest extends TestCase
 
         $this->configurationDirectory = storage_path('framework/testing/application-database-'.bin2hex(random_bytes(8)));
         $this->configurationPath = $this->configurationDirectory.'/configuration.enc';
+        $this->post(route('setup.access.store'), [
+            'setup_token' => self::SetupToken,
+        ])->assertRedirect();
     }
 
     protected function tearDown(): void

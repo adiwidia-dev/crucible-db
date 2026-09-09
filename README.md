@@ -92,7 +92,7 @@ The setup command installs PHP and JavaScript dependencies, creates the local en
 docker compose up --build
 ```
 
-The development Compose stack includes Crucible DB, Redis, Vite, and disposable PostgreSQL/MySQL targets for local testing. The application is available at `http://localhost:8000`.
+The development Compose stack includes Crucible DB, Redis, Vite, and disposable PostgreSQL/MySQL targets for local testing. The application is available at `http://localhost:8000`. Fresh local installations use the development-only setup token `crucible-local-initial-setup-token`; replace it when the stack is reachable beyond your machine.
 
 ## Production deployment
 
@@ -114,8 +114,8 @@ Native proxy
 ├─ private tunnel gateway routed through the app origin
 └─ Redis-backed immediate lease revocation plus durable heartbeats
 
-Caddy gateway
-└─ the single public application origin, including native-client discovery and tunnel paths
+Local Caddy gateway
+└─ loopback HTTP origin for an administrator-managed TLS terminator, including native-client discovery and tunnel paths
 ```
 
 Production builds must use `Dockerfile.production`. Release `v0.1.0` is published as the immutable image `hephaestus/crucible-db:0.1.0`; `hephaestus/crucible-db:alpha` remains a moving convenience tag for existing alpha deployments. A deployment directory needs `compose.production.yaml`, `.env.production.example`, and a secure `.env.production` file—there is no need to clone the complete source repository or build the image on the server.
@@ -123,6 +123,9 @@ Production builds must use `Dockerfile.production`. Release `v0.1.0` is publishe
 ```bash
 cp .env.production.example .env.production
 ```
+
+Production requires an HTTPS `APP_URL`, a unique initial setup token, and a TLS
+terminator such as Nginx or Cloudflare Tunnel in front of the loopback gateway.
 
 Native Client Access additionally requires an explicitly pinned, matching native-proxy image. Set it in the deployment shell or Compose `.env` file before starting the stack. The release Compose file intentionally does not default this image, so a deployment cannot silently use a stale proxy build.
 

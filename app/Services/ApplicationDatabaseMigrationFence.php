@@ -7,6 +7,55 @@ use RuntimeException;
 
 final class ApplicationDatabaseMigrationFence
 {
+    public function runScheduledMutation(Closure $operation): bool
+    {
+        $lockPath = $this->scheduledMutationLockPath();
+        $lock = $this->openLock($lockPath, 'scheduled mutation');
+
+        try {
+            if (! flock($lock, LOCK_SH)) {
+                throw new RuntimeException('The application database scheduled mutation lock could not be acquired.');
+            }
+
+            try {
+                if ($this->isActive()) {
+                    return false;
+                }
+
+                $operation();
+
+                return true;
+            } finally {
+                flock($lock, LOCK_UN);
+            }
+        } finally {
+            fclose($lock);
+        }
+    }
+
+    public function waitForScheduledMutations(int $timeoutSeconds): void
+    {
+        $lockPath = $this->scheduledMutationLockPath();
+        $lock = $this->openLock($lockPath, 'scheduled mutation');
+        $deadline = microtime(true) + max(0, $timeoutSeconds);
+
+        try {
+            do {
+                if (flock($lock, LOCK_EX | LOCK_NB)) {
+                    flock($lock, LOCK_UN);
+
+                    return;
+                }
+
+                usleep(250_000);
+            } while (microtime(true) < $deadline);
+        } finally {
+            fclose($lock);
+        }
+
+        throw new RuntimeException('Scheduled maintenance work did not finish before the migration timeout.');
+    }
+
     /**
      * @template TReturn
      *
@@ -22,17 +71,9 @@ final class ApplicationDatabaseMigrationFence
         }
 
         $lockPath = $this->path().'.operation.lock';
-        $lock = fopen($lockPath, 'c');
-
-        if ($lock === false) {
-            throw new RuntimeException('The application database migration operation lock could not be opened.');
-        }
+        $lock = $this->openLock($lockPath, 'migration operation');
 
         try {
-            if (! chmod($lockPath, 0600)) {
-                throw new RuntimeException('The application database migration operation lock could not be secured.');
-            }
-
             if (! flock($lock, LOCK_EX | LOCK_NB)) {
                 $suffix = $planId === null ? '' : " for plan {$planId}";
 
@@ -133,5 +174,34 @@ final class ApplicationDatabaseMigrationFence
     private function path(): string
     {
         return (string) config('database.control_metadata.migration_fence_path');
+    }
+
+    private function scheduledMutationLockPath(): string
+    {
+        return $this->path().'.scheduled-mutations.lock';
+    }
+
+    /** @return resource */
+    private function openLock(string $path, string $label): mixed
+    {
+        $directory = dirname($path);
+
+        if (! is_dir($directory) && ! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+            throw new RuntimeException('The application database migration fence directory could not be created.');
+        }
+
+        $lock = fopen($path, 'c');
+
+        if ($lock === false) {
+            throw new RuntimeException("The application database {$label} lock could not be opened.");
+        }
+
+        if (! chmod($path, 0600)) {
+            fclose($lock);
+
+            throw new RuntimeException("The application database {$label} lock could not be secured.");
+        }
+
+        return $lock;
     }
 }

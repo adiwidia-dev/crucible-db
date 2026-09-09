@@ -17,6 +17,8 @@ func TestNativeMySQLCommandGuardsRejectUnsafeQueries(t *testing.T) {
 		"LOAD DATA LOCAL INFILE '/tmp/input' INTO TABLE users",
 		"BINLOG 'payload'",
 		"CHANGE USER root",
+		"SELECT 1 /*!; DROP TABLE users */",
+		"SELECT /*+ SET_VAR(foreign_key_checks=OFF) */ 1",
 	} {
 		if !isUnsafeMySQLQuery(query) {
 			t.Fatalf("expected %q to be rejected", query)

@@ -16,6 +16,7 @@ use App\Models\QuerySessionQuery;
 use App\Models\User;
 use App\Services\NativeProxy\LeaseWorkflow;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -36,83 +37,86 @@ class QuerySessionWorkflow
      */
     public function start(QueryRequest $queryRequest, User $user): QuerySession
     {
-        if ($queryRequest->request_kind !== QueryRequestKind::QueryAccess) {
-            throw ValidationException::withMessages([
-                'query_request' => 'Only query access requests can start a session.',
-            ]);
-        }
+        return Cache::lock('query-request:session-start:'.$queryRequest->id, 10)->block(5, function () use ($queryRequest, $user): QuerySession {
+            return DB::transaction(function () use ($queryRequest, $user): QuerySession {
+                $lockedQueryRequest = QueryRequest::query()
+                    ->with(['accessConnections', 'databaseConnection'])
+                    ->lockForUpdate()
+                    ->findOrFail($queryRequest->id);
 
-        if ($queryRequest->status !== QueryRequestStatus::Approved) {
-            throw ValidationException::withMessages([
-                'query_request' => 'This query access request must be approved before a session can start.',
-            ]);
-        }
+                if ($lockedQueryRequest->request_kind !== QueryRequestKind::QueryAccess) {
+                    throw ValidationException::withMessages([
+                        'query_request' => 'Only query access requests can start a session.',
+                    ]);
+                }
 
-        if ($queryRequest->access_transport === AccessTransport::NativeProxy && ! $this->applicationSettings->nativeClientAccessEnabled()) {
-            throw ValidationException::withMessages([
-                'query_request' => 'Native Client Access is currently disabled by an administrator.',
-            ]);
-        }
+                if ($lockedQueryRequest->status !== QueryRequestStatus::Approved || QuerySession::query()->where('query_request_id', $lockedQueryRequest->id)->exists()) {
+                    throw ValidationException::withMessages([
+                        'query_request' => 'This query access request must be approved and unused before a session can start.',
+                    ]);
+                }
 
-        if ($queryRequest->access_transport === AccessTransport::Browser && ! $this->applicationSettings->queryAccessEnabled()) {
-            throw ValidationException::withMessages([
-                'query_request' => 'Query Access is currently disabled by an administrator.',
-            ]);
-        }
+                if ($lockedQueryRequest->access_transport === AccessTransport::NativeProxy && ! $this->applicationSettings->nativeClientAccessEnabled()) {
+                    throw ValidationException::withMessages([
+                        'query_request' => 'Native Client Access is currently disabled by an administrator.',
+                    ]);
+                }
 
-        $queryRequest->loadMissing('accessConnections', 'databaseConnection');
-        $databaseConnections = $this->sessionConnections($queryRequest);
+                if ($lockedQueryRequest->access_transport === AccessTransport::Browser && ! $this->applicationSettings->queryAccessEnabled()) {
+                    throw ValidationException::withMessages([
+                        'query_request' => 'Query Access is currently disabled by an administrator.',
+                    ]);
+                }
 
-        $sessionAccessMode = $queryRequest->requested_access_mode ?? AccessMode::Read;
-        $sessionQueryType = $sessionAccessMode === AccessMode::Write ? QueryType::Write : QueryType::Read;
+                $databaseConnections = $this->sessionConnections($lockedQueryRequest);
+                $sessionAccessMode = $lockedQueryRequest->requested_access_mode ?? AccessMode::Read;
+                $sessionQueryType = $sessionAccessMode === AccessMode::Write ? QueryType::Write : QueryType::Read;
+                $accessTransport = $lockedQueryRequest->access_transport;
+                $hasCurrentSessionAccess = $databaseConnections->contains(function (DatabaseConnection $connection) use ($user, $sessionQueryType, $accessTransport): bool {
+                    if ($accessTransport === AccessTransport::NativeProxy) {
+                        return ! $user->effectiveNativeProxyPermissionFor($connection, $sessionQueryType)['native_proxy_access_mode']->allows($sessionQueryType);
+                    }
 
-        $accessTransport = $queryRequest->access_transport;
-        $hasCurrentSessionAccess = $databaseConnections->contains(function (DatabaseConnection $connection) use ($user, $sessionQueryType, $accessTransport): bool {
-            if ($accessTransport === AccessTransport::NativeProxy) {
-                return ! $user->effectiveNativeProxyPermissionFor($connection, $sessionQueryType)['native_proxy_access_mode']->allows($sessionQueryType);
-            }
+                    return ! $user->isAdmin()
+                        && ! $user->effectiveQueryAccessPermissionFor($connection, $sessionQueryType)['query_access_mode']->allows($sessionQueryType);
+                });
 
-            return ! $user->isAdmin()
-                && ! $user->effectiveQueryAccessPermissionFor($connection, $sessionQueryType)['query_access_mode']->allows($sessionQueryType);
-        });
+                if ($hasCurrentSessionAccess) {
+                    throw ValidationException::withMessages([
+                        'query_request' => $accessTransport === AccessTransport::NativeProxy
+                            ? 'You no longer have the approved Native Client Access level for this database.'
+                            : 'You no longer have the approved session access level on every selected database.',
+                    ]);
+                }
 
-        if ($hasCurrentSessionAccess) {
-            throw ValidationException::withMessages([
-                'query_request' => $accessTransport === AccessTransport::NativeProxy
-                    ? 'You no longer have the approved Native Client Access level for this database.'
-                    : 'You no longer have the approved session access level on every selected database.',
-            ]);
-        }
+                $startedAt = now();
+                $durationMinutes = $lockedQueryRequest->access_duration_minutes ?? 60;
+                $session = QuerySession::query()->create([
+                    'query_request_id' => $lockedQueryRequest->id,
+                    'user_id' => $user->id,
+                    'database_connection_id' => $databaseConnections->first()->id,
+                    'started_at' => $startedAt,
+                    'expires_at' => $startedAt->copy()->addMinutes($durationMinutes),
+                ]);
 
-        $startedAt = now();
-        $durationMinutes = $queryRequest->access_duration_minutes ?? 60;
+                $session->databaseConnections()->sync($databaseConnections->modelKeys());
 
-        return DB::transaction(function () use ($queryRequest, $user, $databaseConnections, $sessionAccessMode, $startedAt, $durationMinutes): QuerySession {
-            $session = QuerySession::query()->create([
-                'query_request_id' => $queryRequest->id,
-                'user_id' => $user->id,
-                'database_connection_id' => $databaseConnections->first()->id,
-                'started_at' => $startedAt,
-                'expires_at' => $startedAt->copy()->addMinutes($durationMinutes),
-            ]);
+                $lockedQueryRequest->forceFill([
+                    'status' => QueryRequestStatus::Running,
+                    'dispatched_at' => $startedAt,
+                ])->save();
 
-            $session->databaseConnections()->sync($databaseConnections->modelKeys());
+                $this->auditLogger->log('query_session.started', $user, $session, [
+                    'query_request_id' => $lockedQueryRequest->id,
+                    'expires_at' => $session->expires_at->toIso8601String(),
+                    'database_connection_ids' => $databaseConnections->modelKeys(),
+                    'requested_access_mode' => $sessionAccessMode->value,
+                ]);
 
-            $queryRequest->forceFill([
-                'status' => QueryRequestStatus::Running,
-                'dispatched_at' => $startedAt,
-            ])->save();
+                $this->notificationDispatcher->sessionStarted($session);
 
-            $this->auditLogger->log('query_session.started', $user, $session, [
-                'query_request_id' => $queryRequest->id,
-                'expires_at' => $session->expires_at->toIso8601String(),
-                'database_connection_ids' => $databaseConnections->modelKeys(),
-                'requested_access_mode' => $sessionAccessMode->value,
-            ]);
-
-            $this->notificationDispatcher->sessionStarted($session);
-
-            return $session;
+                return $session;
+            });
         });
     }
 
