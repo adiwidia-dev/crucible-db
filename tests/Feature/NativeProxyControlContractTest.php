@@ -31,13 +31,15 @@ class NativeProxyControlContractTest extends TestCase
         ]);
     }
 
-    public function test_same_origin_gateway_routes_are_private_and_fixed_in_the_compose_topology(): void
+    public function test_same_origin_routes_are_private_and_fixed_in_the_compose_topology(): void
     {
-        $caddyfile = file_get_contents(base_path('.docker/native-proxy.Caddyfile'));
+        $caddyfile = file_get_contents(base_path('.docker/Caddyfile'));
+        $developmentDockerfile = file_get_contents(base_path('Dockerfile'));
         $developmentCompose = file_get_contents(base_path('compose.yaml'));
         $productionCompose = file_get_contents(base_path('compose.production.yaml'));
 
         $this->assertNotFalse($caddyfile);
+        $this->assertNotFalse($developmentDockerfile);
         $this->assertNotFalse($developmentCompose);
         $this->assertNotFalse($productionCompose);
         $this->assertStringContainsString('/.well-known/crucible-native-client.json', $caddyfile);
@@ -45,6 +47,16 @@ class NativeProxyControlContractTest extends TestCase
         $this->assertStringContainsString('reverse_proxy native-proxy:8081', $caddyfile);
         $this->assertStringContainsString('@internal_control path /internal /internal/*', $caddyfile);
         $this->assertMatchesRegularExpression('/handle @internal_control \{\s*respond 404\s*\}/', $caddyfile);
+        $this->assertSame(2, substr_count($caddyfile, '@internal_control path /internal /internal/*'));
+        $this->assertStringContainsString('http://:8001', $caddyfile);
+        $this->assertStringNotContainsString('reverse_proxy app:8000', $caddyfile);
+        $this->assertStringContainsString('NATIVE_PROXY_CONTROL_URL: http://app:8001', $developmentCompose);
+        $this->assertStringContainsString('NATIVE_PROXY_CONTROL_URL: http://app:8001', $productionCompose);
+        $this->assertStringContainsString('--caddyfile=/etc/caddy/Caddyfile', $developmentDockerfile);
+        $this->assertStringNotContainsString("\n  gateway:\n", $developmentCompose);
+        $this->assertStringNotContainsString("\n  gateway:\n", $productionCompose);
+        $this->assertStringContainsString('${CRUCIBLE_BIND_ADDRESS:-127.0.0.1}:${CRUCIBLE_HTTP_PORT:-8000}:8000', $developmentCompose);
+        $this->assertStringContainsString('${CRUCIBLE_BIND_ADDRESS:-127.0.0.1}:${CRUCIBLE_HTTP_PORT:-8000}:8000', $productionCompose);
         $this->assertStringNotContainsString('"5432:5432"', $developmentCompose);
         $this->assertStringNotContainsString('"3306:3306"', $developmentCompose);
         $this->assertStringNotContainsString('"5432:5432"', $productionCompose);

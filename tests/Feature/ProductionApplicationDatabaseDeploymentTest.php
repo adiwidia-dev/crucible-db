@@ -29,6 +29,18 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertStringNotContainsString('php artisan package:discover', $entrypoint);
     }
 
+    public function test_production_app_uses_its_embedded_caddy_gateway(): void
+    {
+        $compose = (string) file_get_contents(dirname(__DIR__, 2).'/compose.production.yaml');
+        $dockerfile = (string) file_get_contents(dirname(__DIR__, 2).'/Dockerfile.production');
+        $supervisor = (string) file_get_contents(dirname(__DIR__, 2).'/.docker/production-supervisord.conf');
+
+        $this->assertStringNotContainsString("\n  gateway:\n", $compose);
+        $this->assertStringContainsString('${CRUCIBLE_BIND_ADDRESS:-127.0.0.1}:${CRUCIBLE_HTTP_PORT:-8000}:8000', $compose);
+        $this->assertStringContainsString('COPY .docker/Caddyfile /etc/caddy/Caddyfile', $dockerfile);
+        $this->assertStringContainsString('--caddyfile=/etc/caddy/Caddyfile', $supervisor);
+    }
+
     public function test_production_environment_documents_managed_metadata_and_all_drivers(): void
     {
         $environment = (string) file_get_contents(dirname(__DIR__, 2).'/.env.production.example');

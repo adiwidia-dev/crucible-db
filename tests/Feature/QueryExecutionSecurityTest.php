@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\DatabaseDriver;
 use App\Enums\DatabaseTlsMode;
 use App\Enums\QueryType;
+use App\Enums\SqlStatementFamily;
 use App\Models\DatabaseConnection;
 use App\Services\ApplicationSettings;
 use App\Services\DatabaseQueryExecutor;
@@ -86,6 +87,85 @@ SQL;
         $this->assertStringStartsWith('UPDATE', $guard->topLevelExecutableSql($sql));
     }
 
+    public function test_insert_upserts_require_update_permission_without_blocking_postgresql_do_update(): void
+    {
+        $postgresUpsert = <<<'SQL'
+INSERT INTO ksj_service_zones (zone_id, hub_code, geom_geojson)
+VALUES ('HB0009-AREA-1', 'HB0009', '{"type":"Polygon"}'::jsonb)
+ON CONFLICT (zone_id) DO UPDATE SET
+    hub_code = EXCLUDED.hub_code,
+    geom_geojson = EXCLUDED.geom_geojson,
+    updated_at = NOW()
+SQL;
+        $mysqlUpsert = <<<'SQL'
+INSERT INTO service_zones (zone_id, hub_code)
+VALUES ('HB0009-AREA-1', 'HB0009')
+ON DUPLICATE KEY UPDATE hub_code = VALUES(hub_code)
+SQL;
+        $settings = Mockery::mock(ApplicationSettings::class);
+        $settings->shouldReceive('allowsSqlStatementFamily')
+            ->with(SqlStatementFamily::Insert)
+            ->twice()
+            ->andReturnTrue();
+        $settings->shouldReceive('allowsSqlStatementFamily')
+            ->with(SqlStatementFamily::Update)
+            ->twice()
+            ->andReturnTrue();
+        $guard = new QueryGuard($settings);
+
+        $this->assertSame(QueryType::Write, $guard->classify($postgresUpsert));
+        $this->assertSame(
+            [SqlStatementFamily::Insert, SqlStatementFamily::Update],
+            $guard->requiredStatementFamilies($postgresUpsert),
+        );
+        $this->assertSame(QueryType::Write, $guard->classify($mysqlUpsert));
+        $this->assertSame(
+            [SqlStatementFamily::Insert, SqlStatementFamily::Update],
+            $guard->requiredStatementFamilies($mysqlUpsert),
+        );
+    }
+
+    public function test_insert_conflict_do_nothing_only_requires_insert_permission(): void
+    {
+        $settings = Mockery::mock(ApplicationSettings::class);
+        $settings->shouldReceive('allowsSqlStatementFamily')
+            ->with(SqlStatementFamily::Insert)
+            ->once()
+            ->andReturnTrue();
+        $guard = new QueryGuard($settings);
+        $sql = "INSERT INTO service_zones (zone_id) VALUES ('HB0009-AREA-1') ON CONFLICT (zone_id) DO NOTHING";
+
+        $this->assertSame(QueryType::Write, $guard->classify($sql));
+        $this->assertSame(
+            [SqlStatementFamily::Insert],
+            $guard->requiredStatementFamilies($sql),
+        );
+    }
+
+    public function test_insert_upsert_is_blocked_when_update_statements_are_disabled(): void
+    {
+        $settings = Mockery::mock(ApplicationSettings::class);
+        $settings->shouldReceive('allowsSqlStatementFamily')
+            ->with(SqlStatementFamily::Insert)
+            ->once()
+            ->andReturnTrue();
+        $settings->shouldReceive('allowsSqlStatementFamily')
+            ->with(SqlStatementFamily::Update)
+            ->once()
+            ->andReturnFalse();
+        $guard = new QueryGuard($settings);
+
+        try {
+            $guard->validateExecutable("INSERT INTO service_zones (zone_id) VALUES ('HB0009-AREA-1') ON CONFLICT (zone_id) DO UPDATE SET zone_id = EXCLUDED.zone_id");
+            $this->fail('An upsert should require UPDATE permission.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['UPDATE statements are disabled by the workspace administrator.'],
+                $exception->errors()['sql'],
+            );
+        }
+    }
+
     public function test_emergency_fallback_treats_unknown_deployment_sql_as_write_but_keeps_session_and_transaction_guards(): void
     {
         $settings = Mockery::mock(ApplicationSettings::class);
@@ -122,6 +202,7 @@ SQL;
             'CREATE FUNCTION refresh_materialized_views() RETURNS void AS $$ SELECT 1; $$ LANGUAGE sql',
             'CREATE TRIGGER audit_customer_update BEFORE UPDATE ON customers EXECUTE FUNCTION audit_customer_update()',
             'VACUUM users',
+            'DO $$ BEGIN PERFORM refresh_materialized_views(); END $$',
             'CALL refresh_materialized_views()',
         ] as $blockedSql) {
             try {

@@ -8,7 +8,7 @@ use Illuminate\Validation\ValidationException;
 
 class QueryGuard
 {
-    private const EmergencyFallbackBlockedSqlPattern = '/\\b(grant|revoke|create\\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\\s+data\\s+wrapper|server|publication|subscription)|alter\\s+(?:user|role|database|system|function|procedure|trigger|rule)|drop\\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\\s+data\\s+wrapper|server|publication|subscription)|copy|load\\s+data|load_file|into\\s+outfile|vacuum|analyze|reindex|cluster|checkpoint|do|call|prepare|execute|deallocate|discard|lock|listen|notify|unlisten|reset)\\b/i';
+    private const EmergencyFallbackBlockedSqlPattern = '/\\b(grant|revoke|create\\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\\s+data\\s+wrapper|server|publication|subscription)|alter\\s+(?:user|role|database|system|function|procedure|trigger|rule)|drop\\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\\s+data\\s+wrapper|server|publication|subscription)|copy|load\\s+data|load_file|into\\s+outfile|vacuum|analyze|reindex|cluster|checkpoint|call|prepare|execute|deallocate|discard|lock|listen|notify|unlisten|reset)\\b/i';
 
     public function __construct(private readonly ApplicationSettings $settings) {}
 
@@ -35,10 +35,12 @@ class QueryGuard
             return $singleStatement;
         }
 
-        if (! $this->settings->allowsSqlStatementFamily($statementFamily)) {
-            throw ValidationException::withMessages([
-                'sql' => "{$statementFamily->label()} statements are disabled by the workspace administrator.",
-            ]);
+        foreach ($this->requiredStatementFamilies($singleStatement) as $requiredStatementFamily) {
+            if (! $this->settings->allowsSqlStatementFamily($requiredStatementFamily)) {
+                throw ValidationException::withMessages([
+                    'sql' => "{$requiredStatementFamily->label()} statements are disabled by the workspace administrator.",
+                ]);
+            }
         }
 
         return $singleStatement;
@@ -76,7 +78,10 @@ class QueryGuard
             ]);
         }
 
-        if (preg_match(self::EmergencyFallbackBlockedSqlPattern, $executableSql) === 1) {
+        if (
+            preg_match('/^do\\b/i', ltrim($executableSql)) === 1
+            || preg_match(self::EmergencyFallbackBlockedSqlPattern, $executableSql) === 1
+        ) {
             throw ValidationException::withMessages([
                 'sql' => 'Administrative, file, security-management, and procedural SQL statements are blocked.',
             ]);
@@ -149,6 +154,28 @@ class QueryGuard
         };
     }
 
+    /**
+     * Return every governed statement family needed to authorize the statement.
+     *
+     * @return list<SqlStatementFamily>
+     */
+    public function requiredStatementFamilies(string $statement): array
+    {
+        $statementFamily = $this->statementFamily($statement);
+
+        if ($statementFamily === null) {
+            return [];
+        }
+
+        $requiredStatementFamilies = [$statementFamily];
+
+        if ($statementFamily === SqlStatementFamily::Insert && $this->insertPerformsUpdate($statement)) {
+            $requiredStatementFamilies[] = SqlStatementFamily::Update;
+        }
+
+        return $requiredStatementFamilies;
+    }
+
     public function topLevelExecutableSql(string $sql): string
     {
         $executableSql = ltrim($this->executableSql($sql));
@@ -206,6 +233,14 @@ class QueryGuard
     private function containsStatementTerminator(string $sql): bool
     {
         return str_contains($this->executableSql($sql), ';');
+    }
+
+    private function insertPerformsUpdate(string $statement): bool
+    {
+        $executableSql = $this->topLevelExecutableSql($statement);
+
+        return preg_match('/\\bon\\s+conflict\\b[\\s\\S]*\\bdo\\s+update\\b/i', $executableSql) === 1
+            || preg_match('/\\bon\\s+duplicate\\s+key\\s+update\\b/i', $executableSql) === 1;
     }
 
     private function executableSql(string $sql): string

@@ -30,6 +30,8 @@ services:
       start_period: 30s
     volumes:
       - crucible_storage:/app/storage
+    ports:
+      - "${CRUCIBLE_BIND_ADDRESS:-127.0.0.1}:${CRUCIBLE_HTTP_PORT:-8000}:8000"
     depends_on:
       redis:
         condition: service_healthy
@@ -92,30 +94,13 @@ services:
     networks:
       - backend
 
-  gateway:
-    image: caddy:2.10-alpine
-    init: true
-    restart: unless-stopped
-    stop_grace_period: 35s
-    ports:
-      - "${CRUCIBLE_BIND_ADDRESS:-127.0.0.1}:${CRUCIBLE_HTTP_PORT:-8000}:8000"
-    volumes:
-      - ./.docker/native-proxy.Caddyfile:/etc/caddy/Caddyfile:ro
-    depends_on:
-      app:
-        condition: service_healthy
-      native-proxy:
-        condition: service_healthy
-    networks:
-      - backend
-
   native-proxy:
     image: ${CRUCIBLE_NATIVE_IMAGE:?CRUCIBLE_NATIVE_IMAGE must be set to the matching native proxy release image}
     pull_policy: always
     environment:
       APP_URL: ${APP_URL:?APP_URL must be configured}
       NATIVE_PROXY_ID: ${NATIVE_PROXY_ID:-crucible-production}
-      NATIVE_PROXY_CONTROL_URL: http://app:8000
+      NATIVE_PROXY_CONTROL_URL: http://app:8001
       NATIVE_PROXY_CONTROL_SECRET: ${NATIVE_PROXY_CONTROL_SECRET:?NATIVE_PROXY_CONTROL_SECRET must be configured}
       NATIVE_PROXY_REDIS_URL: redis://redis:6379/0
       NATIVE_PROXY_REVOCATION_CHANNEL: ${NATIVE_PROXY_REVOCATION_CHANNEL:-native-proxy:lease-revoked}

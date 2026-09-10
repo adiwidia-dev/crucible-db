@@ -2,7 +2,7 @@ services:
   app:
     build:
       context: .
-    command: ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000", "--workers=2", "--max-requests=500"]
+    command: ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000", "--workers=2", "--max-requests=500", "--caddyfile=/etc/caddy/Caddyfile"]
     environment:
       OCTANE_SERVER: frankenphp
       CRUCIBLE_INITIAL_SETUP_TOKEN: ${CRUCIBLE_INITIAL_SETUP_TOKEN:-crucible-local-initial-setup-token}
@@ -16,6 +16,8 @@ services:
       - .:/app
       - node_modules:/app/node_modules
       - crucible_storage:/app/storage
+    ports:
+      - "${CRUCIBLE_BIND_ADDRESS:-127.0.0.1}:${CRUCIBLE_HTTP_PORT:-8000}:8000"
     depends_on:
       redis:
         condition: service_healthy
@@ -62,18 +64,6 @@ services:
       - .:/app
       - node_modules:/app/node_modules
 
-  gateway:
-    image: caddy:2.10-alpine
-    ports:
-      - "${CRUCIBLE_BIND_ADDRESS:-127.0.0.1}:${CRUCIBLE_HTTP_PORT:-8000}:8000"
-    volumes:
-      - ./.docker/native-proxy.Caddyfile:/etc/caddy/Caddyfile:ro
-    depends_on:
-      app:
-        condition: service_healthy
-      native-proxy:
-        condition: service_healthy
-
   native-proxy:
     build:
       context: .
@@ -81,7 +71,7 @@ services:
     environment:
       APP_URL: ${APP_URL:-http://localhost:8000}
       NATIVE_PROXY_ID: ${NATIVE_PROXY_ID:-crucible-dev}
-      NATIVE_PROXY_CONTROL_URL: http://app:8000
+      NATIVE_PROXY_CONTROL_URL: http://app:8001
       NATIVE_PROXY_CONTROL_SECRET: ${NATIVE_PROXY_CONTROL_SECRET:?NATIVE_PROXY_CONTROL_SECRET must be configured with at least 32 characters}
       NATIVE_PROXY_REDIS_URL: redis://redis:6379/0
       NATIVE_PROXY_REVOCATION_CHANNEL: ${NATIVE_PROXY_REVOCATION_CHANNEL:-native-proxy:lease-revoked}

@@ -55,10 +55,12 @@ class DeploymentStatementPolicy
         $statementFamily = $this->queryGuard->statementFamily($statement);
 
         if ($statementFamily !== null) {
-            if (! $this->settings->allowsSqlStatementFamily($statementFamily)) {
-                throw ValidationException::withMessages([
-                    'sql' => "{$statementFamily->label()} statements are disabled by the workspace administrator.",
-                ]);
+            foreach ($this->queryGuard->requiredStatementFamilies($statement) as $requiredStatementFamily) {
+                if (! $this->settings->allowsSqlStatementFamily($requiredStatementFamily)) {
+                    throw ValidationException::withMessages([
+                        'sql' => "{$requiredStatementFamily->label()} statements are disabled by the workspace administrator.",
+                    ]);
+                }
             }
 
             return [

@@ -1,10 +1,81 @@
 {
-    auto_https off
+	{$CADDY_GLOBAL_OPTIONS}
+
+	admin {$CADDY_SERVER_ADMIN_HOST}:{$CADDY_SERVER_ADMIN_PORT}
+
+	servers {
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
+
+	frankenphp {
+		worker {
+			file "{$APP_PUBLIC_PATH}/frankenphp-worker.php"
+			{$CADDY_SERVER_WORKER_DIRECTIVE}
+			{$CADDY_SERVER_WATCH_DIRECTIVES}
+		}
+	}
 }
 
-:8000 {
-    root * /app/public
-    encode zstd br gzip
-    php_server
-    file_server
+{$CADDY_EXTRA_CONFIG}
+
+{$CADDY_SERVER_SERVER_NAME} {
+	log {
+		level {$CADDY_SERVER_LOG_LEVEL}
+
+		format filter {
+			wrap {$CADDY_SERVER_LOGGER}
+			fields {
+				uri query {
+					replace authorization REDACTED
+				}
+			}
+		}
+	}
+
+	@internal_control path /internal /internal/*
+	handle @internal_control {
+		respond 404
+	}
+
+	@native_client path /.well-known/crucible-native-client.json /native-tunnel/*
+	handle @native_client {
+		reverse_proxy native-proxy:8081 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		route {
+			root * "{$APP_PUBLIC_PATH}"
+			encode zstd br gzip
+
+			{$CADDY_SERVER_EXTRA_DIRECTIVES}
+
+			php_server {
+				index frankenphp-worker.php
+				try_files {path} frankenphp-worker.php
+				resolve_root_symlink
+			}
+		}
+	}
+}
+
+http://:8001 {
+	@internal_control path /internal /internal/*
+	handle @internal_control {
+		route {
+			root * "{$APP_PUBLIC_PATH}"
+
+			php_server {
+				index frankenphp-worker.php
+				try_files {path} frankenphp-worker.php
+				resolve_root_symlink
+			}
+		}
+	}
+
+	handle {
+		respond 404
+	}
 }

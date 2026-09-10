@@ -141,7 +141,7 @@ const SQL_STATEMENT_FAMILIES = [
 ] as const;
 
 const EMERGENCY_FALLBACK_BLOCKED_SQL_PATTERN =
-    /\b(grant|revoke|create\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\s+data\s+wrapper|server|publication|subscription)|alter\s+(?:user|role|database|system|function|procedure|trigger|rule)|drop\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\s+data\s+wrapper|server|publication|subscription)|copy|load\s+data|load_file|into\s+outfile|vacuum|analyze|reindex|cluster|checkpoint|do|call|prepare|execute|deallocate|discard|lock|listen|notify|unlisten|reset)\b/i;
+    /\b(grant|revoke|create\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\s+data\s+wrapper|server|publication|subscription)|alter\s+(?:user|role|database|system|function|procedure|trigger|rule)|drop\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\s+data\s+wrapper|server|publication|subscription)|copy|load\s+data|load_file|into\s+outfile|vacuum|analyze|reindex|cluster|checkpoint|call|prepare|execute|deallocate|discard|lock|listen|notify|unlisten|reset)\b/i;
 
 function topLevelGovernedSql(executableSql: string): string {
     if (!/^with\b/i.test(executableSql)) {
@@ -197,7 +197,10 @@ function sqlStatementPolicyMessage(
         return 'EXPLAIN ANALYZE is not supported because it can execute the explained statement.';
     }
 
-    if (EMERGENCY_FALLBACK_BLOCKED_SQL_PATTERN.test(executableSql)) {
+    if (
+        /^do\b/i.test(executableSql) ||
+        EMERGENCY_FALLBACK_BLOCKED_SQL_PATTERN.test(executableSql)
+    ) {
         return 'Administrative, file, security-management, and procedural SQL statements remain blocked.';
     }
 
@@ -222,6 +225,15 @@ function sqlStatementPolicyMessage(
 
     if (!policy[statementFamily.key]) {
         return `${statementFamily.label} statements are disabled by the workspace administrator.`;
+    }
+
+    const insertPerformsUpdate =
+        statementFamily.key === 'sql_insert_enabled' &&
+        (/\bon\s+conflict\b[\s\S]*\bdo\s+update\b/i.test(topLevelSql) ||
+            /\bon\s+duplicate\s+key\s+update\b/i.test(topLevelSql));
+
+    if (insertPerformsUpdate && !policy.sql_update_enabled) {
+        return 'UPDATE statements are disabled by the workspace administrator.';
     }
 
     return null;

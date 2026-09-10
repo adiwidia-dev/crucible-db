@@ -75,6 +75,7 @@ RUN apt-get update \
 COPY --from=vendor /app/vendor /app/vendor
 COPY . ./
 COPY --from=frontend /app/public/build /app/public/build
+COPY .docker/Caddyfile /etc/caddy/Caddyfile
 COPY .docker/production-entrypoint.sh /usr/local/bin/crucible-production-entrypoint
 COPY .docker/production-supervisord.conf /etc/supervisor/conf.d/crucible.conf
 

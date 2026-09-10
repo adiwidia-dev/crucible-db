@@ -26,4 +26,4 @@ COPY .docker/entrypoint.sh /usr/local/bin/crucible-entrypoint
 RUN chmod +x /usr/local/bin/crucible-entrypoint
 
 ENTRYPOINT ["crucible-entrypoint"]
-CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]
+CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000", "--workers=2", "--max-requests=500", "--caddyfile=/etc/caddy/Caddyfile"]

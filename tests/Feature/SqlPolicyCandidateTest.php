@@ -129,6 +129,33 @@ class SqlPolicyCandidateTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_postgresql_upsert_is_a_built_in_statement_and_does_not_create_a_policy_candidate(): void
+    {
+        Notification::fake();
+        $this->disableFallback();
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->postgresql()->create();
+        $sql = <<<'SQL'
+INSERT INTO ksj_service_zones (zone_id, hub_code, geom_geojson)
+VALUES ('HB0009-AREA-1', 'HB0009', '{"type":"Polygon"}'::jsonb)
+ON CONFLICT (zone_id) DO UPDATE SET
+    hub_code = EXCLUDED.hub_code,
+    geom_geojson = EXCLUDED.geom_geojson,
+    updated_at = NOW()
+SQL;
+        $queryRequest = $this->deploymentRequest($admin, $connection, [$sql]);
+
+        $report = app(DeploymentPreflight::class)->evaluate($queryRequest);
+        $inspection = app(DeploymentStatementPolicy::class)->inspect($sql, $connection);
+
+        $this->assertSame('passed', $report['status']->value);
+        $this->assertSame([], $report['statements'][0]['messages']);
+        $this->assertSame('built_in', $inspection['source']);
+        $this->assertSame(QueryType::Write, $inspection['query_type']);
+        $this->assertDatabaseCount('sql_policy_candidates', 0);
+        Notification::assertNothingSent();
+    }
+
     public function test_admin_can_allow_an_exact_candidate_without_broadening_native_client_sql(): void
     {
         Notification::fake();

@@ -12,17 +12,17 @@ class ProductionDeploymentSecurityTest extends TestCase
     {
         $compose = file_get_contents(base_path('compose.production.yaml'));
         $environment = file_get_contents(base_path('.env.production.example'));
-        $gateway = file_get_contents(base_path('.docker/native-proxy.Caddyfile'));
+        $caddyfile = file_get_contents(base_path('.docker/Caddyfile'));
 
         $this->assertIsString($compose);
         $this->assertIsString($environment);
-        $this->assertIsString($gateway);
+        $this->assertIsString($caddyfile);
         $this->assertStringContainsString('${CRUCIBLE_BIND_ADDRESS:-127.0.0.1}:${CRUCIBLE_HTTP_PORT:-8000}:8000', $compose);
         $this->assertStringContainsString('CRUCIBLE_INITIAL_SETUP_TOKEN must contain at least 32 characters', $compose);
         $this->assertStringContainsString('APP_URL=https://', $environment);
         $this->assertStringContainsString('SESSION_SECURE_COOKIE=true', $environment);
-        $this->assertStringContainsString('trusted_proxies static private_ranges', $gateway);
-        $this->assertStringContainsString('trusted_proxies_strict', $gateway);
+        $this->assertStringContainsString('trusted_proxies static private_ranges', $caddyfile);
+        $this->assertStringContainsString('trusted_proxies_strict', $caddyfile);
     }
 
     public function test_private_tls_terminator_forwarding_restores_the_public_https_scheme(): void
