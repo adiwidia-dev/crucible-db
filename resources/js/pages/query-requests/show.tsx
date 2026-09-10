@@ -234,43 +234,41 @@ function SampleRows({ rows }: { rows: Array<Record<string, unknown>> }) {
     );
 
     return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-                <thead>
-                    <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                        {columns.map((column, index) => (
-                            <th
+        <table className="w-max min-w-full text-sm">
+            <thead>
+                <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
+                    {columns.map((column, index) => (
+                        <th
+                            key={column}
+                            className={`py-3 pr-4 font-medium ${
+                                index === 0 ? 'pl-4 sm:pl-6' : ''
+                            }`}
+                        >
+                            {column}
+                        </th>
+                    ))}
+                </tr>
+            </thead>
+            <tbody>
+                {rows.map((row, index) => (
+                    <tr
+                        key={index}
+                        className="border-b transition-colors last:border-0 hover:bg-accent/40"
+                    >
+                        {columns.map((column, columnIndex) => (
+                            <td
                                 key={column}
-                                className={`py-3 pr-4 font-medium ${
-                                    index === 0 ? 'pl-4 sm:pl-6' : ''
+                                className={`max-w-80 truncate py-3.5 pr-4 font-mono text-xs ${
+                                    columnIndex === 0 ? 'pl-4 sm:pl-6' : ''
                                 }`}
                             >
-                                {column}
-                            </th>
+                                {String(row[column] ?? '')}
+                            </td>
                         ))}
                     </tr>
-                </thead>
-                <tbody>
-                    {rows.map((row, index) => (
-                        <tr
-                            key={index}
-                            className="border-b transition-colors last:border-0 hover:bg-accent/40"
-                        >
-                            {columns.map((column, columnIndex) => (
-                                <td
-                                    key={column}
-                                    className={`max-w-80 truncate py-3.5 pr-4 font-mono text-xs ${
-                                        columnIndex === 0 ? 'pl-4 sm:pl-6' : ''
-                                    }`}
-                                >
-                                    {String(row[column] ?? '')}
-                                </td>
-                            ))}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
+                ))}
+            </tbody>
+        </table>
     );
 }
 
@@ -294,7 +292,7 @@ function ExecutionResult({ execution }: { execution: Execution }) {
     }
 
     return (
-        <div className="rounded-md border bg-background">
+        <div className="max-w-full min-w-0 overflow-hidden rounded-md border bg-background">
             <div className="flex items-center justify-end border-b px-3 py-2">
                 <Button variant="outline" size="sm" asChild>
                     <a href={QueryExecutionExportController.url(execution.id)}>
@@ -303,7 +301,12 @@ function ExecutionResult({ execution }: { execution: Execution }) {
                     </a>
                 </Button>
             </div>
-            <div className="max-h-80 overflow-auto">
+            <div
+                role="region"
+                aria-label="Execution result rows"
+                tabIndex={0}
+                className="max-h-80 max-w-full overflow-auto overscroll-x-contain focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+            >
                 <SampleRows rows={rows} />
             </div>
         </div>
@@ -1781,10 +1784,10 @@ export default function QueryRequestShow({
                                                 {isExpanded && (
                                                     <tr className="border-b bg-muted/20">
                                                         <td
-                                                            colSpan={8}
-                                                            className="px-4 py-3 sm:px-6"
+                                                            colSpan={9}
+                                                            className="w-0 max-w-0 px-4 py-3 sm:px-6"
                                                         >
-                                                            <div className="grid gap-3">
+                                                            <div className="grid max-w-full min-w-0 gap-3">
                                                                 <div>
                                                                     <div className="mb-2 text-xs font-medium text-muted-foreground uppercase">
                                                                         SQL
@@ -1794,7 +1797,7 @@ export default function QueryRequestShow({
                                                                             'SQL not recorded'}
                                                                     </pre>
                                                                 </div>
-                                                                <div>
+                                                                <div className="max-w-full min-w-0">
                                                                     <div className="mb-2 text-xs font-medium text-muted-foreground uppercase">
                                                                         Result
                                                                     </div>
