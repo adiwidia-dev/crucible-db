@@ -183,8 +183,6 @@ This runs frontend linting, formatting, TypeScript checks, PHP formatting, PHPSt
 - [Product overview](docs/product/overview.md)
 - [Design direction](docs/product/design.md)
 - [Architecture decisions](docs/architecture/decisions.md)
-- [Historical plans](docs/archive/plans/)
-- [Historical specifications](docs/archive/specifications/)
 
 ## Contributing
 

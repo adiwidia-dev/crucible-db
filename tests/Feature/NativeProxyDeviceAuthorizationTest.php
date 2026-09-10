@@ -48,7 +48,7 @@ class NativeProxyDeviceAuthorizationTest extends TestCase
             'cli_version' => '0.1.0',
             'operating_system' => 'darwin',
             'architecture' => 'arm64',
-            'device_label' => 'Daniel’s MacBook',
+            'device_label' => 'Developer MacBook',
         ]);
 
         $authorization = $challenge->authorization;

@@ -4,9 +4,7 @@ site_url: https://adiwidia-dev.github.io/crucible-db/
 copyright: Copyright &copy; 2026 Crucible DB contributors
 
 exclude_docs: |
-  archive/
   product/
-  superpowers/
 
 theme:
   name: material
