@@ -29,6 +29,20 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertStringNotContainsString('php artisan package:discover', $entrypoint);
     }
 
+    public function test_development_entrypoint_creates_the_configured_sqlite_database_before_composer_runs(): void
+    {
+        $entrypoint = (string) file_get_contents(dirname(__DIR__, 2).'/.docker/entrypoint.sh');
+
+        $databaseSetupPosition = strpos($entrypoint, 'sqlite_database="${DB_DATABASE:-/app/database/database.sqlite}"');
+        $composerInstallPosition = strpos($entrypoint, 'composer install --no-interaction');
+
+        $this->assertIsInt($databaseSetupPosition);
+        $this->assertIsInt($composerInstallPosition);
+        $this->assertStringContainsString('mkdir -p "$(dirname "$sqlite_database")"', $entrypoint);
+        $this->assertStringContainsString('touch "$sqlite_database"', $entrypoint);
+        $this->assertLessThan($composerInstallPosition, $databaseSetupPosition);
+    }
+
     public function test_production_app_uses_its_embedded_caddy_gateway(): void
     {
         $compose = (string) file_get_contents(dirname(__DIR__, 2).'/compose.production.yaml');

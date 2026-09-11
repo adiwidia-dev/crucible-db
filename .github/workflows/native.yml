@@ -146,7 +146,7 @@ jobs:
           NATIVE_INTEGRATION: '1'
           NATIVE_INTEGRATION_BASE_URL: http://localhost:8000
           NATIVE_INTEGRATION_REDIS_URL: redis://127.0.0.1:6379/0
-          NATIVE_INTEGRATION_CONTROL_SECRET: change-me-before-production
+          NATIVE_INTEGRATION_CONTROL_SECRET: ${{ env.NATIVE_PROXY_CONTROL_SECRET }}
         run: go test -race -tags=integration ./test/integration -v
       - name: Collect diagnostics
         if: always()
