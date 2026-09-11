@@ -245,7 +245,7 @@ class LeaseWorkflow
 
         foreach ($leaseIds as $leaseId) {
             $expired = DB::transaction(function () use ($leaseId): bool {
-                $lease = NativeProxyLease::query()->lockForUpdate()->find($leaseId);
+                $lease = NativeProxyLease::query()->lockForUpdate()->find((string) $leaseId);
 
                 if ($lease === null || ! in_array($lease->status, [NativeProxyLeaseStatus::PendingCredentials, NativeProxyLeaseStatus::Active], true) || $lease->expires_at->isFuture()) {
                     return false;

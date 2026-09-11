@@ -95,6 +95,7 @@ class DatabaseSchemaBrowser
     }
 
     /**
+     * @param  array{ca: string|null, client_certificate: string|null, client_key: string|null}  $tlsMaterial
      * @return array<string, array<int, bool|string>|bool|string>
      */
     private function driverOptions(DatabaseConnection $databaseConnection, array $tlsMaterial): array
@@ -115,6 +116,7 @@ class DatabaseSchemaBrowser
     }
 
     /**
+     * @param  array{ca: string|null, client_certificate: string|null, client_key: string|null}  $tlsMaterial
      * @return array<string, string>
      */
     private function postgreSqlTlsOptions(DatabaseConnection $databaseConnection, array $tlsMaterial): array
@@ -130,6 +132,7 @@ class DatabaseSchemaBrowser
     }
 
     /**
+     * @param  array{ca: string|null, client_certificate: string|null, client_key: string|null}  $tlsMaterial
      * @return array<int, bool|string>
      */
     private function mySqlPdoOptions(DatabaseConnection $databaseConnection, array $tlsMaterial): array

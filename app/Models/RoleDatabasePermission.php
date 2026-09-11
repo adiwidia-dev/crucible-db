@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $database_connection_id
  * @property AccessMode $access_mode
  * @property AccessMode $query_access_mode
+ * @property AccessMode $native_proxy_access_mode
  * @property bool $can_review
  * @property bool $requires_approval
  * @property bool $read_requires_approval

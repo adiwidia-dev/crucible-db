@@ -33,6 +33,7 @@ use Illuminate\Support\Carbon;
  * @property string $sql
  * @property QueryType $query_type
  * @property QueryRequestKind $request_kind
+ * @property AccessTransport $access_transport
  * @property AccessMode|null $requested_access_mode
  * @property QueryRequestStatus $status
  * @property int $revision
@@ -68,7 +69,7 @@ class QueryRequest extends Model
     /** @use HasFactory<QueryRequestFactory> */
     use HasFactory;
 
-    /** @var array<string, string> */
+    /** @var array<string, int|string> */
     protected $attributes = [
         'access_transport' => AccessTransport::Browser->value,
         'revision' => 1,

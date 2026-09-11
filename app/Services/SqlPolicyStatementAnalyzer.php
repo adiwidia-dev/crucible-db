@@ -203,17 +203,25 @@ class SqlPolicyStatementAnalyzer
             }
 
             if (ctype_alpha($current) || $current === '_') {
-                preg_match('/\G[A-Za-z_][A-Za-z0-9_$]*/', $sql, $matches, 0, $index);
-                $tokens[] = mb_strtoupper($matches[0]);
-                $index += strlen($matches[0]);
+                if (preg_match('/\G[A-Za-z_][A-Za-z0-9_$]*/', $sql, $matches, 0, $index) !== 1) {
+                    return null;
+                }
+
+                $identifier = $matches[0];
+                $tokens[] = mb_strtoupper($identifier);
+                $index += strlen($identifier);
 
                 continue;
             }
 
             if (ctype_digit($current)) {
-                preg_match('/\G\d+(?:\.\d+)?/', $sql, $matches, 0, $index);
+                if (preg_match('/\G\d+(?:\.\d+)?/', $sql, $matches, 0, $index) !== 1) {
+                    return null;
+                }
+
+                $number = $matches[0];
                 $tokens[] = '<LITERAL>';
-                $index += strlen($matches[0]);
+                $index += strlen($number);
 
                 continue;
             }

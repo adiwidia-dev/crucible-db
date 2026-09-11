@@ -134,12 +134,12 @@ class UpdateRoleRequest extends FormRequest
     {
         $requestedMode = $policy[$key] ?? AccessMode::None->value;
 
-        return match ($policy['access_mode']) {
-            AccessMode::None->value => AccessMode::None->value,
-            AccessMode::Read->value => $requestedMode === AccessMode::None->value
+        return match (AccessMode::from($policy['access_mode'])) {
+            AccessMode::None => AccessMode::None->value,
+            AccessMode::Read => $requestedMode === AccessMode::None->value
                 ? AccessMode::None->value
                 : AccessMode::Read->value,
-            AccessMode::Write->value => $requestedMode,
+            AccessMode::Write => $requestedMode,
         };
     }
 

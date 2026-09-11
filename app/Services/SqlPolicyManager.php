@@ -149,7 +149,6 @@ class SqlPolicyManager
             SqlPolicyRuleScope::DatabaseConnection => $observedConnectionIds->count() === 1
                 && $observedConnectionIds->first() === $scopeId
                 && DatabaseConnection::query()->whereKey($scopeId)->exists(),
-            SqlPolicyRuleScope::Workspace => true,
         };
 
         if (! $coversCandidate) {

@@ -152,7 +152,9 @@ class StoreQueryRequestRequest extends FormRequest
      */
     private function validatedConnectionIds(): array
     {
-        return collect($this->input('database_connection_ids', []))
+        $connectionIds = $this->input('database_connection_ids', []);
+
+        return collect(is_array($connectionIds) ? $connectionIds : [])
             ->filter(fn (mixed $connectionId): bool => is_numeric($connectionId))
             ->map(fn (mixed $connectionId): int => (int) $connectionId)
             ->values()

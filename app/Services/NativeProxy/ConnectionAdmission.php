@@ -380,7 +380,7 @@ class ConnectionAdmission
      */
     public function assertOwnedByProxy(NativeProxyConnection $connection, string $proxyInstanceId): void
     {
-        if (! is_string($connection->proxy_instance_id) || ! hash_equals($connection->proxy_instance_id, $proxyInstanceId)) {
+        if (! hash_equals($connection->proxy_instance_id, $proxyInstanceId)) {
             $this->deny();
         }
     }

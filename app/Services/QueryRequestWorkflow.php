@@ -1082,7 +1082,7 @@ class QueryRequestWorkflow
 
     /**
      * @param  array<int, array{sql?:string,database_connection_id?:int}>  $statements
-     * @return array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int, policy_source:string}>
+     * @return array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int}>
      *
      * @throws ValidationException
      */
@@ -1126,7 +1126,7 @@ class QueryRequestWorkflow
 
     /**
      * @param  array<int, array{sql?:string,database_connection_id?:int}>  $statements
-     * @return array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int}>
+     * @return array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int, policy_source:string}>
      *
      * @throws ValidationException
      */

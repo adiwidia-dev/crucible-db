@@ -81,8 +81,8 @@ class SqlStatementPolicyController extends Controller
                     'shape_label' => $candidate->shape_label,
                     'shape_available' => $candidate->shape_signature !== null,
                     'occurrences_count' => $candidate->occurrences_count,
-                    'first_seen_at' => $candidate->first_seen_at?->toIso8601String(),
-                    'last_seen_at' => $candidate->last_seen_at?->toIso8601String(),
+                    'first_seen_at' => $candidate->first_seen_at->toIso8601String(),
+                    'last_seen_at' => $candidate->last_seen_at->toIso8601String(),
                     'occurrences' => $candidate->occurrences->take(5)->map(fn ($occurrence): array => [
                         'request_id' => $occurrence->query_request_id,
                         'request_title' => $occurrence->queryRequest?->title,

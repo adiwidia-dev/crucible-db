@@ -2,6 +2,8 @@
 
 namespace App\Enums;
 
+use InvalidArgumentException;
+
 enum DatabaseDriver: string
 {
     case MySql = 'mysql';
@@ -28,6 +30,7 @@ enum DatabaseDriver: string
         return match ($protocol) {
             'mysql' => self::MySql,
             'postgresql' => self::PostgreSql,
+            default => throw new InvalidArgumentException("Unsupported native proxy protocol [{$protocol}]."),
         };
     }
 }

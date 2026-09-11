@@ -12,7 +12,29 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property string $id
+ * @property string $lease_id
+ * @property string $device_code_hash
+ * @property string $user_code_hash
+ * @property string $cli_version
+ * @property string $operating_system
+ * @property string $architecture
+ * @property string|null $device_label
+ * @property int $polling_interval_seconds
+ * @property int $poll_count
+ * @property NativeProxyDeviceAuthorizationStatus $status
+ * @property Carbon $expires_at
+ * @property Carbon|null $last_polled_at
+ * @property Carbon|null $approved_at
+ * @property int|null $authorized_by_id
+ * @property Carbon|null $denied_at
+ * @property Carbon|null $consumed_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ */
 #[Fillable(['lease_id', 'device_code_hash', 'user_code_hash', 'cli_version', 'operating_system', 'architecture', 'device_label', 'polling_interval_seconds', 'poll_count', 'status', 'expires_at', 'last_polled_at', 'approved_at', 'authorized_by_id', 'denied_at', 'consumed_at'])]
 #[Hidden(['device_code_hash', 'user_code_hash'])]
 class NativeProxyDeviceAuthorization extends Model
@@ -30,16 +52,22 @@ class NativeProxyDeviceAuthorization extends Model
         ];
     }
 
-    /** @param Builder<self> $query @return Builder<self> */
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
     public function scopeActive(Builder $query): Builder
     {
         return $query->whereIn('status', [NativeProxyDeviceAuthorizationStatus::Pending, NativeProxyDeviceAuthorizationStatus::Approved])->where('expires_at', '>', now());
     }
 
-    /** @param Builder<self> $query @return Builder<self> */
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
     public function scopeWithActiveToken(Builder $query): Builder
     {
-        return $query->whereHas('tokens', fn (Builder $tokens): Builder => $tokens->active());
+        return $query->whereHas('tokens', fn (Builder $tokens): Builder => $tokens->whereNull('revoked_at')->where('expires_at', '>', now()));
     }
 
     /** @return BelongsTo<NativeProxyLease, $this> */

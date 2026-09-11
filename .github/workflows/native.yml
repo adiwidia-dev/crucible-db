@@ -123,6 +123,11 @@ jobs:
         run: docker compose up -d --build app native-proxy target-postgres target-mysql
       - name: Migrate and seed native qualification state
         run: |
+          for _ in $(seq 1 60); do
+            docker compose exec -T app test -f /app/vendor/autoload.php && break
+            sleep 2
+          done
+          docker compose exec -T app test -f /app/vendor/autoload.php
           docker compose exec -T app php artisan key:generate --force --no-interaction
           docker compose exec -T app php artisan migrate:fresh --force --no-interaction
           docker compose exec -T app php artisan db:seed --class=Database\\Seeders\\NativeProxyIntegrationSeeder --force --no-interaction

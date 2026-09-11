@@ -13,13 +13,15 @@ class DeviceAuthorizationController extends Controller
 {
     public function store(StartNativeProxyDeviceAuthorizationRequest $request, DeviceAuthorizationWorkflow $workflow): JsonResponse
     {
-        $lease = NativeProxyLease::query()->findOrFail($request->validated('lease_id'));
-        $challenge = $workflow->begin($lease, $request->safe()->only([
-            'cli_version',
-            'operating_system',
-            'architecture',
-            'device_label',
-        ]));
+        $lease = NativeProxyLease::query()->findOrFail($request->string('lease_id')->toString());
+        $challenge = $workflow->begin($lease, [
+            'cli_version' => $request->string('cli_version')->toString(),
+            'operating_system' => $request->string('operating_system')->toString(),
+            'architecture' => $request->string('architecture')->toString(),
+            'device_label' => $request->filled('device_label')
+                ? $request->string('device_label')->toString()
+                : null,
+        ]);
         $verificationUri = $this->publicApplicationRoute('native-proxy.device-authorizations.confirm');
 
         return response()
