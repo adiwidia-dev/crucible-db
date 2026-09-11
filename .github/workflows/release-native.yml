@@ -206,7 +206,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ needs.release-preflight.outputs.release_tag }}
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v6.0.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v6.0.0
         with:
           go-version: '1.26.6'
       - name: Verify native test gate
@@ -221,14 +221,14 @@ jobs:
           GOBIN="$RUNNER_TEMP/bin" go install github.com/sigstore/cosign/v3/cmd/cosign@v3.0.3
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Validate release configuration
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
           version: '~> v2'
           args: check --config .goreleaser.yaml
           workdir: native
       - name: Build signed release candidate without publishing
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
           version: '~> v2'
@@ -241,7 +241,7 @@ jobs:
           COSIGN_CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
         run: scripts/verify-native-release.sh native/dist native/.goreleaser.yaml
       - name: Publish verified release configuration
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
           version: '~> v2'
@@ -253,6 +253,6 @@ jobs:
         env:
           COSIGN_CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
         run: scripts/verify-native-release.sh native/dist native/.goreleaser.yaml
-      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: native/dist/*
