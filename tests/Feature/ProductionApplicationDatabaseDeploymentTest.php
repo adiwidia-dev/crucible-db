@@ -66,15 +66,23 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
 
         $this->assertStringContainsString('name: release cli and production images', $workflow);
         $this->assertStringContainsString("tags: ['v*']", $workflow);
+        $this->assertStringContainsString('workflow_dispatch:', $workflow);
+        $this->assertStringContainsString('release_components:', $workflow);
         $this->assertStringContainsString('needs: release-preflight', $workflow);
-        $this->assertStringContainsString('needs: [application-gate, native-gate]', $workflow);
+        $this->assertStringContainsString('needs: [release-preflight, application-gate, native-gate]', $workflow);
         $this->assertStringContainsString('DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}', $workflow);
         $this->assertStringContainsString('DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}', $workflow);
         $this->assertStringContainsString('images: hephaestus/crucible-db', $workflow);
         $this->assertStringContainsString('images: hephaestus/crucible-db-native', $workflow);
-        $this->assertStringContainsString('type=semver,pattern={{version}}', $workflow);
+        $this->assertSame(2, substr_count($workflow, 'type=raw,value=${{ needs.release-preflight.outputs.version }}'));
         $this->assertStringContainsString('^v[0-9]+\.[0-9]+\.[0-9]+$', $workflow);
-        $this->assertStringContainsString('version=${GITHUB_REF_NAME#v}', $workflow);
+        $this->assertStringContainsString('release_sha="$(git rev-parse "refs/tags/$release_tag^{commit}")"', $workflow);
+        $this->assertStringContainsString('git show "$release_tag:package.json"', $workflow);
+        $this->assertSame(2, substr_count($workflow, 'ref: ${{ needs.release-preflight.outputs.release_tag }}'));
+        $this->assertStringContainsString('goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a', $workflow);
+        $this->assertStringContainsString('actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a', $workflow);
+        $this->assertStringNotContainsString('e435f85e2a9c3a04eacd02cbaed8e1bc67075256', $workflow);
+        $this->assertStringNotContainsString('977bb2f4a525b5be3a70f4a3e7a6ec5aa8a14a6c', $workflow);
         $this->assertStringContainsString('file: Dockerfile.production', $workflow);
         $this->assertStringContainsString('file: Dockerfile.native', $workflow);
         $this->assertSame(2, substr_count($workflow, 'platforms: linux/amd64,linux/arm64'));
