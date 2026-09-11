@@ -89,6 +89,8 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    env:
+      NATIVE_PROXY_CONTROL_SECRET: native-proxy-ci-control-secret-1234567890
     strategy:
       fail-fast: false
       matrix:
@@ -118,14 +120,14 @@ jobs:
         env:
           NATIVE_POSTGRES_IMAGE: ${{ matrix.target.postgres }}
           NATIVE_MYSQL_IMAGE: ${{ matrix.target.mysql }}
-        run: docker compose up -d --build app gateway native-proxy target-postgres target-mysql
+        run: docker compose up -d --build app native-proxy target-postgres target-mysql
       - name: Migrate and seed native qualification state
         run: |
           docker compose exec -T app php artisan key:generate --force --no-interaction
           docker compose exec -T app php artisan migrate:fresh --force --no-interaction
           docker compose exec -T app php artisan db:seed --class=Database\\Seeders\\NativeProxyIntegrationSeeder --force --no-interaction
           docker compose restart app
-      - name: Wait for the gateway
+      - name: Wait for the application gateway
         run: |
           for _ in $(seq 1 60); do
             curl --fail --silent http://127.0.0.1:8000/health && exit 0
@@ -143,7 +145,7 @@ jobs:
         run: go test -race -tags=integration ./test/integration -v
       - name: Collect diagnostics
         if: always()
-        run: docker compose logs --tail=200 app gateway native-proxy target-postgres target-mysql
+        run: docker compose logs --tail=200 app native-proxy target-postgres target-mysql
       - name: Remove qualification stack
         if: always()
         run: docker compose down --volumes --remove-orphans
@@ -165,7 +167,7 @@ jobs:
           artifact-name: native-proxy-sbom
           output-file: native-proxy.spdx.json
       - name: Scan the native image for high and critical vulnerabilities
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: crucible-native:test
           format: table
