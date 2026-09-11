@@ -25,6 +25,41 @@
 
 Crucible DB gives engineering teams a safer path to production database work without distributing direct credentials. Every meaningful action moves through a visible control plane: access is scoped by role, sensitive work can be reviewed, execution can be scheduled or time-bounded, and activity is retained in an audit trail.
 
+## Product tour
+
+<p align="center">
+  <a href="docs/assets/screenshots/user-overview.png">
+    <img src="docs/assets/screenshots/user-overview.png" alt="Crucible DB operational overview showing review, scheduled work, failures, and active database sessions">
+  </a>
+</p>
+
+<p align="center">
+  <sub><strong>Operational overview.</strong> Review work, scheduled executions, failures, and active sessions stay visible in one place.</sub>
+</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/screenshots/reviewer-pending-request.png">
+        <img src="docs/assets/screenshots/reviewer-pending-request.png" alt="Pending deployment batch with target, preflight status, SQL, and review action">
+      </a>
+      <br>
+      <strong>Review database changes</strong>
+      <br>
+      <sub>See the target, access level, preflight result, SQL, and approval state before making a decision.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/screenshots/native-client-session.png">
+        <img src="docs/assets/screenshots/native-client-session.png" alt="Active native-client session with temporary credentials, CLI tunnel instructions, scope, and client activity">
+      </a>
+      <br>
+      <strong>Use native database clients safely</strong>
+      <br>
+      <sub>Connect PostgreSQL and MySQL tools through a short-lived, policy-checked local tunnel without exposing database credentials.</sub>
+    </td>
+  </tr>
+</table>
+
 ## Why Crucible DB?
 
 - **Deployment batches** — submit one or more ordered SQL statements, each scoped to its own target connection, for review, scheduling, and asynchronous execution.
