@@ -79,6 +79,8 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertStringContainsString('release_sha="$(git rev-parse "refs/tags/$release_tag^{commit}")"', $workflow);
         $this->assertStringContainsString('git show "$release_tag:package.json"', $workflow);
         $this->assertSame(2, substr_count($workflow, 'ref: ${{ needs.release-preflight.outputs.release_tag }}'));
+        $this->assertStringContainsString('anchore/sbom-action/download-syft@f8bdd1d8ac5e901a77a92f111440fdb1b593736b', $workflow);
+        $this->assertStringContainsString('syft-version: v1.51.1', $workflow);
         $this->assertStringContainsString('goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a', $workflow);
         $this->assertStringContainsString('actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a', $workflow);
         $this->assertStringNotContainsString('e435f85e2a9c3a04eacd02cbaed8e1bc67075256', $workflow);
