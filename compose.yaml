@@ -108,7 +108,7 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
-      - target_postgres_data:/var/lib/postgresql/data
+      - target_postgres_data:/var/lib/postgresql
       - ./.docker/target-postgres/init.sql:/docker-entrypoint-initdb.d/10-crucible-target.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U crucible -d crucible_target"]

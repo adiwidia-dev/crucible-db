@@ -56,6 +56,14 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertStringNotContainsString('docker compose restart app', $workflow);
     }
 
+    public function test_development_postgresql_target_uses_the_version_aware_data_root(): void
+    {
+        $compose = (string) file_get_contents(dirname(__DIR__, 2).'/compose.yaml');
+
+        $this->assertStringContainsString('target_postgres_data:/var/lib/postgresql', $compose);
+        $this->assertStringNotContainsString('target_postgres_data:/var/lib/postgresql/data', $compose);
+    }
+
     public function test_production_app_uses_its_embedded_caddy_gateway(): void
     {
         $compose = (string) file_get_contents(dirname(__DIR__, 2).'/compose.production.yaml');
