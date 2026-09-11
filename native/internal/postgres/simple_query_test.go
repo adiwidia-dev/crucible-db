@@ -34,6 +34,14 @@ func TestSplitPostgreSQLStatements(t *testing.T) {
 			sql:      "; ; SELECT 1;;",
 			expected: []string{"SELECT 1"},
 		},
+		"comment-only ping": {
+			sql:      "-- ping",
+			expected: []string{},
+		},
+		"comments around a statement": {
+			sql:      "-- before\nSELECT 1 /* after */",
+			expected: []string{"-- before\nSELECT 1 /* after */"},
+		},
 		"dollar signs in identifiers": {
 			sql:      `SELECT foo$tag$; SELECT 2`,
 			expected: []string{`SELECT foo$tag$`, "SELECT 2"},

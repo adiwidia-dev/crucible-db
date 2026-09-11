@@ -5,10 +5,13 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,11 +28,15 @@ type harness struct {
 }
 
 const (
-	postgresLeaseID   = "01ARZ3NDEKTSV4RRFFQ69G5FA1"
-	mySQLLeaseID      = "01ARZ3NDEKTSV4RRFFQ69G5FA2"
-	postgresDevice    = "native-integration-postgresql-device-code-0001"
-	mySQLDevice       = "native-integration-mysql-device-code-00000002"
-	syntheticPassword = "crucible-native-integration-password"
+	postgresLeaseID      = "01ARZ3NDEKTSV4RRFFQ69G5FA1"
+	mySQLLeaseID         = "01ARZ3NDEKTSV4RRFFQ69G5FA2"
+	postgresWriteLeaseID = "01ARZ3NDEKTSV4RRFFQ69G5FA3"
+	mySQLWriteLeaseID    = "01ARZ3NDEKTSV4RRFFQ69G5FA4"
+	postgresDevice       = "native-integration-postgresql-device-code-0001"
+	mySQLDevice          = "native-integration-mysql-device-code-00000002"
+	postgresWriteDevice  = "native-integration-postgresql-write-device-0003"
+	mySQLWriteDevice     = "native-integration-mysql-write-device-code-0004"
+	syntheticPassword    = "crucible-native-integration-password"
 )
 
 func integrationHarness(t *testing.T) harness {
@@ -106,12 +113,13 @@ func (harness harness) startTunnel(t *testing.T, document cli.DiscoveryDocument,
 		t.Fatalf("expand native tunnel endpoint: %v", err)
 	}
 	errC := make(chan error, 1)
+	var connectionSequence atomic.Uint64
 	go func() {
 		errC <- tunnel.ServeLoopback(ctx, listener, func(connectionContext context.Context, _ net.Conn) (*websocket.Conn, error) {
 			return tunnel.Dial(connectionContext, tunnelURL, tunnel.ClientConnection{
 				LeaseID:          leaseID,
 				DeviceID:         token.DeviceID,
-				ConnectionID:     connectionID,
+				ConnectionID:     fmt.Sprintf("%s-%d", connectionID, connectionSequence.Add(1)),
 				BearerToken:      token.AccessToken,
 				DatabaseProtocol: protocol,
 			})
@@ -130,6 +138,36 @@ func (harness harness) startTunnel(t *testing.T, document cli.DiscoveryDocument,
 			t.Error("loopback qualification listener did not stop")
 		}
 	}
+}
+
+func runContainerClient(t *testing.T, image string, environmentVariables []string, arguments []string, input string) string {
+	t.Helper()
+	if os.Getenv("NATIVE_INTEGRATION_CONTAINER_CLIENTS") != "1" {
+		t.Skip("set NATIVE_INTEGRATION_CONTAINER_CLIENTS=1 to qualify real database client executables")
+	}
+	if strings.TrimSpace(image) == "" {
+		t.Fatal("container client image must be configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	commandArguments := []string{"run", "--rm", "--network", "host", "-i"}
+	for _, variable := range environmentVariables {
+		commandArguments = append(commandArguments, "--env", variable)
+	}
+	commandArguments = append(commandArguments, image)
+	commandArguments = append(commandArguments, arguments...)
+	command := exec.CommandContext(ctx, "docker", commandArguments...)
+	command.Stdin = strings.NewReader(input)
+	output, err := command.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("container client timed out: %v\n%s", ctx.Err(), output)
+	}
+	if err != nil {
+		t.Fatalf("container client failed: %v\n%s", err, output)
+	}
+
+	return string(output)
 }
 
 func environment(key string, fallback string) string {

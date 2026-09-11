@@ -24,12 +24,14 @@ func splitPostgreSQLStatements(sql string) ([]string, error) {
 	doubleQuoted := false
 	doubleQuotedEscapes := false
 	dollarQuote := ""
+	statementHasContent := false
 
 	appendStatement := func(end int) {
 		statement := strings.TrimSpace(sql[statementStart:end])
-		if statement != "" {
+		if statement != "" && statementHasContent {
 			statements = append(statements, statement)
 		}
+		statementHasContent = false
 	}
 
 	for index := 0; index < len(sql); index++ {
@@ -99,19 +101,26 @@ func splitPostgreSQLStatements(sql string) ([]string, error) {
 			blockCommentDepth = 1
 			index++
 		case sql[index] == '\'':
+			statementHasContent = true
 			singleQuoted = true
 			singleQuotedEscapes = hasEscapeStringPrefix(sql, index)
 		case sql[index] == '"':
+			statementHasContent = true
 			doubleQuoted = true
 			doubleQuotedEscapes = hasUnicodeQuotedIdentifierPrefix(sql, index)
 		case sql[index] == '$':
 			if tag := dollarQuoteTagAt(sql, index); tag != "" {
+				statementHasContent = true
 				dollarQuote = tag
 				index += len(tag) - 1
+			} else {
+				statementHasContent = true
 			}
 		case sql[index] == ';':
 			appendStatement(index)
 			statementStart = index + 1
+		case !isPostgreSQLWhitespace(sql[index]):
+			statementHasContent = true
 		}
 	}
 
@@ -122,6 +131,10 @@ func splitPostgreSQLStatements(sql string) ([]string, error) {
 	appendStatement(len(sql))
 
 	return statements, nil
+}
+
+func isPostgreSQLWhitespace(character byte) bool {
+	return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == '\f'
 }
 
 func hasUnsafeComment(sql string) bool {

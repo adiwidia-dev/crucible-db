@@ -145,6 +145,9 @@ jobs:
           NATIVE_INTEGRATION_BASE_URL: http://localhost:8000
           NATIVE_INTEGRATION_REDIS_URL: redis://127.0.0.1:6379/0
           NATIVE_INTEGRATION_CONTROL_SECRET: ${{ env.NATIVE_PROXY_CONTROL_SECRET }}
+          NATIVE_INTEGRATION_CONTAINER_CLIENTS: '1'
+          NATIVE_INTEGRATION_POSTGRES_CLIENT_IMAGE: ${{ matrix.target.postgres }}
+          NATIVE_INTEGRATION_MYSQL_CLIENT_IMAGE: ${{ matrix.target.mysql }}
         run: go test -race -tags=integration ./test/integration -v
       - name: Collect diagnostics
         if: always()

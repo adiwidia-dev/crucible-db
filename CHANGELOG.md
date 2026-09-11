@@ -26,6 +26,7 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Wait for the selected application database before startup migrations and document the required Octane, Horizon, and scheduler restart boundary.
 - Require explicitly pinned, matching application and native-proxy release images in production Compose instead of silently falling back to a stale or moving tag.
 - Add corruption, invalid-credential, partial-copy resume, source-mutation, cross-driver, and native-client regression coverage.
+- Qualify matching `psql` 14–18 and MySQL CLI 8.0/8.4 executables in the native integration matrix, with metadata, prepared/binary protocol, read-only and read+write transactions, cancellation, reconnect, denial-recovery, and live-revocation coverage.
 
 ## [0.1.0] - 2026-08-24
 

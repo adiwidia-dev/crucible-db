@@ -33,9 +33,17 @@ class NativeProxyIntegrationSeeder extends Seeder
 
     public const string MySqlLeaseId = '01ARZ3NDEKTSV4RRFFQ69G5FA2';
 
+    public const string PostgreSqlWriteLeaseId = '01ARZ3NDEKTSV4RRFFQ69G5FA3';
+
+    public const string MySqlWriteLeaseId = '01ARZ3NDEKTSV4RRFFQ69G5FA4';
+
     public const string PostgreSqlDeviceCode = 'native-integration-postgresql-device-code-0001';
 
     public const string MySqlDeviceCode = 'native-integration-mysql-device-code-00000002';
+
+    public const string PostgreSqlWriteDeviceCode = 'native-integration-postgresql-write-device-0003';
+
+    public const string MySqlWriteDeviceCode = 'native-integration-mysql-write-device-code-0004';
 
     public const string SyntheticPassword = 'crucible-native-integration-password';
 
@@ -60,6 +68,7 @@ class NativeProxyIntegrationSeeder extends Seeder
             leaseId: self::PostgreSqlLeaseId,
             deviceCode: self::PostgreSqlDeviceCode,
             syntheticUsername: 'crucible_native_postgresql',
+            accessMode: AccessMode::Read,
         );
         $this->fixture(
             user: $user,
@@ -68,28 +77,47 @@ class NativeProxyIntegrationSeeder extends Seeder
             leaseId: self::MySqlLeaseId,
             deviceCode: self::MySqlDeviceCode,
             syntheticUsername: 'crucible_native_mysql',
+            accessMode: AccessMode::Read,
+        );
+        $this->fixture(
+            user: $user,
+            roleId: $role->id,
+            connection: DatabaseConnection::query()->where('driver', DatabaseDriver::PostgreSql)->firstOrFail(),
+            leaseId: self::PostgreSqlWriteLeaseId,
+            deviceCode: self::PostgreSqlWriteDeviceCode,
+            syntheticUsername: 'crucible_native_postgresql_write',
+            accessMode: AccessMode::Write,
+        );
+        $this->fixture(
+            user: $user,
+            roleId: $role->id,
+            connection: DatabaseConnection::query()->where('driver', DatabaseDriver::MySql)->firstOrFail(),
+            leaseId: self::MySqlWriteLeaseId,
+            deviceCode: self::MySqlWriteDeviceCode,
+            syntheticUsername: 'crucible_native_mysql_write',
+            accessMode: AccessMode::Write,
         );
     }
 
-    private function fixture(User $user, int $roleId, DatabaseConnection $connection, string $leaseId, string $deviceCode, string $syntheticUsername): void
+    private function fixture(User $user, int $roleId, DatabaseConnection $connection, string $leaseId, string $deviceCode, string $syntheticUsername, AccessMode $accessMode): void
     {
         $connection->forceFill(['tls_mode' => DatabaseTlsMode::Disabled, 'is_active' => true])->save();
         RoleDatabasePermission::query()->updateOrCreate(
             ['role_id' => $roleId, 'database_connection_id' => $connection->id],
             [
-                'access_mode' => AccessMode::Read,
+                'access_mode' => $accessMode,
                 'query_access_mode' => AccessMode::Read,
-                'native_proxy_access_mode' => AccessMode::Read,
+                'native_proxy_access_mode' => $accessMode,
                 'can_review' => false,
                 'requires_approval' => false,
                 'read_requires_approval' => false,
                 'write_requires_approval' => false,
-                'max_write_session_minutes' => null,
+                'max_write_session_minutes' => $accessMode === AccessMode::Write ? 60 : null,
             ],
         );
 
         $request = QueryRequest::query()->updateOrCreate(
-            ['title' => 'Native proxy integration '.$connection->driver->value],
+            ['title' => 'Native proxy integration '.$connection->driver->value.' '.$accessMode->value],
             [
                 'requester_id' => $user->id,
                 'database_connection_id' => $connection->id,
@@ -98,7 +126,7 @@ class NativeProxyIntegrationSeeder extends Seeder
                 'query_type' => QueryType::Read,
                 'request_kind' => QueryRequestKind::QueryAccess,
                 'access_transport' => AccessTransport::NativeProxy,
-                'requested_access_mode' => AccessMode::Read,
+                'requested_access_mode' => $accessMode,
                 'status' => QueryRequestStatus::Approved,
                 'requires_approval' => false,
                 'preflight_status' => PreflightStatus::NotRun,
@@ -127,7 +155,7 @@ class NativeProxyIntegrationSeeder extends Seeder
                 'user_id' => $user->id,
                 'database_connection_id' => $connection->id,
                 'protocol' => $connection->driver,
-                'access_mode' => AccessMode::Read,
+                'access_mode' => $accessMode,
                 'synthetic_username' => $syntheticUsername,
                 'synthetic_password_hash' => Hash::make(self::SyntheticPassword),
                 'protocol_auth_secret' => self::SyntheticPassword,
@@ -149,7 +177,7 @@ class NativeProxyIntegrationSeeder extends Seeder
         NativeProxyDeviceAuthorization::query()->create([
             'lease_id' => $lease->id,
             'device_code_hash' => hash('sha256', $deviceCode),
-            'user_code_hash' => hash('sha256', 'E2E-'.$connection->driver->value),
+            'user_code_hash' => hash('sha256', 'E2E-'.$connection->driver->value.'-'.$accessMode->value),
             'cli_version' => 'integration',
             'operating_system' => PHP_OS_FAMILY,
             'architecture' => php_uname('m'),
