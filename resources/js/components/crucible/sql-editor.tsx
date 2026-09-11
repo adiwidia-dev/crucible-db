@@ -96,7 +96,8 @@ function editorTheme(): Extension {
             maxWidth: '100%',
             overflowX: 'auto',
             overflowY: 'auto',
-            overscrollBehavior: 'contain',
+            overscrollBehaviorX: 'contain',
+            overscrollBehaviorY: 'auto',
         },
         '.cm-content': {
             fontFamily:

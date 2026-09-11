@@ -17,6 +17,8 @@ createInertiaApp({
                 return AuthLayout;
             case name.startsWith('setup/'):
                 return AuthLayout;
+            case name === 'native-proxy/device-authorization':
+                return AuthLayout;
             case name.startsWith('settings/admin/'):
             case name.startsWith('settings/authentication-providers/'):
             case name.startsWith('users/'):

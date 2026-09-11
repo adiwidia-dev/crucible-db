@@ -1,0 +1,202 @@
+name: release cli and production images
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-preflight:
+    name: validate release configuration
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      build_date: ${{ steps.release.outputs.build_date }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Validate stable release tag and Docker Hub configuration
+        id: release
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must use the stable vMAJOR.MINOR.PATCH format."
+            exit 1
+          fi
+          test "$DOCKERHUB_USERNAME" = "hephaestus" || {
+            echo "DOCKERHUB_USERNAME must be configured as hephaestus."
+            exit 1
+          }
+          test -n "$DOCKERHUB_TOKEN" || {
+            echo "DOCKERHUB_TOKEN must contain a Docker Hub access token."
+            exit 1
+          }
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+  application-gate:
+    needs: release-preflight
+    uses: ./.github/workflows/tests.yml
+
+  native-gate:
+    needs: release-preflight
+    uses: ./.github/workflows/native.yml
+
+  publish-images:
+    name: publish production images
+    needs: [release-preflight, application-gate, native-gate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.0.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.0.0
+
+      - name: Generate application image metadata
+        id: application-metadata
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.0.0
+        with:
+          images: hephaestus/crucible-db
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Build and publish application image
+        id: application-build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.0.0
+        with:
+          context: .
+          file: Dockerfile.production
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          tags: ${{ steps.application-metadata.outputs.tags }}
+          labels: ${{ steps.application-metadata.outputs.labels }}
+          build-args: |
+            CRUCIBLE_VERSION=${{ needs.release-preflight.outputs.version }}
+            CRUCIBLE_REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=production-application
+          cache-to: type=gha,mode=max,scope=production-application
+          provenance: mode=max
+          sbom: true
+
+      - name: Generate native proxy image metadata
+        id: native-metadata
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.0.0
+        with:
+          images: hephaestus/crucible-db-native
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Build and publish native proxy image
+        id: native-build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.0.0
+        with:
+          context: .
+          file: Dockerfile.native
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          tags: ${{ steps.native-metadata.outputs.tags }}
+          labels: ${{ steps.native-metadata.outputs.labels }}
+          build-args: |
+            CRUCIBLE_VERSION=${{ needs.release-preflight.outputs.version }}
+            CRUCIBLE_REVISION=${{ github.sha }}
+            CRUCIBLE_BUILD_DATE=${{ needs.release-preflight.outputs.build_date }}
+          cache-from: type=gha,scope=production-native-proxy
+          cache-to: type=gha,mode=max,scope=production-native-proxy
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify published image manifests
+        env:
+          APPLICATION_DIGEST: ${{ steps.application-build.outputs.digest }}
+          NATIVE_DIGEST: ${{ steps.native-build.outputs.digest }}
+        run: |
+          test -n "$APPLICATION_DIGEST"
+          test -n "$NATIVE_DIGEST"
+          docker buildx imagetools inspect "hephaestus/crucible-db@$APPLICATION_DIGEST"
+          docker buildx imagetools inspect "hephaestus/crucible-db-native@$NATIVE_DIGEST"
+
+  release:
+    name: publish native cli
+    needs: [application-gate, native-gate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v6.0.0
+        with:
+          go-version: '1.26.6'
+      - name: Verify native test gate
+        working-directory: native
+        run: |
+          test -z "$(gofmt -l .)"
+          go mod verify
+          go vet ./...
+          go test -race ./...
+      - name: Install keyless checksum signer
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/sigstore/cosign/v3/cmd/cosign@v3.0.3
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Validate release configuration
+        uses: goreleaser/goreleaser-action@e435f85e2a9c3a04eacd02cbaed8e1bc67075256 # v6.4.0
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: check --config .goreleaser.yaml
+          workdir: native
+      - name: Build signed release candidate without publishing
+        uses: goreleaser/goreleaser-action@e435f85e2a9c3a04eacd02cbaed8e1bc67075256 # v6.4.0
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean --skip=publish --config .goreleaser.yaml
+          workdir: native
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify checksums, keyless signature, archives, packages, SBOMs, and cask metadata
+        env:
+          COSIGN_CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
+        run: scripts/verify-native-release.sh native/dist native/.goreleaser.yaml
+      - name: Publish verified release configuration
+        uses: goreleaser/goreleaser-action@e435f85e2a9c3a04eacd02cbaed8e1bc67075256 # v6.4.0
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean --config .goreleaser.yaml
+          workdir: native
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify published artifact bytes
+        env:
+          COSIGN_CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
+        run: scripts/verify-native-release.sh native/dist native/.goreleaser.yaml
+      - uses: actions/attest-build-provenance@977bb2f4a525b5be3a70f4a3e7a6ec5aa8a14a6c # v3.0.0
+        with:
+          subject-path: native/dist/*

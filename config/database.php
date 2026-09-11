@@ -1,7 +1,32 @@
 <?php
 
+use App\Enums\ApplicationDatabaseDriver;
+use App\Support\ApplicationDatabaseBootstrap;
 use Illuminate\Support\Str;
 use Pdo\Mysql;
+
+$environmentDriver = ApplicationDatabaseDriver::tryFrom((string) env('DB_CONNECTION', 'sqlite'))
+    ?? throw new RuntimeException('DB_CONNECTION must be sqlite, mysql, or pgsql.');
+$controlDatabase = ApplicationDatabaseBootstrap::connection([
+    'version' => ApplicationDatabaseBootstrap::CurrentVersion,
+    'driver' => $environmentDriver->value,
+    'url' => env('DB_URL'),
+    'database' => env('DB_DATABASE', database_path('database.sqlite')),
+    'host' => env('DB_HOST', '127.0.0.1'),
+    'port' => env('DB_PORT', $environmentDriver->defaultPort()),
+    'username' => env('DB_USERNAME', 'root'),
+    'password' => env('DB_PASSWORD', ''),
+    'socket' => env('DB_SOCKET', ''),
+    'charset' => env('DB_CHARSET'),
+    'collation' => env('DB_COLLATION'),
+    'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+    'busy_timeout' => env('DB_BUSY_TIMEOUT', 5000),
+    'journal_mode' => env('DB_JOURNAL_MODE', 'WAL'),
+    'synchronous' => env('DB_SYNCHRONOUS', 'FULL'),
+    'transaction_mode' => env('DB_TRANSACTION_MODE', 'IMMEDIATE'),
+    'pgsql_sslmode' => env('DB_SSLMODE', 'prefer'),
+    'mysql_ssl_ca' => env('MYSQL_ATTR_SSL_CA'),
+], dirname(__DIR__));
 
 return [
 
@@ -17,7 +42,28 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => 'control',
+
+    'control_metadata' => [
+        'mode' => env('CRUCIBLE_DATABASE_CONFIG_MODE', ApplicationDatabaseBootstrap::ManagedMode),
+        'path' => ApplicationDatabaseBootstrap::configurationPath(
+            dirname(__DIR__),
+            (string) env(
+                'CRUCIBLE_DATABASE_CONFIG_FILE',
+                dirname(__DIR__).'/storage/app/crucible/application-database.enc',
+            ),
+        ),
+        'configured' => false,
+        'fingerprint' => null,
+        'migration_directory' => env(
+            'CRUCIBLE_DATABASE_MIGRATION_DIRECTORY',
+            dirname(__DIR__).'/storage/app/crucible/application-database-migrations',
+        ),
+        'migration_fence_path' => env(
+            'CRUCIBLE_DATABASE_MIGRATION_FENCE_FILE',
+            dirname(__DIR__).'/storage/app/crucible/application-database-migration.fence',
+        ),
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -32,6 +78,8 @@ return [
 
     'connections' => [
 
+        'control' => $controlDatabase,
+
         'sqlite' => [
             'driver' => 'sqlite',
             'url' => env('DB_URL'),
@@ -41,7 +89,7 @@ return [
             'busy_timeout' => env('DB_BUSY_TIMEOUT', 5000),
             'journal_mode' => env('DB_JOURNAL_MODE', 'WAL'),
             'synchronous' => env('DB_SYNCHRONOUS', 'FULL'),
-            'transaction_mode' => 'DEFERRED',
+            'transaction_mode' => env('DB_TRANSACTION_MODE', 'IMMEDIATE'),
         ],
 
         'mysql' => [

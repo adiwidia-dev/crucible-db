@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DatabaseConnectionController;
+use App\Http\Controllers\NativeProxy\ConnectionController as NativeProxyConnectionController;
+use App\Http\Controllers\NativeProxy\DeviceAuthorizationController as NativeProxyDeviceAuthorizationController;
+use App\Http\Controllers\NativeProxy\LeaseController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NotificationSubscriptionController;
 use App\Http\Controllers\QueryExecutionExportController;
@@ -14,13 +17,16 @@ use App\Http\Controllers\SetupController;
 use App\Http\Controllers\SsoController;
 use App\Http\Controllers\UserInvitationController;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
+    DB::connection('control')->select('select 1');
     Cache::put('health-check', 'ok', 5);
 
     return response()->json([
         'status' => 'ok',
+        'database' => 'ok',
         'cache' => Cache::get('health-check'),
     ]);
 })->name('health');
@@ -30,8 +36,19 @@ Route::get('/', fn () => auth()->check()
     : redirect()->route('login'))->name('home');
 
 Route::middleware(['guest', 'throttle:6,1'])->group(function (): void {
-    Route::get('setup', [SetupController::class, 'show'])->name('setup.show');
-    Route::post('setup', [SetupController::class, 'store'])->name('setup.store');
+    Route::get('setup/access', [SetupController::class, 'createAccess'])->name('setup.access.create');
+    Route::post('setup/access', [SetupController::class, 'authorizeAccess'])->name('setup.access.store');
+
+    Route::middleware('initial-setup-access')->group(function (): void {
+        Route::get('setup/database', [SetupController::class, 'createApplicationDatabase'])
+            ->name('setup.database.create');
+        Route::post('setup/database', [SetupController::class, 'storeApplicationDatabase'])
+            ->name('setup.database.store');
+        Route::get('setup/database/restart', [SetupController::class, 'restartApplicationDatabase'])
+            ->name('setup.database.restart');
+        Route::get('setup', [SetupController::class, 'show'])->name('setup.show');
+        Route::post('setup', [SetupController::class, 'store'])->name('setup.store');
+    });
 });
 
 Route::middleware(['auth'])->group(function (): void {
@@ -100,6 +117,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('query-session-queries.export');
     Route::post('query-sessions/{query_session}/end', [QuerySessionController::class, 'end'])
         ->name('query-sessions.end');
+    Route::post('query-sessions/{query_session}/native-proxy/credentials', [LeaseController::class, 'store'])
+        ->name('query-sessions.native-proxy.credentials.store');
+    Route::get('query-sessions/{query_session}/native-proxy/connections', [NativeProxyConnectionController::class, 'index'])
+        ->name('query-sessions.native-proxy.connections.index');
+    Route::post('native-proxy-leases/{native_proxy_lease}/credentials/rotate', [LeaseController::class, 'rotate'])
+        ->name('native-proxy-leases.credentials.rotate');
+    Route::post('native-proxy-leases/{native_proxy_lease}/revoke', [LeaseController::class, 'revoke'])
+        ->name('native-proxy-leases.revoke');
+    Route::get('native-proxy/device-authorizations/confirm', [NativeProxyDeviceAuthorizationController::class, 'confirm'])
+        ->name('native-proxy.device-authorizations.confirm');
+    Route::post('native-proxy/device-authorizations/confirm', [NativeProxyDeviceAuthorizationController::class, 'resolve'])
+        ->name('native-proxy.device-authorizations.resolve');
+    Route::get('native-proxy/device-authorizations/{device_authorization}', [NativeProxyDeviceAuthorizationController::class, 'show'])
+        ->name('native-proxy.device-authorizations.show');
+    Route::post('native-proxy/device-authorizations/{device_authorization}/decision', [NativeProxyDeviceAuthorizationController::class, 'decide'])
+        ->name('native-proxy.device-authorizations.decision');
     Route::get('query-executions/{query_execution}/export', QueryExecutionExportController::class)
         ->name('query-executions.export');
 

@@ -16,6 +16,7 @@ class QueryReviewController extends Controller
             $request->user(),
             $request->validated('decision'),
             $request->validated('comment'),
+            $request->integer('expected_revision'),
         );
 
         return back();

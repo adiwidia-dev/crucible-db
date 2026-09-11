@@ -56,7 +56,7 @@ class FactoryResetTest extends TestCase
             ->delete(route('application-settings.factory-reset'), [
                 'confirmation' => ConfirmFactoryResetRequest::ConfirmationPhrase,
             ])
-            ->assertRedirect(route('setup.show'));
+            ->assertRedirect(route('setup.access.create'));
 
         $this->assertGuest();
         $this->assertSame(0, User::query()->count());
@@ -66,6 +66,10 @@ class FactoryResetTest extends TestCase
         $this->assertSame(0, ApplicationSetting::query()->count());
         $this->assertSame(0, AuditLog::query()->count());
 
+        $this->get(route('setup.show'))->assertRedirect(route('setup.access.create'));
+        $this->post(route('setup.access.store'), [
+            'setup_token' => 'test-initial-setup-token-32-characters',
+        ])->assertRedirect(route('setup.show'));
         $this->get(route('setup.show'))->assertOk();
     }
 

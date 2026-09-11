@@ -62,7 +62,7 @@ export default function ApplicationSettings({
             <div className="crucible-page">
                 <PageHeader
                     title="Application settings"
-                    description="Set the workspace identity and outbound email transport without changing deployment configuration."
+                    description="Manage workspace identity and outbound email transport."
                 />
 
                 <Form
@@ -106,7 +106,7 @@ export default function ApplicationSettings({
                                             onValueChange={
                                                 setDefaultTimezoneValue
                                             }
-                                            description="Used for people invited after this change. Each person can override it in Profile settings."
+                                            description="Used for people invited after this change. Each person can override it in Preferences."
                                             error={errors.default_timezone}
                                         />
                                     </div>

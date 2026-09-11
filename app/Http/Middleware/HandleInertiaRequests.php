@@ -45,6 +45,7 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user()?->loadMissing('roles'),
             ],
+            'native_proxy_cli_download_url' => config('native_proxy.cli_download_url'),
             'notification_summary' => fn (): array => [
                 'unread_count' => $request->user()?->unreadNotifications()->count() ?? 0,
                 'recent' => $request->user()

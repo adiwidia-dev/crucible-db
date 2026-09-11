@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\DatabaseDriver;
+use App\Enums\DatabaseTlsMode;
 use App\Enums\QueryType;
 use Database\Factories\DatabaseConnectionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -24,22 +25,32 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
  * @property string $database
  * @property string $username
  * @property string $password
- * @property string|null $ssl_mode
+ * @property DatabaseTlsMode $tls_mode
+ * @property string|null $tls_ca_certificate
+ * @property string|null $tls_client_certificate
+ * @property string|null $tls_client_key
  * @property bool $is_active
  * @property-read User|null $createdBy
  */
-#[Fillable(['created_by_id', 'name', 'driver', 'host', 'port', 'database', 'username', 'password', 'ssl_mode', 'is_active'])]
-#[Hidden(['password'])]
+#[Fillable(['created_by_id', 'name', 'driver', 'host', 'port', 'database', 'username', 'password', 'tls_mode', 'tls_ca_certificate', 'tls_client_certificate', 'tls_client_key', 'is_active'])]
+#[Hidden(['password', 'tls_ca_certificate', 'tls_client_certificate', 'tls_client_key'])]
 class DatabaseConnection extends Model
 {
     /** @use HasFactory<DatabaseConnectionFactory> */
     use HasFactory;
 
+    /** @var array<string, string> */
+    protected $attributes = [
+        'tls_mode' => DatabaseTlsMode::Preferred->value,
+    ];
+
     protected function casts(): array
     {
         return [
             'driver' => DatabaseDriver::class,
+            'tls_mode' => DatabaseTlsMode::class,
             'password' => 'encrypted',
+            'tls_client_key' => 'encrypted',
             'is_active' => 'boolean',
             'port' => 'integer',
         ];

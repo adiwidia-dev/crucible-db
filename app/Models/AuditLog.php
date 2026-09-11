@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  * @property int|null $actor_id
  * @property string $action
  * @property string|null $auditable_type
- * @property int|null $auditable_id
+ * @property int|string|null $auditable_id
  * @property string|null $ip_address
  * @property string|null $user_agent
  * @property array<string, mixed>|null $metadata

@@ -9,13 +9,13 @@ The Phase 1B direction uses patterns common to focused developer tools:
 - Cool neutral surfaces keep attention on database work.
 - Crucible orange identifies the product; blue identifies interactive actions and focus.
 - Green, amber, red, and blue are reserved for operational state.
-- Navigation follows Work, Data, Account, and Admin, with collapsible Account and Admin groups. Admin is structured into Access, Authentication, Workspace, and Governance; compact notification and account controls live in the top bar.
+- Navigation follows Work, Data, Manage, and Account. The collapsible Administration tree under Manage is structured into Access & identity, Security & policy, Application, and Governance; Account is an independent footer disclosure, and both groups can remain open.
 - Native system typography keeps the interface familiar and avoids a styled dashboard feel.
 - Data begins close to compact page headers and remains denser than form workflows.
 - Tables, toolbars, code surfaces, and lifecycle state take priority over decorative cards.
 - Query requests read like reviewable engineering changes: summary, SQL, preflight, decision, execution, and history. A blocked Deployment Batch can be deliberately saved as a draft, while a clearly labeled on-demand preflight action stays beside the current findings.
 - Query Access keeps the SQL action close to the editor. A selected statement is visually distinct, changes the primary action to **Run selected**, and can be executed with `Cmd/Ctrl + Enter`; whole-editor execution clearly communicates the one-statement rule.
- Authentication uses the same restrained work-surface vocabulary: application identity remains in the header, while credentials live in a clearly bounded panel with a dedicated header and body.
+- Authentication uses the same restrained work-surface vocabulary: application identity remains in the header, while credentials live in a clearly bounded panel with a dedicated header and body.
 - Shadows are reserved for overlays. Persistent work surfaces stay flat.
 - Motion communicates state and respects reduced-motion preferences.
 

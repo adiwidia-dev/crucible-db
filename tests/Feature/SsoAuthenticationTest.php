@@ -126,6 +126,29 @@ class SsoAuthenticationTest extends TestCase
         ]);
     }
 
+    public function test_expired_invitation_cannot_be_accepted_by_matching_sso_email(): void
+    {
+        $provider = AuthProvider::factory()->google()->create();
+        $user = User::factory()->unverified()->create([
+            'email' => 'expired@example.com',
+            'invited_at' => now()->subDays(8),
+            'invitation_token_hash' => hash('sha256', 'expired-token'),
+        ]);
+
+        Socialite::fake('google', SocialiteUser::fake([
+            'id' => 'google-expired',
+            'email' => $user->email,
+            'email_verified' => true,
+        ]));
+
+        $this->get(route('auth-providers.callback', $provider))
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors(['email' => 'Ask an admin for an invitation before using SSO.']);
+
+        $this->assertGuest();
+        $this->assertNull($user->refresh()->invitation_accepted_at);
+    }
+
     public function test_provider_domain_restrictions_are_enforced(): void
     {
         $provider = AuthProvider::factory()->google()->create([

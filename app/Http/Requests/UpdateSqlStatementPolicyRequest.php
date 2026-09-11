@@ -20,7 +20,6 @@ class UpdateSqlStatementPolicyRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'sql_all_statement_families_enabled' => ['required', 'boolean'],
             'sql_emergency_fallback_enabled' => ['required', 'boolean'],
             'sql_read_queries_enabled' => ['required', 'boolean'],
             'sql_insert_enabled' => ['required', 'boolean'],

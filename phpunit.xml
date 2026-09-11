@@ -26,11 +26,15 @@
         <env name="DB_CONNECTION" value="sqlite" force="true"/>
         <env name="DB_DATABASE" value=":memory:" force="true"/>
         <env name="DB_URL" value="" force="true"/>
+        <env name="CRUCIBLE_DATABASE_CONFIG_MODE" value="environment" force="true"/>
+        <env name="CRUCIBLE_INITIAL_SETUP_TOKEN" value="test-initial-setup-token-32-characters" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="PULSE_ENABLED" value="false" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false" force="true"/>
         <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
+        <env name="NATIVE_PROXY_ENABLED" value="false" force="true"/>
+        <env name="NATIVE_PROXY_CONTROL_ENCRYPTED_RESPONSES_REQUIRED" value="false" force="true"/>
     </php>
 </phpunit>

@@ -6,7 +6,7 @@ Crucible DB serves developers, reviewers, SREs, DBAs, security operators, and ad
 
 ## Product Purpose
 
-Crucible DB is a governed database operations control plane. It makes every database action visible, reviewable, time-bounded when appropriate, and attributable. The current product supports deployment batches of ordered, single SQL statements and query-access sessions with a declared read-only or read + write level. Administrators organise targets into explicit connection groups, apply role defaults to those groups, and use individual connection exceptions only when needed. Success means a user can understand target scope, risk, approval state, next action, execution result, and audit history without leaving the workflow or guessing whether an operation ran.
+Crucible DB is a governed database operations control plane. It makes every database action visible, reviewable, time-bounded when appropriate, and attributable. The current product supports deployment batches of ordered, single SQL statements and Query Access sessions with a declared read-only or read + write level. An approved Query Access session can use the browser editor or a separately authorized Native client tunnel for compatible PostgreSQL/MySQL tools. Administrators organise targets into explicit connection groups, apply role defaults to those groups, and use individual connection exceptions only when needed. They can store Crucible's own control-plane data in SQLite, PostgreSQL, or MySQL and migrate it through a fenced, verified workflow. Success means a user can understand target scope, risk, approval state, next action, execution result, and audit history without leaving the workflow or guessing whether an operation ran.
 
 ## Brand Personality
 

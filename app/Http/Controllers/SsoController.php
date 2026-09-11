@@ -6,6 +6,7 @@ use App\Models\AuthProvider;
 use App\Models\User;
 use App\Models\UserIdentity;
 use App\Services\AuditLogger;
+use App\Services\InvitationAcceptance;
 use App\Services\SsoIdentityVerifier;
 use App\Services\SsoProviderConfigurator;
 use Illuminate\Http\RedirectResponse;
@@ -21,6 +22,8 @@ use Throwable;
 
 class SsoController extends Controller
 {
+    public function __construct(private readonly InvitationAcceptance $invitationAcceptance) {}
+
     public function redirect(AuthProvider $authProvider, SsoProviderConfigurator $configurator): SymfonyRedirectResponse
     {
         abort_unless($authProvider->is_enabled, 404);
@@ -33,7 +36,7 @@ class SsoController extends Controller
     public function invitationRedirect(User $user, string $token, AuthProvider $authProvider, SsoProviderConfigurator $configurator): SymfonyRedirectResponse
     {
         abort_unless($authProvider->is_enabled, 404);
-        $this->ensureInvitationCanBeAccepted($user, $token);
+        $this->invitationAcceptance->ensureCanAccept($user, $token);
 
         session([
             'sso.invitation' => [
@@ -133,7 +136,7 @@ class SsoController extends Controller
         }
 
         $invitedUser = $this->invitedUserFromSession($authProvider)
-            ?? $this->pendingInvitedUserByEmail($email);
+            ?? $this->invitationAcceptance->pendingUserByEmail($email);
 
         if (! $invitedUser instanceof User) {
             $auditLogger->log('auth_provider.login_rejected', null, $authProvider, [
@@ -352,23 +355,6 @@ class SsoController extends Controller
             return null;
         }
 
-        return $user->invitation_accepted_at === null ? $user : null;
-    }
-
-    private function pendingInvitedUserByEmail(string $email): ?User
-    {
-        return User::query()
-            ->whereRaw('LOWER(email) = ?', [$email])
-            ->whereNotNull('invited_at')
-            ->whereNull('invitation_accepted_at')
-            ->whereNotNull('invitation_token_hash')
-            ->first();
-    }
-
-    private function ensureInvitationCanBeAccepted(User $user, string $token): void
-    {
-        abort_if($user->invitation_accepted_at !== null, 403);
-        abort_if($user->invitation_token_hash === null, 403);
-        abort_unless(hash_equals($user->invitation_token_hash, hash('sha256', $token)), 403);
+        return $this->invitationAcceptance->isPending($user) ? $user : null;
     }
 }

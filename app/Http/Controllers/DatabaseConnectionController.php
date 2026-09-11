@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateDatabaseConnectionRequest;
 use App\Models\DatabaseConnection;
 use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
+use App\Services\NativeProxy\LeaseWorkflow;
 use App\Services\NotificationDispatcher;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -91,7 +92,7 @@ class DatabaseConnectionController extends Controller
                 'driver' => $connection->driver->value,
                 'host' => $connection->host,
                 'port' => $connection->port,
-                'ssl_mode' => $connection->ssl_mode,
+                'tls_mode' => $connection->tls_mode->value,
             ]);
         }
 
@@ -113,7 +114,10 @@ class DatabaseConnectionController extends Controller
                 'port' => $databaseConnection->port,
                 'database' => $databaseConnection->database,
                 'username' => $databaseConnection->username,
-                'ssl_mode' => $databaseConnection->ssl_mode,
+                'tls_mode' => $databaseConnection->tls_mode->value,
+                'has_tls_ca_certificate' => filled($databaseConnection->tls_ca_certificate),
+                'has_tls_client_certificate' => filled($databaseConnection->tls_client_certificate),
+                'has_tls_client_key' => filled($databaseConnection->tls_client_key),
                 'is_active' => $databaseConnection->is_active,
                 'permissions' => $databaseConnection->rolePermissions->map(fn ($permission): array => [
                     'id' => $permission->id,
@@ -145,33 +149,62 @@ class DatabaseConnectionController extends Controller
                 'port' => $databaseConnection->port,
                 'database' => $databaseConnection->database,
                 'username' => $databaseConnection->username,
-                'ssl_mode' => $databaseConnection->ssl_mode,
+                'tls_mode' => $databaseConnection->tls_mode->value,
+                'has_tls_ca_certificate' => filled($databaseConnection->tls_ca_certificate),
+                'has_tls_client_certificate' => filled($databaseConnection->tls_client_certificate),
+                'has_tls_client_key' => filled($databaseConnection->tls_client_key),
                 'is_active' => $databaseConnection->is_active,
             ],
             'drivers' => $this->drivers(),
         ]);
     }
 
-    public function update(UpdateDatabaseConnectionRequest $request, DatabaseConnection $databaseConnection, AuditLogger $auditLogger): RedirectResponse
+    public function update(UpdateDatabaseConnectionRequest $request, DatabaseConnection $databaseConnection, AuditLogger $auditLogger, LeaseWorkflow $leaseWorkflow): RedirectResponse
     {
         $data = $request->validated();
+        $tlsMaterialAction = $data['tls_material_action'];
+        unset($data['tls_material_action']);
 
         if (blank($data['password'] ?? null)) {
             unset($data['password']);
         }
 
+        if ($tlsMaterialAction === 'retain') {
+            unset($data['tls_ca_certificate'], $data['tls_client_certificate'], $data['tls_client_key']);
+        }
+
+        if ($tlsMaterialAction === 'replace') {
+            foreach (['tls_ca_certificate', 'tls_client_certificate', 'tls_client_key'] as $attribute) {
+                if (blank($data[$attribute] ?? null)) {
+                    unset($data[$attribute]);
+                }
+            }
+        }
+
+        if ($tlsMaterialAction === 'clear') {
+            $data['tls_ca_certificate'] = null;
+            $data['tls_client_certificate'] = null;
+            $data['tls_client_key'] = null;
+        }
+
         $data['is_active'] = $request->boolean('is_active');
 
         $databaseConnection->update($data);
+        $leaseWorkflow->revokeForDatabaseConnections(
+            [$databaseConnection->id],
+            $request->user(),
+            $databaseConnection->is_active ? 'Database connection configuration changed.' : 'Database connection was deactivated.',
+        );
         $auditLogger->log('database_connection.updated', $request->user(), $databaseConnection);
 
         return redirect()->route('connections.show', $databaseConnection);
     }
 
-    public function destroy(DatabaseConnection $databaseConnection, AuditLogger $auditLogger): RedirectResponse
+    public function destroy(DatabaseConnection $databaseConnection, AuditLogger $auditLogger, LeaseWorkflow $leaseWorkflow): RedirectResponse
     {
         Gate::authorize('delete', $databaseConnection);
 
+        $leaseWorkflow->revokeForDatabaseConnections([$databaseConnection->id], request()->user(), 'Database connection was deleted.');
         $auditLogger->log('database_connection.deleted', request()->user(), $databaseConnection);
         $databaseConnection->notificationSubscriptions()->delete();
         $databaseConnection->delete();
@@ -257,7 +290,7 @@ class DatabaseConnectionController extends Controller
     }
 
     /**
-     * @return array{driver: string, host: string, port: int, ssl_mode: string|null}
+     * @return array{driver: string, host: string, port: int, tls_mode: string}
      */
     private function createDefaults(Request $request): array
     {
@@ -268,7 +301,7 @@ class DatabaseConnectionController extends Controller
             'driver' => $driver->value,
             'host' => $request->string('host')->trim()->substr(0, 255)->toString(),
             'port' => $port >= 1 && $port <= 65535 ? $port : $driver->defaultPort(),
-            'ssl_mode' => $request->string('ssl_mode')->trim()->substr(0, 50)->toString() ?: null,
+            'tls_mode' => $request->string('tls_mode')->trim()->substr(0, 32)->toString() ?: 'preferred',
         ];
     }
 }

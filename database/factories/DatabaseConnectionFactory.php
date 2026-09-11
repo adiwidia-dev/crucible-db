@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\DatabaseDriver;
+use App\Enums\DatabaseTlsMode;
 use App\Models\DatabaseConnection;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -28,7 +29,7 @@ class DatabaseConnectionFactory extends Factory
             'database' => 'crucible_target',
             'username' => 'crucible',
             'password' => 'crucible',
-            'ssl_mode' => null,
+            'tls_mode' => DatabaseTlsMode::Preferred,
             'is_active' => true,
         ];
     }

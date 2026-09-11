@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
-use DateTimeZone;
+use App\Models\User;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -23,7 +26,6 @@ class ProfileController extends Controller
         return Inertia::render('settings/profile', [
             'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
             'status' => $request->session()->get('status'),
-            'timezones' => DateTimeZone::listIdentifiers(),
         ]);
     }
 
@@ -52,13 +54,34 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
-        Auth::logout();
+        Cache::lock('users:administrator-continuity', 15)->block(5, function () use ($user): void {
+            DB::transaction(function () use ($user): void {
+                $lockedUser = User::query()->lockForUpdate()->findOrFail($user->id);
 
-        $user->delete();
+                if ($lockedUser->isAdmin() && ! $this->anotherActiveAdministratorExists($lockedUser)) {
+                    throw ValidationException::withMessages([
+                        'password' => 'You cannot delete your account while you are the only administrator. Ask another administrator to take over or disable your account first.',
+                    ]);
+                }
+
+                $lockedUser->delete();
+            });
+        });
+
+        Auth::logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
         return redirect('/');
+    }
+
+    private function anotherActiveAdministratorExists(User $excluding): bool
+    {
+        return User::query()
+            ->whereKeyNot($excluding->id)
+            ->whereNull('disabled_at')
+            ->whereHas('roles', fn ($query) => $query->where('is_admin', true))
+            ->exists();
     }
 }

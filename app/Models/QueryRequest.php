@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\AccessMode;
+use App\Enums\AccessTransport;
 use App\Enums\PreflightStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
@@ -32,8 +33,10 @@ use Illuminate\Support\Carbon;
  * @property string $sql
  * @property QueryType $query_type
  * @property QueryRequestKind $request_kind
+ * @property AccessTransport $access_transport
  * @property AccessMode|null $requested_access_mode
  * @property QueryRequestStatus $status
+ * @property int $revision
  * @property bool $requires_approval
  * @property PreflightStatus $preflight_status
  * @property array<string, mixed>|null $preflight_report
@@ -60,22 +63,30 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, QueryRequestStatement> $statements
  * @property-read QuerySession|null $latestSession
  */
-#[Fillable(['requester_id', 'database_connection_id', 'approved_by_id', 'dispatched_by_id', 'cancelled_by_id', 'retry_of_id', 'title', 'description', 'sql', 'query_type', 'request_kind', 'requested_access_mode', 'status', 'requires_approval', 'preflight_status', 'preflight_report', 'preflight_checked_at', 'scheduled_at', 'access_duration_minutes', 'approved_at', 'dispatched_at', 'completed_at', 'cancelled_at', 'cancellation_reason', 'result_summary', 'last_error'])]
+#[Fillable(['requester_id', 'database_connection_id', 'approved_by_id', 'dispatched_by_id', 'cancelled_by_id', 'retry_of_id', 'title', 'description', 'sql', 'query_type', 'request_kind', 'access_transport', 'requested_access_mode', 'status', 'requires_approval', 'preflight_status', 'preflight_report', 'preflight_checked_at', 'scheduled_at', 'access_duration_minutes', 'approved_at', 'dispatched_at', 'completed_at', 'cancelled_at', 'cancellation_reason', 'result_summary', 'last_error'])]
 class QueryRequest extends Model
 {
     /** @use HasFactory<QueryRequestFactory> */
     use HasFactory;
 
+    /** @var array<string, int|string> */
+    protected $attributes = [
+        'access_transport' => AccessTransport::Browser->value,
+        'revision' => 1,
+    ];
+
     /**
-     * @return array{query_type: class-string<QueryType>, request_kind: class-string<QueryRequestKind>, requested_access_mode: class-string<AccessMode>, status: class-string<QueryRequestStatus>, requires_approval: 'boolean', preflight_status: class-string<PreflightStatus>, preflight_report: 'array', preflight_checked_at: 'datetime', scheduled_at: 'datetime', access_duration_minutes: 'integer', approved_at: 'datetime', dispatched_at: 'datetime', completed_at: 'datetime', cancelled_at: 'datetime', result_summary: 'array'}
+     * @return array{query_type: class-string<QueryType>, request_kind: class-string<QueryRequestKind>, access_transport: class-string<AccessTransport>, requested_access_mode: class-string<AccessMode>, status: class-string<QueryRequestStatus>, revision: 'integer', requires_approval: 'boolean', preflight_status: class-string<PreflightStatus>, preflight_report: 'array', preflight_checked_at: 'datetime', scheduled_at: 'datetime', access_duration_minutes: 'integer', approved_at: 'datetime', dispatched_at: 'datetime', completed_at: 'datetime', cancelled_at: 'datetime', result_summary: 'array'}
      */
     protected function casts(): array
     {
         return [
             'query_type' => QueryType::class,
             'request_kind' => QueryRequestKind::class,
+            'access_transport' => AccessTransport::class,
             'requested_access_mode' => AccessMode::class,
             'status' => QueryRequestStatus::class,
+            'revision' => 'integer',
             'requires_approval' => 'boolean',
             'preflight_status' => PreflightStatus::class,
             'preflight_report' => 'array',

@@ -79,7 +79,7 @@ class AuditLogController extends Controller
     }
 
     /**
-     * @return array{search: string, action: string, actor: string, ip_address: string}
+     * @return array{search: string, action: string, actor: string, ip_address: string, event_family: string}
      */
     private function filters(Request $request): array
     {
@@ -88,11 +88,12 @@ class AuditLogController extends Controller
             'action' => $request->string('action')->trim()->toString(),
             'actor' => $request->string('actor')->trim()->toString(),
             'ip_address' => $request->string('ip_address')->trim()->toString(),
+            'event_family' => $request->string('event_family')->trim()->toString(),
         ];
     }
 
     /**
-     * @param  array{search: string, action: string, actor: string, ip_address: string}  $filters
+     * @param  array{search: string, action: string, actor: string, ip_address: string, event_family: string}  $filters
      * @return Builder<AuditLog>
      */
     private function queryForFilters(array $filters): Builder
@@ -135,6 +136,9 @@ class AuditLogController extends Controller
             })
             ->when($filters['ip_address'] !== '', function (Builder $query) use ($filters): void {
                 $query->where('ip_address', 'like', "%{$filters['ip_address']}%");
+            })
+            ->when($filters['event_family'] === 'native_proxy', function (Builder $query): void {
+                $query->where('action', 'like', 'native_proxy.%');
             });
     }
 }

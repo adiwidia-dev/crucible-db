@@ -1,0 +1,67 @@
+version: 2
+
+project_name: crucible
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: crucible
+    main: ./cmd/crucible
+    binary: crucible
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X github.com/adiwidia-dev/crucible-db/native/internal/version.Version={{ .Version }} -X github.com/adiwidia-dev/crucible-db/native/internal/version.Revision={{ .Commit }} -X github.com/adiwidia-dev/crucible-db/native/internal/version.Date={{ .Date }}
+
+archives:
+  - id: default
+    ids: [crucible]
+    files: [LICENSE, README.md]
+
+checksum:
+  name_template: checksums.txt
+
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
+    artifacts: checksum
+
+sboms:
+  - artifacts: archive
+
+nfpms:
+  - id: packages
+    ids: [crucible]
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    maintainer: Crucible DB contributors <opensource@jiwa.app>
+    license: MIT
+    homepage: https://github.com/adiwidia-dev/crucible-db
+    description: Governed native database-client access for Crucible DB.
+
+homebrew_casks:
+  - name: crucible
+    ids: [default]
+    repository:
+      owner: adiwidia-dev
+      name: homebrew-tap
+    homepage: https://github.com/adiwidia-dev/crucible-db
+    description: Governed native database-client access for Crucible DB.
+    license: MIT
+    binaries: [crucible]
+
+release:
+  github:
+    owner: adiwidia-dev
+    name: crucible-db
+  prerelease: auto
+  make_latest: true

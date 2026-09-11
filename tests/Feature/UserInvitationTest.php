@@ -140,6 +140,25 @@ class UserInvitationTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_expired_invitation_cannot_be_opened_or_accepted(): void
+    {
+        $token = 'expired-invitation-token';
+        $user = User::factory()->unverified()->create([
+            'invited_at' => now()->subDays(8),
+            'invitation_accepted_at' => null,
+            'invitation_token_hash' => hash('sha256', $token),
+        ]);
+        $url = (new UserInvitationNotification($token))->invitationUrl($user);
+
+        $this->get($url)->assertForbidden();
+        $this->post($url, [
+            'password' => 'new-secure-password',
+            'password_confirmation' => 'new-secure-password',
+        ])->assertForbidden();
+
+        $this->assertNull($user->refresh()->invitation_accepted_at);
+    }
+
     private function adminUser(): User
     {
         $role = Role::factory()->admin()->create();

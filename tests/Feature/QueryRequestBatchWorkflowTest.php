@@ -21,6 +21,7 @@ use App\Notifications\OperationalNotification;
 use App\Services\ApplicationSettings;
 use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
+use App\Services\DatabaseTlsMaterializer;
 use App\Services\DeploymentPreflight;
 use App\Services\NotificationDispatcher;
 use App\Services\QueryRequestWorkflow;
@@ -414,7 +415,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
         ]);
         $connection->update(['is_active' => false]);
 
-        $fakeExecutor = new class extends DatabaseQueryExecutor
+        $fakeExecutor = new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             public function execute(DatabaseConnection $databaseConnection, string $sql, QueryType $queryType): array
             {
@@ -546,7 +547,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
     public function test_batch_job_executes_every_statement_in_order_and_records_each_result(): void
     {
         $admin = $this->adminUser();
-        $fakeExecutor = new class extends DatabaseQueryExecutor
+        $fakeExecutor = new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             /** @var array<int, string> */
             public array $executedSql = [];
@@ -592,7 +593,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
     public function test_batch_job_stops_after_the_first_failed_statement(): void
     {
         $admin = $this->adminUser();
-        $fakeExecutor = new class extends DatabaseQueryExecutor
+        $fakeExecutor = new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             /** @var array<int, string> */
             public array $executedSql = [];
@@ -640,7 +641,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
     public function test_batch_job_executes_each_statement_on_its_selected_connection(): void
     {
         $admin = $this->adminUser();
-        $fakeExecutor = new class extends DatabaseQueryExecutor
+        $fakeExecutor = new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             /** @var array<int, int> */
             public array $executedConnectionIds = [];

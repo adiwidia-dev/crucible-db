@@ -18,10 +18,15 @@ import QuerySessionController from '@/actions/App/Http/Controllers/QuerySessionC
 import QuerySessionQueryController from '@/actions/App/Http/Controllers/QuerySessionQueryController';
 import QuerySessionQueryExportController from '@/actions/App/Http/Controllers/QuerySessionQueryExportController';
 import { ConnectionCombobox } from '@/components/crucible/connection-combobox';
+import {
+    SemanticIcon,
+    semanticToneForStatus,
+} from '@/components/crucible/semantic-icon';
 import { SqlEditor } from '@/components/crucible/sql-editor';
 import type { SchemaTable } from '@/components/crucible/sql-editor';
 import { StatusBadge } from '@/components/crucible/status-badge';
 import InputError from '@/components/input-error';
+import { NativeProxySessionPanel } from '@/components/native-proxy/session-panel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -39,6 +44,7 @@ import { driverLabel, formatDate, statusLabel } from '@/lib/crucible';
 import type {
     DatabaseDriver,
     ExecutionStatus,
+    Paginated,
     QueryType,
 } from '@/lib/crucible';
 import { show as queryRequestShow } from '@/routes/query-requests';
@@ -69,6 +75,7 @@ type QuerySession = {
     expires_at: string;
     ended_at: string | null;
     is_active: boolean;
+    transport?: 'browser' | 'native_proxy';
     request: {
         id: number;
         title: string;
@@ -87,11 +94,49 @@ type QuerySession = {
     }>;
     latest_query: SessionQuery | null;
     queries: SessionQuery[];
+    native_proxy?: {
+        can_manage: boolean;
+        lease: {
+            id: string;
+            status: string;
+            credential_version: number;
+            credentials_created_at: string | null;
+        } | null;
+        authorized_devices: Array<{
+            id: string;
+            device_label: string | null;
+            operating_system: string;
+            architecture: string;
+            authorized_at: string | null;
+        }>;
+        connections: Array<{
+            id: string;
+            protocol: DatabaseDriver;
+            status: string;
+            client_application: string | null;
+            connected_at: string | null;
+            last_activity_at: string | null;
+            statement_count: number;
+        }>;
+        statements: Paginated<{
+            id: number;
+            protocol_command: string | null;
+            sql_fingerprint: string | null;
+            parameter_count: number;
+            query_type: QueryType;
+            status: ExecutionStatus;
+            row_count: number | null;
+            duration_ms: number | null;
+            created_at: string | null;
+        }>;
+    };
 };
 
 type Props = {
     session: QuerySession;
     tables: SchemaTable[];
+    native_proxy_server_url?: string;
+    native_proxy_cli_download_url?: string;
 };
 
 function remainingSeconds(expiresAt: string): number {
@@ -163,9 +208,75 @@ function ResultTable({ rows }: { rows: Array<Record<string, unknown>> }) {
     );
 }
 
-export default function QuerySessionShow({ session, tables }: Props) {
+function EndSessionDialog({ sessionId }: { sessionId: number }) {
+    return (
+        <Dialog>
+            <DialogTrigger asChild>
+                <Button variant="destructive">
+                    <CircleStop />
+                    End session
+                </Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>End this access session?</DialogTitle>
+                    <DialogDescription>
+                        This immediately disconnects every client for this
+                        request. The request remains in audit history as
+                        cancelled.
+                    </DialogDescription>
+                </DialogHeader>
+                <Form
+                    {...QuerySessionController.end.form(sessionId)}
+                    className="grid gap-2"
+                >
+                    {({ processing, errors }) => (
+                        <>
+                            <Label htmlFor="end-session-reason">
+                                Reason for ending access
+                            </Label>
+                            <textarea
+                                id="end-session-reason"
+                                name="reason"
+                                rows={3}
+                                required
+                                className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                placeholder="Why should this access session end?"
+                            />
+                            <InputError message={errors.reason} />
+                            <DialogFooter className="mt-2">
+                                <DialogClose asChild>
+                                    <Button variant="outline">
+                                        Keep session
+                                    </Button>
+                                </DialogClose>
+                                <Button
+                                    variant="destructive"
+                                    disabled={processing}
+                                >
+                                    <CircleStop />
+                                    {processing
+                                        ? 'Ending session...'
+                                        : 'End session'}
+                                </Button>
+                            </DialogFooter>
+                        </>
+                    )}
+                </Form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+export default function QuerySessionShow({
+    session,
+    tables,
+    native_proxy_server_url,
+    native_proxy_cli_download_url,
+}: Props) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const userTimezone = auth.user.timezone ?? 'UTC';
+
     const [secondsRemaining, setSecondsRemaining] = useState(() =>
         remainingSeconds(session.expires_at),
     );
@@ -312,6 +423,72 @@ export default function QuerySessionShow({ session, tables }: Props) {
         setData('database_connection_id', String(session.connection.id));
     }, [session.connection.id, setData]);
 
+    if (session.transport === 'native_proxy' && session.native_proxy) {
+        return (
+            <>
+                <Head title={`Native client: ${session.request.title}`} />
+                <div className="flex min-h-[calc(100vh-6rem)] flex-col">
+                    <div className="border-b px-4 py-4 sm:px-6 lg:px-8">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div className="grid gap-1">
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <SemanticIcon
+                                        icon={Database}
+                                        tone={semanticToneForStatus(
+                                            session.connection.driver,
+                                        )}
+                                        size="sm"
+                                    />
+                                    {session.connection.name}
+                                    <span>/</span>
+                                    {driverLabel(session.connection.driver)}
+                                </div>
+                                <h1 className="text-2xl font-semibold tracking-normal">
+                                    {session.request.title}
+                                </h1>
+                                <p className="text-sm text-muted-foreground">
+                                    Native client session. Every connection and
+                                    statement is governed for this approved
+                                    access window.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button variant="outline" asChild>
+                                    <Link
+                                        href={queryRequestShow(
+                                            session.request.id,
+                                        )}
+                                    >
+                                        <ArrowLeft /> Back
+                                    </Link>
+                                </Button>
+                                <div className="inline-flex h-9 items-center gap-2 rounded-md border bg-background px-3 text-sm font-medium">
+                                    <Clock3 className="size-4 text-muted-foreground" />
+                                    {isSessionActive ? remaining : 'Expired'}
+                                </div>
+                                {isSessionActive && (
+                                    <EndSessionDialog sessionId={session.id} />
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    <NativeProxySessionPanel
+                        key={session.id}
+                        session={{
+                            ...session,
+                            native_proxy: session.native_proxy,
+                        }}
+                        serverUrl={
+                            native_proxy_server_url ?? window.location.origin
+                        }
+                        cliDownloadUrl={native_proxy_cli_download_url}
+                        timezone={userTimezone}
+                    />
+                </div>
+            </>
+        );
+    }
+
     return (
         <>
             <Head title={`Session: ${session.request.title}`} />
@@ -321,7 +498,13 @@ export default function QuerySessionShow({ session, tables }: Props) {
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="grid gap-1">
                             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                                <Database className="size-4" />
+                                <SemanticIcon
+                                    icon={Database}
+                                    tone={semanticToneForStatus(
+                                        session.connection.driver,
+                                    )}
+                                    size="sm"
+                                />
                                 <span>{session.connection.name}</span>
                                 <span>/</span>
                                 <span>
@@ -361,70 +544,7 @@ export default function QuerySessionShow({ session, tables }: Props) {
                                 {isSessionActive ? remaining : 'Expired'}
                             </div>
                             {isSessionActive && (
-                                <Dialog>
-                                    <DialogTrigger asChild>
-                                        <Button variant="destructive">
-                                            <CircleStop />
-                                            End session
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent>
-                                        <DialogHeader>
-                                            <DialogTitle>
-                                                End this access session?
-                                            </DialogTitle>
-                                            <DialogDescription>
-                                                This ends every active session
-                                                for this request now. The
-                                                request remains in audit history
-                                                as cancelled.
-                                            </DialogDescription>
-                                        </DialogHeader>
-                                        <Form
-                                            {...QuerySessionController.end.form(
-                                                session.id,
-                                            )}
-                                            className="grid gap-2"
-                                        >
-                                            {({ processing, errors }) => (
-                                                <>
-                                                    <Label htmlFor="end-session-reason">
-                                                        Reason for ending access
-                                                    </Label>
-                                                    <textarea
-                                                        id="end-session-reason"
-                                                        name="reason"
-                                                        rows={3}
-                                                        required
-                                                        className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                                        placeholder="Why should this access session end?"
-                                                    />
-                                                    <InputError
-                                                        message={errors.reason}
-                                                    />
-                                                    <DialogFooter className="mt-2">
-                                                        <DialogClose asChild>
-                                                            <Button variant="outline">
-                                                                Keep session
-                                                            </Button>
-                                                        </DialogClose>
-                                                        <Button
-                                                            variant="destructive"
-                                                            disabled={
-                                                                processing
-                                                            }
-                                                        >
-                                                            <CircleStop />
-                                                            {processing
-                                                                ? 'Ending session...'
-                                                                : 'End session'}
-                                                        </Button>
-                                                    </DialogFooter>
-                                                </>
-                                            )}
-                                        </Form>
-                                    </DialogContent>
-                                </Dialog>
+                                <EndSessionDialog sessionId={session.id} />
                             )}
                         </div>
                     </div>

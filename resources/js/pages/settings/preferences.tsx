@@ -1,11 +1,21 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { BellOff, BellRing, Mail, Save, SlidersHorizontal } from 'lucide-react';
+import {
+    BellOff,
+    BellRing,
+    Clock3,
+    Mail,
+    Save,
+    SlidersHorizontal,
+} from 'lucide-react';
+import { useState } from 'react';
 import DatabaseConnectionController from '@/actions/App/Http/Controllers/DatabaseConnectionController';
 import NotificationSubscriptionController from '@/actions/App/Http/Controllers/NotificationSubscriptionController';
 import QueryRequestController from '@/actions/App/Http/Controllers/QueryRequestController';
 import NotificationPreferencesController from '@/actions/App/Http/Controllers/Settings/NotificationPreferencesController';
+import PreferencesController from '@/actions/App/Http/Controllers/Settings/PreferencesController';
 import AppearanceTabs from '@/components/appearance-tabs';
 import { PageHeader } from '@/components/crucible/page-header';
+import { TimezoneCombobox } from '@/components/crucible/timezone-combobox';
 import { Button } from '@/components/ui/button';
 import { edit } from '@/routes/preferences';
 
@@ -28,10 +38,16 @@ type Subscription = {
 export default function Preferences({
     preferences,
     subscriptions,
+    timezone,
+    timezones,
 }: {
     preferences: Preferences;
     subscriptions: Subscription[];
+    timezone: string;
+    timezones: string[];
 }) {
+    const [selectedTimezone, setSelectedTimezone] = useState(timezone);
+
     return (
         <>
             <Head title="Preferences" />
@@ -57,6 +73,45 @@ export default function Preferences({
                         <AppearanceTabs />
                     </div>
                 </section>
+
+                <Form
+                    {...PreferencesController.updateTimezone.form()}
+                    options={{ preserveScroll: true }}
+                    disableWhileProcessing
+                    className="mt-6 max-w-3xl overflow-hidden border-y bg-card sm:rounded-lg sm:border"
+                >
+                    {({ errors, processing }) => (
+                        <>
+                            <div className="border-b px-4 py-3 sm:px-5">
+                                <div className="flex items-center gap-2 text-sm font-semibold">
+                                    <Clock3 className="size-4 text-muted-foreground" />
+                                    Timezone
+                                </div>
+                                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                    Set the timezone used for scheduled inputs
+                                    and operational timestamps.
+                                </p>
+                            </div>
+                            <div className="grid gap-5 px-4 py-5 sm:px-5">
+                                <TimezoneCombobox
+                                    label="Operational timezone"
+                                    name="timezone"
+                                    timezones={timezones}
+                                    value={selectedTimezone}
+                                    onValueChange={setSelectedTimezone}
+                                    description="Dates and times throughout Crucible DB are shown in this timezone."
+                                    error={errors.timezone}
+                                />
+                                <div className="flex justify-end border-t pt-5">
+                                    <Button disabled={processing}>
+                                        <Save />
+                                        Save timezone
+                                    </Button>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </Form>
 
                 <Form
                     {...NotificationPreferencesController.update.form()}

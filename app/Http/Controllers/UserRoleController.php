@@ -6,6 +6,7 @@ use App\Http\Requests\AssignUserRoleRequest;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\NativeProxy\LeaseWorkflow;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -41,7 +42,7 @@ class UserRoleController extends Controller
         ]);
     }
 
-    public function update(AssignUserRoleRequest $request, User $user, AuditLogger $auditLogger): RedirectResponse
+    public function update(AssignUserRoleRequest $request, User $user, AuditLogger $auditLogger, LeaseWorkflow $leaseWorkflow): RedirectResponse
     {
         if ($user->is($request->user())) {
             return back()->withErrors([
@@ -60,6 +61,8 @@ class UserRoleController extends Controller
             $user->roles()->sync($newRoleAssignments);
         });
 
+        $leaseWorkflow->revokeForUsers([$user->id], $request->user(), 'User role assignments changed.');
+
         $auditLogger->log('user.roles_assigned', $request->user(), $user, [
             'user_id' => $user->id,
             'old_role_assignments' => $oldRoleAssignments,
@@ -71,7 +74,7 @@ class UserRoleController extends Controller
         return back();
     }
 
-    public function disable(User $user, AuditLogger $auditLogger): RedirectResponse
+    public function disable(User $user, AuditLogger $auditLogger, LeaseWorkflow $leaseWorkflow): RedirectResponse
     {
         abort_unless(request()->user()->isAdmin(), 403);
 
@@ -88,6 +91,8 @@ class UserRoleController extends Controller
         $user->forceFill([
             'disabled_at' => now(),
         ])->save();
+
+        $leaseWorkflow->revokeForUsers([$user->id], request()->user(), 'User account disabled.');
 
         $auditLogger->log('user.disabled', request()->user(), $user, [
             'user_id' => $user->id,

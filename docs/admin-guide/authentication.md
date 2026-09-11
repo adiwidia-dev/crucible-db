@@ -1,16 +1,16 @@
-# Authentication
+# Sign-in methods and SSO providers
 
-**Who sees it:** workspace administrators under **Admin → Authentication → Authentication**.
+**Who sees it:** workspace administrators under **Manage → Administration → Security & policy**.
 
 ![Authentication settings](../assets/screenshots/admin-authentication.png){ .docs-screenshot }
 
 ## Sign-in methods
 
-Control **Email and password** and **Passkeys** independently alongside configured SSO providers. Do not disable every viable method or create an unrecoverable administrator lockout. The server rejects a configuration that would leave no enabled login path.
+Open **Sign-in Methods** to control **Email and password** and **Passkeys** independently. Configured SSO providers are summarized here, while their credentials and lifecycle are managed on the separate **SSO Providers** page. Do not disable every viable method or create an unrecoverable administrator lockout. The server rejects a configuration that would leave no enabled login path.
 
 ## SSO providers
 
-Configure Google, GitHub, or Microsoft provider details, allowed domains, scopes, tenant where applicable, enablement state, and callback URL. Test provider redirect behavior before making SSO the only login path.
+Open **SSO Providers** to configure Google, GitHub, or Microsoft provider details, allowed domains, scopes, tenant where applicable, enablement state, and callback URL. Test provider redirect behavior before making SSO the only login path.
 
 ![Authentication provider registry](../assets/screenshots/admin-authentication-providers.png){ .docs-screenshot }
 

@@ -25,6 +25,7 @@ class RoleDatabasePermissionFactory extends Factory
             'database_connection_id' => DatabaseConnection::factory(),
             'access_mode' => AccessMode::Read,
             'query_access_mode' => AccessMode::Read,
+            'native_proxy_access_mode' => AccessMode::None,
             'can_review' => false,
             'requires_approval' => true,
         ];

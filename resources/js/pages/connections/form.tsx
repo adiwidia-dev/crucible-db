@@ -9,6 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { index, show } from '@/routes/connections';
 
+const tlsModes = [
+    { value: 'disabled', label: 'Disabled' },
+    { value: 'preferred', label: 'Preferred' },
+    { value: 'required', label: 'Required' },
+    { value: 'verify_ca', label: 'Verify CA' },
+    { value: 'verify_identity', label: 'Verify identity' },
+];
+
 type Driver = {
     value: string;
     label: string;
@@ -23,7 +31,10 @@ type ConnectionFormData = {
     port: number;
     database: string;
     username: string;
-    ssl_mode: string | null;
+    tls_mode: string;
+    has_tls_ca_certificate: boolean;
+    has_tls_client_certificate: boolean;
+    has_tls_client_key: boolean;
     is_active: boolean;
 } | null;
 
@@ -34,7 +45,7 @@ type Props = {
         driver: string;
         host: string;
         port: number;
-        ssl_mode: string | null;
+        tls_mode: string;
     };
 };
 
@@ -57,6 +68,27 @@ export default function ConnectionForm({
         5432;
     const [driver, setDriver] = useState(initialDriver);
     const [port, setPort] = useState(initialPort);
+    const [tlsMode, setTlsMode] = useState(
+        connection?.tls_mode ?? defaults?.tls_mode ?? 'preferred',
+    );
+    const [tlsMaterialAction, setTlsMaterialAction] = useState<
+        'retain' | 'replace' | 'clear'
+    >('retain');
+    const tlsIsEnabled = tlsMode !== 'disabled';
+    const tlsVerifiesServer =
+        tlsMode === 'verify_ca' || tlsMode === 'verify_identity';
+    const hasStoredTlsMaterial = Boolean(
+        connection?.has_tls_ca_certificate ||
+        connection?.has_tls_client_certificate ||
+        connection?.has_tls_client_key,
+    );
+    const shouldShowTlsMaterial =
+        tlsIsEnabled || (isEditing && hasStoredTlsMaterial);
+    const replacesTlsMaterial = !isEditing || tlsMaterialAction === 'replace';
+    const requiresNewCaCertificate =
+        tlsVerifiesServer &&
+        replacesTlsMaterial &&
+        (!isEditing || !connection?.has_tls_ca_certificate);
 
     function changeDriver(value: string) {
         setDriver(value);
@@ -99,8 +131,12 @@ export default function ConnectionForm({
                         {...action}
                         options={{
                             preserveScroll: true,
-                            preserveState: 'errors',
                         }}
+                        resetOnError={[
+                            'tls_ca_certificate',
+                            'tls_client_certificate',
+                            'tls_client_key',
+                        ]}
                     >
                         {({ processing, errors }) => (
                             <>
@@ -258,23 +294,191 @@ export default function ConnectionForm({
                                         </div>
 
                                         <div className="grid gap-2 md:col-span-2">
-                                            <Label htmlFor="ssl_mode">
-                                                SSL mode
+                                            <Label htmlFor="tls_mode">
+                                                Target TLS policy
                                             </Label>
-                                            <Input
-                                                id="ssl_mode"
-                                                name="ssl_mode"
-                                                defaultValue={
-                                                    connection?.ssl_mode ??
-                                                    defaults?.ssl_mode ??
-                                                    ''
+                                            <select
+                                                id="tls_mode"
+                                                name="tls_mode"
+                                                value={tlsMode}
+                                                onChange={(event) =>
+                                                    setTlsMode(
+                                                        event.target.value,
+                                                    )
                                                 }
-                                                placeholder="prefer"
-                                            />
+                                                className="h-9 rounded-md border border-input bg-card px-3 text-sm transition-[color,border-color,box-shadow] duration-150 ease-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-reduce:transition-none"
+                                                required
+                                            >
+                                                {tlsModes.map((mode) => (
+                                                    <option
+                                                        key={mode.value}
+                                                        value={mode.value}
+                                                    >
+                                                        {mode.label}
+                                                    </option>
+                                                ))}
+                                            </select>
                                             <InputError
-                                                message={errors.ssl_mode}
+                                                message={errors.tls_mode}
                                             />
                                         </div>
+
+                                        {shouldShowTlsMaterial && (
+                                            <div className="grid gap-4 rounded-md border bg-muted/20 p-4 md:col-span-2">
+                                                <div>
+                                                    <p className="text-sm font-medium">
+                                                        Target TLS material
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        This controls the
+                                                        app-to-database
+                                                        connection only. It does
+                                                        not configure TLS for
+                                                        Native Client Access.
+                                                    </p>
+                                                </div>
+
+                                                {isEditing && (
+                                                    <div className="grid gap-2">
+                                                        <Label htmlFor="tls_material_action">
+                                                            Stored TLS material
+                                                        </Label>
+                                                        <select
+                                                            id="tls_material_action"
+                                                            name="tls_material_action"
+                                                            value={
+                                                                tlsMaterialAction
+                                                            }
+                                                            onChange={(event) =>
+                                                                setTlsMaterialAction(
+                                                                    event.target
+                                                                        .value as
+                                                                        | 'retain'
+                                                                        | 'replace'
+                                                                        | 'clear',
+                                                                )
+                                                            }
+                                                            className="h-9 rounded-md border border-input bg-card px-3 text-sm transition-[color,border-color,box-shadow] duration-150 ease-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-reduce:transition-none"
+                                                        >
+                                                            <option value="retain">
+                                                                Keep existing
+                                                                material
+                                                            </option>
+                                                            <option value="replace">
+                                                                Replace material
+                                                            </option>
+                                                            <option value="clear">
+                                                                Clear all
+                                                                material
+                                                            </option>
+                                                        </select>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {hasStoredTlsMaterial
+                                                                ? 'Stored PEM is never shown. Choose replace to paste new material, or clear to remove it.'
+                                                                : 'No TLS material is stored for this connection.'}
+                                                        </p>
+                                                        <InputError
+                                                            message={
+                                                                errors.tls_material_action
+                                                            }
+                                                        />
+                                                    </div>
+                                                )}
+
+                                                {tlsMaterialAction ===
+                                                    'clear' && (
+                                                    <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-muted-foreground">
+                                                        Clearing removes the CA
+                                                        certificate and client
+                                                        certificate/key
+                                                        together. Choose a
+                                                        non-verifying TLS mode
+                                                        before saving if the
+                                                        server requires a CA
+                                                        certificate.
+                                                    </p>
+                                                )}
+
+                                                {replacesTlsMaterial && (
+                                                    <div className="grid gap-4 md:grid-cols-2">
+                                                        <div className="grid gap-2 md:col-span-2">
+                                                            <Label htmlFor="tls_ca_certificate">
+                                                                CA certificate
+                                                                {requiresNewCaCertificate &&
+                                                                    ' (required)'}
+                                                            </Label>
+                                                            <textarea
+                                                                id="tls_ca_certificate"
+                                                                name="tls_ca_certificate"
+                                                                placeholder={
+                                                                    isEditing &&
+                                                                    connection?.has_tls_ca_certificate
+                                                                        ? 'Leave blank to keep the stored CA certificate.'
+                                                                        : 'PEM CA certificate'
+                                                                }
+                                                                className="min-h-28 rounded-md border border-input bg-card px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                                                                required={
+                                                                    requiresNewCaCertificate
+                                                                }
+                                                            />
+                                                            <InputError
+                                                                message={
+                                                                    errors.tls_ca_certificate
+                                                                }
+                                                            />
+                                                        </div>
+
+                                                        <div className="grid gap-2">
+                                                            <Label htmlFor="tls_client_certificate">
+                                                                Client
+                                                                certificate
+                                                            </Label>
+                                                            <textarea
+                                                                id="tls_client_certificate"
+                                                                name="tls_client_certificate"
+                                                                placeholder={
+                                                                    connection?.has_tls_client_certificate
+                                                                        ? 'Leave blank to keep the stored certificate. Paste both files to replace it.'
+                                                                        : 'Optional PEM certificate'
+                                                                }
+                                                                className="min-h-28 rounded-md border border-input bg-card px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                                                            />
+                                                            <InputError
+                                                                message={
+                                                                    errors.tls_client_certificate
+                                                                }
+                                                            />
+                                                        </div>
+
+                                                        <div className="grid gap-2">
+                                                            <Label htmlFor="tls_client_key">
+                                                                Client private
+                                                                key
+                                                            </Label>
+                                                            <textarea
+                                                                id="tls_client_key"
+                                                                name="tls_client_key"
+                                                                placeholder="Optional PEM private key"
+                                                                autoComplete="new-password"
+                                                                className="min-h-28 rounded-md border border-input bg-card px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
+                                                            />
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Never shown
+                                                                again. Paste the
+                                                                certificate and
+                                                                key together to
+                                                                configure mTLS.
+                                                            </p>
+                                                            <InputError
+                                                                message={
+                                                                    errors.tls_client_key
+                                                                }
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </section>
 

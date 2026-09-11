@@ -1,33 +1,32 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
-    BadgeCheck,
     Database,
     FileCode2,
     FolderTree,
-    KeyRound,
     LayoutGrid,
-    ScrollText,
     Settings2,
-    Shield,
-    ShieldCheck,
-    ShieldAlert,
-    SlidersHorizontal,
     UserRound,
-    UsersRound,
 } from 'lucide-react';
+import { useState } from 'react';
 import AppLogo from '@/components/app-logo';
 import { NavMain } from '@/components/nav-main';
+import type { NavSection } from '@/components/nav-main';
 import {
     Sidebar,
     SidebarContent,
+    SidebarFooter,
     SidebarHeader,
     SidebarMenu,
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { useCurrentUrl } from '@/hooks/use-current-url';
 import { dashboard } from '@/routes';
+import { edit as editAccessWorkflows } from '@/routes/access-workflows';
+import { edit as editApplicationDatabase } from '@/routes/application-database-migrations';
 import { edit as editApplicationSettings } from '@/routes/application-settings';
 import { index as auditLogsIndex } from '@/routes/audit-logs';
+import { index as authProvidersIndex } from '@/routes/auth-providers';
 import { edit as editAuthenticationMethods } from '@/routes/authentication-methods';
 import { index as connectionGroupsIndex } from '@/routes/connection-groups';
 import { index as connectionsIndex } from '@/routes/connections';
@@ -43,6 +42,7 @@ import type { Auth, NavItem } from '@/types';
 
 export function AppSidebar() {
     const { auth } = usePage<{ auth: Auth }>().props;
+    const { isCurrentOrParentUrl, isCurrentUrl } = useCurrentUrl();
     const isAdmin = Boolean(auth.user.roles?.some((role) => role.is_admin));
     const workNavItems: NavItem[] = [
         {
@@ -72,68 +72,79 @@ export function AppSidebar() {
               ]
             : []),
     ];
-    const adminNavSections = [
+    const adminNavSections: NavSection[] = [
         {
-            label: 'Access',
+            label: 'Access & identity',
             items: [
-                { title: 'People', href: usersIndex(), icon: UsersRound },
-                { title: 'Access Roles', href: rolesIndex(), icon: KeyRound },
-            ],
-        },
-        {
-            label: 'Authentication',
-            items: [
+                { title: 'People', href: usersIndex() },
+                { title: 'Access Roles', href: rolesIndex() },
                 {
-                    title: 'Authentication',
-                    href: editAuthenticationMethods(),
-                    icon: ShieldCheck,
+                    title: 'Access Workflows',
+                    href: editAccessWorkflows(),
                 },
             ],
         },
         {
-            label: 'Workspace',
+            label: 'Security & policy',
             items: [
                 {
-                    title: 'Application',
+                    title: 'Sign-in Methods',
+                    href: editAuthenticationMethods(),
+                },
+                {
+                    title: 'SSO Providers',
+                    href: authProvidersIndex(),
+                    isActive: isCurrentOrParentUrl(authProvidersIndex()),
+                },
+                {
+                    title: 'SQL Policy',
+                    href: editSqlStatementPolicy(),
+                },
+            ],
+        },
+        {
+            label: 'Application',
+            items: [
+                {
+                    title: 'General',
                     href: editApplicationSettings(),
-                    icon: Settings2,
                 },
                 {
                     title: 'Notification Policy',
                     href: editNotificationSettings(),
-                    icon: BadgeCheck,
+                },
+                {
+                    title: 'Database',
+                    href: editApplicationDatabase(),
                 },
             ],
         },
         {
             label: 'Governance',
-            items: [
-                {
-                    title: 'SQL Policy',
-                    href: editSqlStatementPolicy(),
-                    icon: ShieldAlert,
-                },
-                {
-                    title: 'Audit Log',
-                    href: auditLogsIndex(),
-                    icon: ScrollText,
-                },
-            ],
+            items: [{ title: 'Audit Log', href: auditLogsIndex() }],
         },
     ];
     const accountNavItems: NavItem[] = [
         {
             title: 'Profile',
             href: editProfile(),
-            icon: UserRound,
         },
         {
             title: 'Preferences',
             href: editPreferences(),
-            icon: SlidersHorizontal,
         },
-        { title: 'Security', href: editSecurity(), icon: Shield },
+        { title: 'Security', href: editSecurity() },
     ];
+    const hasActiveAdminItem = adminNavSections.some((section) =>
+        section.items.some((item) => item.isActive || isCurrentUrl(item.href)),
+    );
+    const hasActiveAccountItem = accountNavItems.some((item) =>
+        isCurrentUrl(item.href),
+    );
+    const [openNavigationGroups, setOpenNavigationGroups] = useState(() => ({
+        administration: hasActiveAdminItem,
+        account: hasActiveAccountItem,
+    }));
 
     return (
         <Sidebar collapsible="icon" variant="sidebar">
@@ -156,21 +167,42 @@ export function AppSidebar() {
             <SidebarContent className="gap-2 py-3">
                 <NavMain label="Work" items={workNavItems} />
                 <NavMain label="Data" items={dataNavItems} />
-                <NavMain
-                    label="Account"
-                    items={accountNavItems}
-                    collapsible
-                    storageKey="crucible.sidebar.account-open"
-                />
                 {isAdmin && (
                     <NavMain
-                        label="Admin"
+                        label="Manage"
+                        title="Administration"
+                        icon={Settings2}
                         sections={adminNavSections}
                         collapsible
-                        storageKey="crucible.sidebar.admin-open"
+                        defaultOpen={false}
+                        open={openNavigationGroups.administration}
+                        onOpenChange={(isOpen) =>
+                            setOpenNavigationGroups((currentGroups) => ({
+                                ...currentGroups,
+                                administration: isOpen,
+                            }))
+                        }
                     />
                 )}
             </SidebarContent>
+            <SidebarFooter className="border-t border-sidebar-border px-2 py-2">
+                <NavMain
+                    title="Account"
+                    icon={UserRound}
+                    items={accountNavItems}
+                    collapsible
+                    defaultOpen={false}
+                    open={openNavigationGroups.account}
+                    onOpenChange={(isOpen) =>
+                        setOpenNavigationGroups((currentGroups) => ({
+                            ...currentGroups,
+                            account: isOpen,
+                        }))
+                    }
+                    nestedItems
+                    className="p-0"
+                />
+            </SidebarFooter>
         </Sidebar>
     );
 }

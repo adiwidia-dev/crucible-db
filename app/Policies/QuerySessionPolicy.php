@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\AccessTransport;
 use App\Models\DatabaseConnection;
 use App\Models\QuerySession;
 use App\Models\User;
@@ -32,6 +33,15 @@ class QuerySessionPolicy
     public function end(User $user, QuerySession $querySession): bool
     {
         return $user->isAdmin() || $querySession->user_id === $user->id;
+    }
+
+    public function manageNativeProxy(User $user, QuerySession $querySession): bool
+    {
+        $querySession->loadMissing('queryRequest');
+
+        return $querySession->isActive()
+            && $querySession->queryRequest->access_transport === AccessTransport::NativeProxy
+            && ($user->isAdmin() || $querySession->user_id === $user->id);
     }
 
     /**

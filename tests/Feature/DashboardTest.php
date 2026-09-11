@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\AccessMode;
 use App\Enums\QueryRequestStatus;
+use App\Models\NativeProxyConnection;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\Role;
@@ -29,6 +30,18 @@ class DashboardTest extends TestCase
 
         $response = $this->get(route('dashboard'));
         $response->assertOk();
+    }
+
+    public function test_authenticated_pages_share_the_configured_cli_download_url(): void
+    {
+        config()->set('native_proxy.cli_download_url', 'https://downloads.example.com/crucible');
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('native_proxy_cli_download_url', 'https://downloads.example.com/crucible'));
     }
 
     public function test_dashboard_returns_operational_queues_visible_to_an_admin(): void
@@ -74,5 +87,31 @@ class DashboardTest extends TestCase
                 ->where('failed_requests.0.id', $failedRequest->id)
                 ->where('pending_reviews.0.requested_access_mode', AccessMode::Write->value)
                 ->where('expiring_sessions.0.id', $session->id));
+    }
+
+    public function test_dashboard_surfaces_cached_native_proxy_health_without_secrets_or_statement_data(): void
+    {
+        config()->set('native_proxy.enabled', true);
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
+        $request = QueryRequest::factory()->queryAccess()->create();
+        $session = QuerySession::factory()->create([
+            'query_request_id' => $request->id,
+            'database_connection_id' => $request->database_connection_id,
+        ]);
+        NativeProxyConnection::factory()->active()->create([
+            'query_session_id' => $session->id,
+            'query_request_id' => $request->id,
+            'database_connection_id' => $request->database_connection_id,
+            'proxy_instance_id' => 'proxy-a',
+        ]);
+
+        $this->actingAs($admin)->get(route('dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.native_proxy_connections', 1)
+                ->where('summary.native_proxy_instances', 1)
+                ->where('native_proxy_health.status', 'disabled')
+                ->missing('native_proxy_health.password')
+                ->missing('native_proxy_health.parameters')
+                ->missing('native_proxy_health.rows'));
     }
 }

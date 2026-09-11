@@ -10,6 +10,8 @@ import NotificationController from '@/actions/App/Http/Controllers/NotificationC
 import { EmptyState } from '@/components/crucible/empty-state';
 import { PageHeader } from '@/components/crucible/page-header';
 import { Pagination } from '@/components/crucible/pagination';
+import { SemanticIcon } from '@/components/crucible/semantic-icon';
+import type { SemanticTone } from '@/components/crucible/semantic-icon';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/crucible';
 import type { Paginated } from '@/lib/crucible';
@@ -162,21 +164,20 @@ function SeverityIcon({
 }: {
     severity: NotificationItem['severity'];
 }) {
-    const iconClass = 'mt-0.5 size-4 shrink-0';
+    const presentation: Record<
+        NotificationItem['severity'],
+        { icon: typeof Info; tone: SemanticTone }
+    > = {
+        critical: { icon: CircleAlert, tone: 'danger' },
+        warning: { icon: CircleAlert, tone: 'pending' },
+        success: { icon: MailCheck, tone: 'success' },
+        info: { icon: Info, tone: 'info' },
+    };
+    const { icon, tone } = presentation[severity];
 
-    if (severity === 'critical') {
-        return <CircleAlert className={`${iconClass} text-destructive`} />;
-    }
-
-    if (severity === 'warning') {
-        return <CircleAlert className={`${iconClass} text-amber-600`} />;
-    }
-
-    if (severity === 'success') {
-        return <MailCheck className={`${iconClass} text-emerald-600`} />;
-    }
-
-    return <Info className={`${iconClass} text-primary`} />;
+    return (
+        <SemanticIcon icon={icon} tone={tone} size="sm" className="mt-0.5" />
+    );
 }
 
 NotificationsIndex.layout = {

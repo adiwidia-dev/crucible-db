@@ -1,5 +1,5 @@
 import { Form, Head, Link } from '@inertiajs/react';
-import { Edit3, KeyRound, Plus, Trash2 } from 'lucide-react';
+import { Edit3, Eye, KeyRound, Plus, Trash2 } from 'lucide-react';
 import RoleController from '@/actions/App/Http/Controllers/RoleController';
 import { DataRegistry } from '@/components/crucible/data-registry';
 import { EmptyState } from '@/components/crucible/empty-state';
@@ -21,7 +21,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { create, edit, index } from '@/routes/roles';
+import { create, edit, index, show } from '@/routes/roles';
 
 type RoleRecord = {
     id: number;
@@ -122,9 +122,12 @@ export default function RolesIndex({ roles }: Props) {
                                                 className="border-b transition-colors last:border-0 hover:bg-accent/40"
                                             >
                                                 <td className="py-3 pr-4 pl-3 sm:pl-4">
-                                                    <div className="font-medium">
+                                                    <Link
+                                                        href={show(role.id)}
+                                                        className="font-medium hover:underline"
+                                                    >
                                                         {role.name}
-                                                    </div>
+                                                    </Link>
                                                     <div className="mt-1 text-xs text-muted-foreground">
                                                         {role.slug}
                                                     </div>
@@ -171,6 +174,29 @@ export default function RolesIndex({ roles }: Props) {
                                                 </td>
                                                 <td className="py-3 pr-3 sm:pr-4">
                                                     <div className="flex items-center justify-end gap-2">
+                                                        <Tooltip>
+                                                            <TooltipTrigger
+                                                                asChild
+                                                            >
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    asChild
+                                                                >
+                                                                    <Link
+                                                                        href={show(
+                                                                            role.id,
+                                                                        )}
+                                                                        aria-label={`View ${role.name}`}
+                                                                    >
+                                                                        <Eye />
+                                                                    </Link>
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                View role
+                                                            </TooltipContent>
+                                                        </Tooltip>
                                                         {role.is_admin ? (
                                                             <Tooltip>
                                                                 <TooltipTrigger

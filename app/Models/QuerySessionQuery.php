@@ -38,9 +38,13 @@ class QuerySessionQuery extends Model
 
     protected $fillable = [
         'query_session_id',
+        'native_proxy_connection_id',
         'database_connection_id',
         'user_id',
         'sql',
+        'native_protocol_command',
+        'native_sql_fingerprint',
+        'native_parameter_count',
         'query_type',
         'status',
         'started_at',

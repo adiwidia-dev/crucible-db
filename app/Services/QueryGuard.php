@@ -8,7 +8,7 @@ use Illuminate\Validation\ValidationException;
 
 class QueryGuard
 {
-    private const EmergencyFallbackBlockedSqlPattern = '/\\b(grant|revoke|create\\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\\s+data\\s+wrapper|server|publication|subscription)|alter\\s+(?:user|role|database|system|function|procedure|trigger|rule)|drop\\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\\s+data\\s+wrapper|server|publication|subscription)|copy|load\\s+data|load_file|into\\s+outfile|vacuum|analyze|reindex|cluster|checkpoint|do|call|prepare|execute|deallocate|discard|lock|listen|notify|unlisten|reset)\\b/i';
+    private const EmergencyFallbackBlockedSqlPattern = '/\\b(grant|revoke|create\\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\\s+data\\s+wrapper|server|publication|subscription)|alter\\s+(?:user|role|database|system|function|procedure|trigger|rule)|drop\\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\\s+data\\s+wrapper|server|publication|subscription)|copy|load\\s+data|load_file|into\\s+outfile|vacuum|analyze|reindex|cluster|checkpoint|call|prepare|execute|deallocate|discard|lock|listen|notify|unlisten|reset)\\b/i';
 
     public function __construct(private readonly ApplicationSettings $settings) {}
 
@@ -21,6 +21,38 @@ class QueryGuard
      * @throws ValidationException
      */
     public function validateExecutable(string $sql): string
+    {
+        $singleStatement = $this->validateStructure($sql);
+        $statementFamily = $this->statementFamily($singleStatement);
+
+        if ($statementFamily === null) {
+            if (! $this->settings->allowsEmergencySqlFallback()) {
+                throw ValidationException::withMessages([
+                    'sql' => 'This SQL statement is not supported by the governed SQL policy.',
+                ]);
+            }
+
+            return $singleStatement;
+        }
+
+        foreach ($this->requiredStatementFamilies($singleStatement) as $requiredStatementFamily) {
+            if (! $this->settings->allowsSqlStatementFamily($requiredStatementFamily)) {
+                throw ValidationException::withMessages([
+                    'sql' => "{$requiredStatementFamily->label()} statements are disabled by the workspace administrator.",
+                ]);
+            }
+        }
+
+        return $singleStatement;
+    }
+
+    /**
+     * Validate statement boundaries and immutable safety restrictions without
+     * deciding whether the governed statement family is enabled.
+     *
+     * @throws ValidationException
+     */
+    public function validateStructure(string $sql): string
     {
         $normalized = $this->normalize($sql);
 
@@ -46,7 +78,10 @@ class QueryGuard
             ]);
         }
 
-        if (preg_match(self::EmergencyFallbackBlockedSqlPattern, $executableSql) === 1) {
+        if (
+            preg_match('/^do\\b/i', ltrim($executableSql)) === 1
+            || preg_match(self::EmergencyFallbackBlockedSqlPattern, $executableSql) === 1
+        ) {
             throw ValidationException::withMessages([
                 'sql' => 'Administrative, file, security-management, and procedural SQL statements are blocked.',
             ]);
@@ -55,24 +90,6 @@ class QueryGuard
         if (preg_match('/^(begin|start\s+transaction|commit|rollback|savepoint|release\s+savepoint|set\s+transaction)\b/i', ltrim($executableSql)) === 1) {
             throw ValidationException::withMessages([
                 'sql' => 'Transaction-control SQL statements are blocked. Submit each executable statement in its own batch position.',
-            ]);
-        }
-
-        $statementFamily = $this->statementFamily($singleStatement);
-
-        if ($statementFamily === null) {
-            if (! $this->settings->allowsEmergencySqlFallback()) {
-                throw ValidationException::withMessages([
-                    'sql' => 'This SQL statement is not supported by the governed SQL policy.',
-                ]);
-            }
-
-            return $singleStatement;
-        }
-
-        if (! $this->settings->allowsSqlStatementFamily($statementFamily)) {
-            throw ValidationException::withMessages([
-                'sql' => "{$statementFamily->label()} statements are disabled by the workspace administrator.",
             ]);
         }
 
@@ -120,7 +137,7 @@ class QueryGuard
     /**
      * @throws ValidationException
      */
-    private function statementFamily(string $statement): ?SqlStatementFamily
+    public function statementFamily(string $statement): ?SqlStatementFamily
     {
         $executableSql = $this->topLevelExecutableSql($statement);
 
@@ -135,6 +152,28 @@ class QueryGuard
             preg_match('/^truncate(?:\s+table)?\b/i', $executableSql) === 1 => SqlStatementFamily::TruncateTable,
             default => null,
         };
+    }
+
+    /**
+     * Return every governed statement family needed to authorize the statement.
+     *
+     * @return list<SqlStatementFamily>
+     */
+    public function requiredStatementFamilies(string $statement): array
+    {
+        $statementFamily = $this->statementFamily($statement);
+
+        if ($statementFamily === null) {
+            return [];
+        }
+
+        $requiredStatementFamilies = [$statementFamily];
+
+        if ($statementFamily === SqlStatementFamily::Insert && $this->insertPerformsUpdate($statement)) {
+            $requiredStatementFamilies[] = SqlStatementFamily::Update;
+        }
+
+        return $requiredStatementFamilies;
     }
 
     public function topLevelExecutableSql(string $sql): string
@@ -175,6 +214,11 @@ class QueryGuard
         return $executableSql;
     }
 
+    public function canonicalSql(string $sql): string
+    {
+        return $this->stripTrailingTerminator($this->normalize($sql));
+    }
+
     private function stripTrailingTerminator(string $sql): string
     {
         $statement = rtrim($sql);
@@ -189,6 +233,14 @@ class QueryGuard
     private function containsStatementTerminator(string $sql): bool
     {
         return str_contains($this->executableSql($sql), ';');
+    }
+
+    private function insertPerformsUpdate(string $statement): bool
+    {
+        $executableSql = $this->topLevelExecutableSql($statement);
+
+        return preg_match('/\\bon\\s+conflict\\b[\\s\\S]*\\bdo\\s+update\\b/i', $executableSql) === 1
+            || preg_match('/\\bon\\s+duplicate\\s+key\\s+update\\b/i', $executableSql) === 1;
     }
 
     private function executableSql(string $sql): string
@@ -271,6 +323,12 @@ class QueryGuard
             }
 
             if ($current === '/' && $next === '*') {
+                if (in_array(($sql[$index + 2] ?? ''), ['!', '+'], true)) {
+                    throw ValidationException::withMessages([
+                        'sql' => 'Executable comments and optimizer hints are not allowed in governed SQL.',
+                    ]);
+                }
+
                 $blockComment = true;
                 $executableSql .= ' ';
                 $index++;
