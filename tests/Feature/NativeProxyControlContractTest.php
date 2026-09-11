@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AccessMode;
 use App\Enums\DatabaseDriver;
 use App\Enums\NativeProxyConnectionStatus;
 use App\Enums\NativeProxyDeviceAuthorizationStatus;
@@ -86,19 +87,31 @@ class NativeProxyControlContractTest extends TestCase
         ]);
         $this->seed(NativeProxyIntegrationSeeder::class);
 
-        $this->assertSame(2, NativeProxyLease::query()->count());
+        $this->assertSame(4, NativeProxyLease::query()->count());
         $this->assertSame(0, NativeProxyConnection::query()->count());
-        $this->assertSame(2, NativeProxyDeviceAuthorization::query()
+        $this->assertSame(4, NativeProxyDeviceAuthorization::query()
             ->where('status', NativeProxyDeviceAuthorizationStatus::Approved)
             ->count());
+
+        $postgresReadLease = NativeProxyLease::query()->findOrFail(NativeProxyIntegrationSeeder::PostgreSqlLeaseId);
+        $mysqlReadLease = NativeProxyLease::query()->findOrFail(NativeProxyIntegrationSeeder::MySqlLeaseId);
+        $postgresWriteLease = NativeProxyLease::query()->findOrFail(NativeProxyIntegrationSeeder::PostgreSqlWriteLeaseId);
+        $mysqlWriteLease = NativeProxyLease::query()->findOrFail(NativeProxyIntegrationSeeder::MySqlWriteLeaseId);
+
+        $this->assertSame(DatabaseDriver::PostgreSql, $postgresReadLease->protocol);
+        $this->assertSame(AccessMode::Read, $postgresReadLease->access_mode);
+        $this->assertSame(DatabaseDriver::MySql, $mysqlReadLease->protocol);
+        $this->assertSame(AccessMode::Read, $mysqlReadLease->access_mode);
         $this->assertSame(
             DatabaseDriver::PostgreSql,
-            NativeProxyLease::query()->findOrFail(NativeProxyIntegrationSeeder::PostgreSqlLeaseId)->protocol,
+            $postgresWriteLease->protocol,
         );
+        $this->assertSame(AccessMode::Write, $postgresWriteLease->access_mode);
         $this->assertSame(
             DatabaseDriver::MySql,
-            NativeProxyLease::query()->findOrFail(NativeProxyIntegrationSeeder::MySqlLeaseId)->protocol,
+            $mysqlWriteLease->protocol,
         );
+        $this->assertSame(AccessMode::Write, $mysqlWriteLease->access_mode);
     }
 
     public function test_postgresql_device_token_and_tunnel_contract_use_the_external_protocol_name(): void
