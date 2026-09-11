@@ -116,22 +116,20 @@ jobs:
           go-version: '1.26.6'
       - name: Prepare Laravel environment
         run: cp .env.example .env
-      - name: Start clean same-origin qualification stack
+      - name: Build the qualification services
+        run: docker compose build app native-proxy
+      - name: Start clean qualification dependencies
         env:
           NATIVE_POSTGRES_IMAGE: ${{ matrix.target.postgres }}
           NATIVE_MYSQL_IMAGE: ${{ matrix.target.mysql }}
-        run: docker compose up -d --build app native-proxy target-postgres target-mysql
+        run: docker compose up -d redis target-postgres target-mysql
       - name: Migrate and seed native qualification state
         run: |
-          for _ in $(seq 1 60); do
-            docker compose exec -T app test -f /app/vendor/autoload.php && break
-            sleep 2
-          done
-          docker compose exec -T app test -f /app/vendor/autoload.php
-          docker compose exec -T app php artisan key:generate --force --no-interaction
-          docker compose exec -T app php artisan migrate:fresh --force --no-interaction
-          docker compose exec -T app php artisan db:seed --class=Database\\Seeders\\NativeProxyIntegrationSeeder --force --no-interaction
-          docker compose restart app
+          docker compose run --rm app php artisan key:generate --force --no-interaction
+          docker compose run --rm app php artisan migrate:fresh --force --no-interaction
+          docker compose run --rm app php artisan db:seed --class=Database\\Seeders\\NativeProxyIntegrationSeeder --force --no-interaction
+      - name: Start the application and native proxy
+        run: docker compose up -d app native-proxy
       - name: Wait for the application gateway
         run: |
           for _ in $(seq 1 60); do

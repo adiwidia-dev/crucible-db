@@ -43,6 +43,19 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertLessThan($composerInstallPosition, $databaseSetupPosition);
     }
 
+    public function test_native_integration_workflow_migrates_before_starting_the_application(): void
+    {
+        $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/native.yml');
+
+        $migrationPosition = strpos($workflow, 'docker compose run --rm app php artisan migrate:fresh');
+        $applicationStartPosition = strpos($workflow, 'docker compose up -d app native-proxy');
+
+        $this->assertIsInt($migrationPosition);
+        $this->assertIsInt($applicationStartPosition);
+        $this->assertLessThan($applicationStartPosition, $migrationPosition);
+        $this->assertStringNotContainsString('docker compose restart app', $workflow);
+    }
+
     public function test_production_app_uses_its_embedded_caddy_gateway(): void
     {
         $compose = (string) file_get_contents(dirname(__DIR__, 2).'/compose.production.yaml');
