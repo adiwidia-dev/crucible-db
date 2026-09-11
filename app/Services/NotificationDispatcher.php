@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DatabaseConnection;
+use App\Models\NativeProxyLease;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\User;
@@ -269,6 +270,92 @@ class NotificationDispatcher
                 'url' => route('connections.show', $databaseConnection),
                 'connection_id' => $databaseConnection->id,
                 'connection_count' => 1,
+            ],
+            'connection_failed',
+            true,
+        );
+    }
+
+    public function nativeProxyCredentialsCreated(string $leaseId): void
+    {
+        if (! $this->settings->notificationEventEnabled('query_access')) {
+            return;
+        }
+
+        $lease = NativeProxyLease::query()
+            ->with(['querySession.queryRequest', 'user'])
+            ->find($leaseId);
+
+        if ($lease === null) {
+            return;
+        }
+
+        $this->notify(
+            collect([$lease->user]),
+            [
+                'event' => 'native_proxy.credentials_created',
+                'severity' => 'success',
+                'title' => 'Native client credentials created',
+                'message' => "Temporary native client credentials are available for {$lease->queryRequest->title}. They are shown only once.",
+                'action_label' => 'Open native session',
+                'url' => route('query-sessions.show', $lease->querySession),
+                'request_id' => $lease->query_request_id,
+                'session_id' => $lease->query_session_id,
+                'connection_count' => 1,
+            ],
+            'sessions',
+        );
+    }
+
+    /**
+     * @param  array<int, string>  $leaseIds
+     */
+    public function nativeProxyLeasesRevoked(array $leaseIds, string $reason): void
+    {
+        if (! $this->settings->notificationEventEnabled('query_access') || $leaseIds === [] || $reason === 'Credentials rotated.') {
+            return;
+        }
+
+        NativeProxyLease::query()
+            ->with(['querySession.queryRequest', 'user'])
+            ->whereIn('id', $leaseIds)
+            ->get()
+            ->each(function (NativeProxyLease $lease) use ($reason): void {
+                $this->notify(
+                    collect([$lease->user]),
+                    [
+                        'event' => 'native_proxy.lease_revoked',
+                        'severity' => 'warning',
+                        'title' => $reason === 'Lease expired.' ? 'Native client session expired' : 'Native client access revoked',
+                        'message' => $reason === 'Lease expired.'
+                            ? "Native client access for {$lease->queryRequest->title} has reached the end of its approved window."
+                            : "Native client access for {$lease->queryRequest->title} is no longer available: {$reason}",
+                        'action_label' => 'Open native session',
+                        'url' => route('query-sessions.show', $lease->querySession),
+                        'request_id' => $lease->query_request_id,
+                        'session_id' => $lease->query_session_id,
+                        'connection_count' => 1,
+                    ],
+                    'sessions',
+                );
+            });
+    }
+
+    /**
+     * @param  array{status: 'unhealthy'|'version_mismatch', checked_at: string|null, proxy_id: string|null, version: string|null, message: string|null}  $snapshot
+     */
+    public function nativeProxyHealthChanged(array $snapshot): void
+    {
+        $this->notify(
+            $this->operationalRecipients(),
+            [
+                'event' => 'native_proxy.health_changed',
+                'severity' => 'critical',
+                'title' => $snapshot['status'] === 'version_mismatch' ? 'Native proxy version mismatch' : 'Native proxy unavailable',
+                'message' => $snapshot['message'] ?? 'The native proxy readiness check did not succeed.',
+                'action_label' => 'Open dashboard',
+                'url' => route('dashboard'),
+                'connection_count' => 0,
             ],
             'connection_failed',
             true,

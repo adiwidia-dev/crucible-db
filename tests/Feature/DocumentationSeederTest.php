@@ -6,6 +6,7 @@ use App\Enums\AccessMode;
 use App\Enums\PreflightStatus;
 use App\Enums\QueryRequestStatus;
 use App\Models\ConnectionGroup;
+use App\Models\NativeProxyLease;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\Role;
@@ -44,6 +45,7 @@ class DocumentationSeederTest extends TestCase
             ->where('title', 'Draft: review unsupported maintenance SQL')
             ->firstOrFail();
         $activeSession = QuerySession::query()->firstOrFail();
+        $nativeLease = NativeProxyLease::query()->where('synthetic_username', 'docs-native-client')->firstOrFail();
         $invitedUser = User::query()->where('email', 'invited@example.com')->firstOrFail();
 
         $this->assertSame('Maya Chen', $requester->name);
@@ -57,12 +59,14 @@ class DocumentationSeederTest extends TestCase
         $this->assertSame(PreflightStatus::Blocked, $blockedDraft->preflight_status);
         $this->assertTrue($activeSession->isActive());
         $this->assertCount(1, $activeSession->queries);
+        $this->assertTrue($nativeLease->querySession->isActive());
+        $this->assertNull($nativeLease->protocol_auth_secret);
         $this->assertNull($invitedUser->invitation_accepted_at);
         $this->assertSame(
             hash('sha256', DocumentationSeeder::InvitationToken),
             $invitedUser->invitation_token_hash,
         );
-        $this->assertDatabaseCount('query_requests', 6);
+        $this->assertDatabaseCount('query_requests', 7);
         $this->assertDatabaseCount('query_reviews', 3);
         $this->assertDatabaseCount('notifications', 2);
         $this->assertDatabaseCount('notification_subscriptions', 2);

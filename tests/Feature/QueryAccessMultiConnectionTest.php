@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\RoleDatabasePermission;
 use App\Models\User;
 use App\Services\DatabaseQueryExecutor;
+use App\Services\DatabaseTlsMaterializer;
 use App\Services\QueryRequestWorkflow;
 use App\Services\QuerySessionWorkflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -68,7 +69,7 @@ class QueryAccessMultiConnectionTest extends TestCase
             ]);
         }
 
-        $fakeExecutor = new class extends DatabaseQueryExecutor
+        $fakeExecutor = new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
             /** @var array<int, int> */
             public array $connectionIds = [];

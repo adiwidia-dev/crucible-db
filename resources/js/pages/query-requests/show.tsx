@@ -8,7 +8,6 @@ import {
     CircleStop,
     CircleX,
     ChevronDown,
-    Clock3,
     Download,
     FileCode2,
     KeyRound,
@@ -60,9 +59,11 @@ import type {
     QueryRequestStatus,
     QueryRequestKind,
     QueryType,
+    AccessTransport,
 } from '@/lib/crucible';
 import { index } from '@/routes/query-requests';
 import { show as querySessionShow } from '@/routes/query-sessions';
+import { edit as editSqlPolicy } from '@/routes/sql-statement-policy';
 import type { Auth } from '@/types';
 
 type Execution = {
@@ -108,10 +109,14 @@ type QueryRequest = {
         execution_state: ExecutionStatus | 'skipped' | null;
     }>;
     status: QueryRequestStatus;
+    revision: number;
     query_type: QueryType;
     request_kind: QueryRequestKind;
+    access_transport: AccessTransport;
+    access_transport_label: string;
     requested_access_mode: 'read' | 'write' | null;
     requires_approval: boolean;
+    approval_label: string;
     scheduled_at: string | null;
     approved_after_schedule: boolean;
     access_duration_minutes: number | null;
@@ -139,6 +144,8 @@ type QueryRequest = {
                 level: 'warning' | 'blocked';
                 code: string;
                 message: string;
+                candidate_id?: number;
+                shape_available?: boolean;
             }>;
         }>;
     };
@@ -166,6 +173,7 @@ type QueryRequest = {
     }>;
     reviews: Array<{
         id: number;
+        query_request_revision: number;
         decision: string;
         comment: string | null;
         reviewer: string;
@@ -226,43 +234,41 @@ function SampleRows({ rows }: { rows: Array<Record<string, unknown>> }) {
     );
 
     return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-                <thead>
-                    <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                        {columns.map((column, index) => (
-                            <th
+        <table className="w-max min-w-full text-sm">
+            <thead>
+                <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
+                    {columns.map((column, index) => (
+                        <th
+                            key={column}
+                            className={`py-3 pr-4 font-medium ${
+                                index === 0 ? 'pl-4 sm:pl-6' : ''
+                            }`}
+                        >
+                            {column}
+                        </th>
+                    ))}
+                </tr>
+            </thead>
+            <tbody>
+                {rows.map((row, index) => (
+                    <tr
+                        key={index}
+                        className="border-b transition-colors last:border-0 hover:bg-accent/40"
+                    >
+                        {columns.map((column, columnIndex) => (
+                            <td
                                 key={column}
-                                className={`py-3 pr-4 font-medium ${
-                                    index === 0 ? 'pl-4 sm:pl-6' : ''
+                                className={`max-w-80 truncate py-3.5 pr-4 font-mono text-xs ${
+                                    columnIndex === 0 ? 'pl-4 sm:pl-6' : ''
                                 }`}
                             >
-                                {column}
-                            </th>
+                                {String(row[column] ?? '')}
+                            </td>
                         ))}
                     </tr>
-                </thead>
-                <tbody>
-                    {rows.map((row, index) => (
-                        <tr
-                            key={index}
-                            className="border-b transition-colors last:border-0 hover:bg-accent/40"
-                        >
-                            {columns.map((column, columnIndex) => (
-                                <td
-                                    key={column}
-                                    className={`max-w-80 truncate py-3.5 pr-4 font-mono text-xs ${
-                                        columnIndex === 0 ? 'pl-4 sm:pl-6' : ''
-                                    }`}
-                                >
-                                    {String(row[column] ?? '')}
-                                </td>
-                            ))}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
+                ))}
+            </tbody>
+        </table>
     );
 }
 
@@ -286,7 +292,7 @@ function ExecutionResult({ execution }: { execution: Execution }) {
     }
 
     return (
-        <div className="rounded-md border bg-background">
+        <div className="max-w-full min-w-0 overflow-hidden rounded-md border bg-background">
             <div className="flex items-center justify-end border-b px-3 py-2">
                 <Button variant="outline" size="sm" asChild>
                     <a href={QueryExecutionExportController.url(execution.id)}>
@@ -295,7 +301,12 @@ function ExecutionResult({ execution }: { execution: Execution }) {
                     </a>
                 </Button>
             </div>
-            <div className="max-h-80 overflow-auto">
+            <div
+                role="region"
+                aria-label="Execution result rows"
+                tabIndex={0}
+                className="max-h-80 max-w-full overflow-auto overscroll-x-contain focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+            >
                 <SampleRows rows={rows} />
             </div>
         </div>
@@ -315,8 +326,12 @@ export default function QueryRequestShow({
     is_subscribed,
 }: Props) {
     const { auth } = usePage<{ auth: Auth }>().props;
+    const isAdministrator =
+        auth.user.roles?.some((role) => role.is_admin) ?? false;
     const userTimezone = auth.user.timezone ?? 'UTC';
     const isQueryAccess = query_request.request_kind === 'query_access';
+    const isNativeClientAccess =
+        isQueryAccess && query_request.access_transport === 'native_proxy';
     const isActiveQueryAccess =
         isQueryAccess && query_request.status === 'running';
     const activeSessionExpiresAt =
@@ -331,6 +346,15 @@ export default function QueryRequestShow({
     const [secondsRemaining, setSecondsRemaining] = useState(() =>
         remainingSeconds(activeSessionExpiresAt),
     );
+    const querySessionState = isActiveQueryAccess
+        ? secondsRemaining > 0
+            ? `${remainingLabel(secondsRemaining)} left`
+            : 'Expired'
+        : latestSessionEndedAt
+          ? latestSessionExpired
+              ? 'Expired'
+              : 'Ended'
+          : 'Not started';
     const lastExecution = query_request.executions.data[0];
     const [expandedExecutionIds, setExpandedExecutionIds] = useState<number[]>(
         [],
@@ -456,7 +480,9 @@ export default function QueryRequestShow({
               : approvedAfterSchedule
                 ? `Scheduled for ${scheduledAtLabel}. It was approved after the planned time and will not run automatically.`
                 : query_request.active_session
-                  ? 'A query-access session is active.'
+                  ? isNativeClientAccess
+                      ? 'A native client session is active.'
+                      : 'A Query Access session is active.'
                   : can_start_session
                     ? 'This approved request is ready to start a session.'
                     : can_dispatch
@@ -550,12 +576,19 @@ export default function QueryRequestShow({
 
                 <section
                     aria-label="Request status and actions"
-                    className="sticky top-2 z-20 border-y bg-card px-4 py-3 sm:top-3 sm:rounded-lg sm:border sm:px-5"
+                    className="overflow-hidden border-y bg-card px-4 py-4 sm:rounded-lg sm:border sm:px-5"
                 >
-                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                         <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                                 <StatusBadge value={query_request.status} />
+                                <StatusBadge
+                                    value={query_request.request_kind}
+                                    label={queryRequestKindLabel(
+                                        query_request.request_kind,
+                                        query_request.access_transport,
+                                    )}
+                                />
                                 {approvedAfterSchedule && (
                                     <StatusBadge
                                         value="schedule_missed"
@@ -607,83 +640,6 @@ export default function QueryRequestShow({
                                     </Form>
                                 )}
                             </div>
-                            <dl className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1 text-xs text-muted-foreground sm:flex sm:flex-wrap sm:gap-x-5">
-                                <div className="flex min-w-0 gap-1.5">
-                                    <dt>Approval</dt>
-                                    <dd className="truncate font-medium text-foreground">
-                                        {query_request.requires_approval
-                                            ? query_request.approved_by
-                                                ? 'Approved'
-                                                : 'Required'
-                                            : 'Not required'}
-                                    </dd>
-                                </div>
-                                <div className="flex min-w-0 gap-1.5">
-                                    <dt>
-                                        {query_request.request_kind ===
-                                        'query_access'
-                                            ? 'Window'
-                                            : 'Schedule'}
-                                    </dt>
-                                    <dd className="truncate font-medium text-foreground">
-                                        {query_request.request_kind ===
-                                        'query_access'
-                                            ? `${query_request.access_duration_minutes ?? 60} minutes`
-                                            : scheduledAtLabel}
-                                    </dd>
-                                </div>
-                                {query_request.request_kind ===
-                                    'query_access' && (
-                                    <div className="flex min-w-0 gap-1.5">
-                                        <dt>Access</dt>
-                                        <dd className="truncate font-medium text-foreground">
-                                            {query_request.requested_access_mode ===
-                                            'write'
-                                                ? 'Read + write'
-                                                : 'Read-only'}
-                                        </dd>
-                                    </div>
-                                )}
-                                {isQueryAccess && (
-                                    <div className="flex min-w-0 gap-1.5">
-                                        <dt>
-                                            {isActiveQueryAccess
-                                                ? 'Remaining'
-                                                : 'Session'}
-                                        </dt>
-                                        <dd className="inline-flex items-center gap-1 truncate font-medium text-foreground">
-                                            <Clock3 className="size-3.5 text-muted-foreground" />
-                                            {isActiveQueryAccess
-                                                ? secondsRemaining > 0
-                                                    ? remainingLabel(
-                                                          secondsRemaining,
-                                                      )
-                                                    : 'Expired'
-                                                : latestSessionEndedAt
-                                                  ? latestSessionExpired
-                                                      ? 'Expired'
-                                                      : 'Ended'
-                                                  : 'Not started'}
-                                        </dd>
-                                    </div>
-                                )}
-                                <div className="flex min-w-0 gap-1.5">
-                                    <dt>Targets</dt>
-                                    <dd
-                                        className="truncate font-medium text-foreground"
-                                        title={targetConnections
-                                            .map(
-                                                (connection) => connection.name,
-                                            )
-                                            .join(', ')}
-                                    >
-                                        {targetConnections.length}{' '}
-                                        {targetConnections.length === 1
-                                            ? 'connection'
-                                            : 'connections'}
-                                    </dd>
-                                </div>
-                            </dl>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end">
@@ -780,7 +736,9 @@ export default function QueryRequestShow({
                                                     ? 'Retry remaining read-only statements?'
                                                     : retry_strategy ===
                                                         'renew_access'
-                                                      ? 'Request query access again?'
+                                                      ? isNativeClientAccess
+                                                          ? 'Request Native Client Access again?'
+                                                          : 'Request Query Access again?'
                                                       : 'Create a retry request?'}
                                             </DialogTitle>
                                             <DialogDescription>
@@ -975,7 +933,9 @@ export default function QueryRequestShow({
                                     <DialogContent>
                                         <DialogHeader>
                                             <DialogTitle>
-                                                Delete query access request?
+                                                {isNativeClientAccess
+                                                    ? 'Delete Native Client Access request?'
+                                                    : 'Delete Query Access request?'}
                                             </DialogTitle>
                                             <DialogDescription>
                                                 This removes the request and its
@@ -1011,99 +971,85 @@ export default function QueryRequestShow({
                             )}
                         </div>
                     </div>
-                </section>
 
-                <section
-                    aria-labelledby="request-record-title"
-                    className={`overflow-hidden border-y bg-card ${
-                        query_request.request_kind === 'single_execution'
-                            ? 'border-b-0 sm:rounded-t-lg sm:rounded-b-none sm:border'
-                            : 'sm:rounded-lg sm:border'
-                    }`}
-                >
-                    <div className="flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
-                        <div>
-                            <h2
-                                id="request-record-title"
-                                className="text-sm font-semibold"
-                            >
-                                Request overview
-                            </h2>
-                        </div>
-                        <StatusBadge
-                            value={query_request.request_kind}
-                            label={queryRequestKindLabel(
-                                query_request.request_kind,
-                            )}
-                        />
-                    </div>
-                    <div className="px-4 py-3 sm:px-5">
-                        <dl className="grid gap-x-5 gap-y-3 text-sm min-[420px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                    <div className="mt-4 border-t pt-4">
+                        <dl className="grid gap-x-6 gap-y-4 text-sm min-[420px]:grid-cols-2 lg:grid-cols-6">
                             <div className="min-w-0">
                                 <dt className="text-xs text-muted-foreground">
-                                    Requester
+                                    Requested by
                                 </dt>
                                 <dd className="mt-1 truncate font-medium">
                                     {query_request.requester}
                                 </dd>
-                            </div>
-                            <div className="min-w-0">
-                                <dt className="text-xs text-muted-foreground">
-                                    Created
-                                </dt>
-                                <dd className="mt-1 font-mono text-xs font-medium">
+                                <span className="mt-1 block font-mono text-xs text-muted-foreground">
                                     {formatDate(
                                         query_request.created_at,
                                         userTimezone,
                                     )}
-                                </dd>
+                                </span>
                             </div>
                             <div className="min-w-0">
                                 <dt className="text-xs text-muted-foreground">
-                                    Approval decision
+                                    Approval
                                 </dt>
                                 <dd className="mt-1 truncate font-medium">
-                                    {query_request.approved_by
-                                        ? `Approved by ${query_request.approved_by}`
-                                        : query_request.requires_approval
-                                          ? 'Awaiting decision'
-                                          : 'Approval not required'}
+                                    {query_request.approval_label}
                                 </dd>
-                                {query_request.approved_at && (
-                                    <span className="mt-1 block font-mono text-xs text-muted-foreground">
-                                        {formatDate(
-                                            query_request.approved_at,
-                                            userTimezone,
-                                        )}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="min-w-0">
-                                <dt className="text-xs text-muted-foreground">
-                                    {query_request.status === 'cancelled'
-                                        ? 'Cancelled'
-                                        : 'Finished'}
-                                </dt>
-                                <dd className="mt-1 font-mono text-xs font-medium">
-                                    {formatDate(
-                                        query_request.status === 'cancelled'
-                                            ? query_request.cancelled_at
-                                            : query_request.completed_at,
-                                        userTimezone,
+                                {query_request.requires_approval &&
+                                    query_request.approved_at && (
+                                        <span className="mt-1 block font-mono text-xs text-muted-foreground">
+                                            {formatDate(
+                                                query_request.approved_at,
+                                                userTimezone,
+                                            )}
+                                        </span>
                                     )}
+                            </div>
+                            <div className="min-w-0">
+                                <dt className="text-xs text-muted-foreground">
+                                    {isQueryAccess ? 'Access' : 'Schedule'}
+                                </dt>
+                                <dd className="mt-1 font-medium">
+                                    {isQueryAccess
+                                        ? `${query_request.requested_access_mode === 'write' ? 'Read + write' : 'Read-only'} · ${query_request.access_duration_minutes ?? 60} min`
+                                        : scheduledAtLabel}
                                 </dd>
                             </div>
                             <div className="min-w-0">
                                 <dt className="text-xs text-muted-foreground">
-                                    Target connections
+                                    {isQueryAccess
+                                        ? 'Session'
+                                        : query_request.status === 'cancelled'
+                                          ? 'Cancelled'
+                                          : 'Finished'}
                                 </dt>
-                                <dd className="mt-1 flex flex-wrap gap-1.5">
+                                <dd
+                                    className={`mt-1 font-medium ${isQueryAccess ? '' : 'font-mono text-xs'}`}
+                                >
+                                    {isQueryAccess
+                                        ? querySessionState
+                                        : formatDate(
+                                              query_request.status ===
+                                                  'cancelled'
+                                                  ? query_request.cancelled_at
+                                                  : query_request.completed_at,
+                                              userTimezone,
+                                          )}
+                                </dd>
+                            </div>
+                            <div className="min-w-0 min-[420px]:col-span-2 lg:col-span-2">
+                                <dt className="text-xs text-muted-foreground">
+                                    {targetConnections.length === 1
+                                        ? 'Target'
+                                        : 'Targets'}
+                                </dt>
+                                <dd className="mt-1 flex min-w-0 flex-wrap gap-1.5">
                                     {targetConnections.map((connection) => (
                                         <span
                                             key={connection.id}
-                                            className="inline-flex items-center gap-1 rounded-md border bg-background px-1.5 py-0.5 text-xs"
+                                            className="inline-flex max-w-full min-w-0 items-start gap-1.5 rounded-md border bg-background px-1.5 py-0.5 text-xs"
                                         >
-                                            <span className="max-w-32 truncate font-medium">
+                                            <span className="min-w-0 leading-5 font-medium wrap-anywhere">
                                                 {connection.name}
                                             </span>
                                             <StatusBadge
@@ -1111,6 +1057,7 @@ export default function QueryRequestShow({
                                                 label={driverLabel(
                                                     connection.driver,
                                                 )}
+                                                className="mt-0.5"
                                             />
                                         </span>
                                     ))}
@@ -1199,7 +1146,7 @@ export default function QueryRequestShow({
                 {query_request.request_kind === 'single_execution' && (
                     <section
                         aria-labelledby="preflight-title"
-                        className="-mt-6 overflow-hidden border-y bg-card sm:rounded-b-lg sm:border"
+                        className="overflow-hidden border-y bg-card sm:rounded-lg sm:border"
                     >
                         <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                             <div className="min-w-0">
@@ -1298,9 +1245,32 @@ export default function QueryRequestShow({
                                                                     ) : (
                                                                         <CircleMinus className="mt-0.5 size-3.5 shrink-0" />
                                                                     )}
-                                                                    {
-                                                                        message.message
-                                                                    }
+                                                                    <span>
+                                                                        {
+                                                                            message.message
+                                                                        }
+                                                                        {isAdministrator &&
+                                                                            message.candidate_id && (
+                                                                                <>
+                                                                                    {' '}
+                                                                                    <Link
+                                                                                        href={editSqlPolicy(
+                                                                                            {
+                                                                                                query: {
+                                                                                                    candidate:
+                                                                                                        message.candidate_id,
+                                                                                                },
+                                                                                            },
+                                                                                        )}
+                                                                                        className="font-medium underline underline-offset-2"
+                                                                                    >
+                                                                                        Review
+                                                                                        policy
+                                                                                        candidate
+                                                                                    </Link>
+                                                                                </>
+                                                                            )}
+                                                                    </span>
                                                                 </li>
                                                             ),
                                                         )}
@@ -1508,29 +1478,33 @@ export default function QueryRequestShow({
                         aria-labelledby="access-sessions-title"
                         className="overflow-hidden border-y bg-card sm:rounded-lg sm:border"
                     >
-                        <div className="border-b px-4 py-3 sm:px-5">
+                        <div className="flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
                             <h2
                                 id="access-sessions-title"
                                 className="text-sm font-semibold"
                             >
-                                Access sessions
+                                {isNativeClientAccess
+                                    ? 'Native client sessions'
+                                    : 'Query Access sessions'}
                             </h2>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                                Time-boxed database browser sessions started
-                                from this request.
-                            </p>
+                            <span className="text-xs text-muted-foreground">
+                                {query_request.sessions.length}{' '}
+                                {query_request.sessions.length === 1
+                                    ? 'session'
+                                    : 'sessions'}
+                            </span>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full min-w-[560px] text-sm">
                                 <thead>
                                     <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                                        <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
+                                        <th className="py-2.5 pr-4 pl-4 font-medium sm:pl-5">
                                             Started
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-4 font-medium">
                                             Expires
                                         </th>
-                                        <th className="py-3 pr-4 font-medium">
+                                        <th className="py-2.5 pr-4 font-medium">
                                             Ended
                                         </th>
                                     </tr>
@@ -1541,19 +1515,19 @@ export default function QueryRequestShow({
                                             key={session.id}
                                             className="border-b last:border-0"
                                         >
-                                            <td className="py-3.5 pr-4 pl-4 sm:pl-6">
+                                            <td className="py-3 pr-4 pl-4 font-mono text-xs sm:pl-5">
                                                 {formatDate(
                                                     session.started_at,
                                                     userTimezone,
                                                 )}
                                             </td>
-                                            <td className="py-3.5 pr-4">
+                                            <td className="py-3 pr-4 font-mono text-xs">
                                                 {formatDate(
                                                     session.expires_at,
                                                     userTimezone,
                                                 )}
                                             </td>
-                                            <td className="py-3.5 pr-4">
+                                            <td className="py-3 pr-4 font-mono text-xs">
                                                 {formatDate(
                                                     session.ended_at,
                                                     userTimezone,
@@ -1567,7 +1541,9 @@ export default function QueryRequestShow({
                                                 colSpan={3}
                                                 className="py-10 text-center text-muted-foreground"
                                             >
-                                                No access sessions started.
+                                                {isNativeClientAccess
+                                                    ? 'No native client sessions started.'
+                                                    : 'No Query Access sessions started.'}
                                             </td>
                                         </tr>
                                     )}
@@ -1601,6 +1577,11 @@ export default function QueryRequestShow({
                             >
                                 {({ processing, errors }) => (
                                     <>
+                                        <input
+                                            type="hidden"
+                                            name="expected_revision"
+                                            value={query_request.revision}
+                                        />
                                         <div className="grid gap-2 md:w-80">
                                             <Label htmlFor="decision">
                                                 Decision
@@ -1803,10 +1784,10 @@ export default function QueryRequestShow({
                                                 {isExpanded && (
                                                     <tr className="border-b bg-muted/20">
                                                         <td
-                                                            colSpan={8}
-                                                            className="px-4 py-3 sm:px-6"
+                                                            colSpan={9}
+                                                            className="w-0 max-w-0 px-4 py-3 sm:px-6"
                                                         >
-                                                            <div className="grid gap-3">
+                                                            <div className="grid max-w-full min-w-0 gap-3">
                                                                 <div>
                                                                     <div className="mb-2 text-xs font-medium text-muted-foreground uppercase">
                                                                         SQL
@@ -1816,7 +1797,7 @@ export default function QueryRequestShow({
                                                                             'SQL not recorded'}
                                                                     </pre>
                                                                 </div>
-                                                                <div>
+                                                                <div className="max-w-full min-w-0">
                                                                     <div className="mb-2 text-xs font-medium text-muted-foreground uppercase">
                                                                         Result
                                                                     </div>

@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Notifications\UserInvitationNotification;
 use App\Services\ApplicationSettings;
 use App\Services\AuditLogger;
+use App\Services\InvitationAcceptance;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,8 @@ use Inertia\Response;
 
 class UserInvitationController extends Controller
 {
+    public function __construct(private readonly InvitationAcceptance $invitationAcceptance) {}
+
     public function create(): Response
     {
         abort_unless(request()->user()->isAdmin(), 403);
@@ -62,7 +65,7 @@ class UserInvitationController extends Controller
 
     public function show(User $user, string $token): Response
     {
-        $this->ensureInvitationCanBeAccepted($user, $token);
+        $this->invitationAcceptance->ensureCanAccept($user, $token);
 
         return Inertia::render('auth/accept-invitation', [
             'accept_url' => request()->fullUrl(),
@@ -92,7 +95,7 @@ class UserInvitationController extends Controller
 
     public function accept(AcceptUserInvitationRequest $request, User $user, string $token, AuditLogger $auditLogger): RedirectResponse
     {
-        $this->ensureInvitationCanBeAccepted($user, $token);
+        $this->invitationAcceptance->ensureCanAccept($user, $token);
 
         $user->forceFill([
             'password' => $request->validated('password'),
@@ -112,12 +115,5 @@ class UserInvitationController extends Controller
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Invitation accepted.']);
 
         return redirect()->route('dashboard');
-    }
-
-    private function ensureInvitationCanBeAccepted(User $user, string $token): void
-    {
-        abort_if($user->invitation_accepted_at !== null, 403);
-        abort_if($user->invitation_token_hash === null, 403);
-        abort_unless(hash_equals($user->invitation_token_hash, hash('sha256', $token)), 403);
     }
 }

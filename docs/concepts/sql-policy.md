@@ -15,7 +15,7 @@ An administrator can enable each of these families independently:
 - `DROP TABLE`
 - `TRUNCATE TABLE`
 
-**Allow all governed statement families** enables every recognized family without discarding the individual settings. Turning the switch off returns to the individual family selections.
+Each family is enabled or disabled explicitly. This keeps the effective policy visible and avoids a second override that could disagree with the individual settings.
 
 ## CTE-aware detection
 

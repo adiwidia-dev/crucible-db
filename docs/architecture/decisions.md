@@ -1,22 +1,23 @@
 # Crucible DB Architecture Decisions
 
-Last updated: 2026-08-23
+Last updated: 2026-09-09
 
 ## Current product boundary
 
 Crucible DB is a governed database operations control plane. It manages PostgreSQL and MySQL connections, explicit connection groups, role-scoped access policy, reviewed deployment batches, time-bounded query-access sessions, execution history, audit records, connection health, and operational notifications.
 
-The application does not currently implement a database protocol proxy for external tools such as pgAdmin. Query Access is an in-application, browser-based SQL workspace with an explicit read-only or read + write session level.
+Query Access supports both the in-application SQL workspace and a separately authorized Native client tunnel for compatible PostgreSQL/MySQL tools. Both use an explicit read-only or read + write session level and the same current role and SQL policy checks.
 
 ## Runtime and deployment
 
-- **Backend:** Laravel 13 on PHP 8.3+.
+- **Backend:** Laravel 13 on PHP 8.5+.
 - **Frontend:** Inertia v3 with React 19 and TypeScript.
 - **Styling:** Tailwind CSS v4 and the local Crucible design system.
 - **Production HTTP runtime:** FrankenPHP through Laravel Octane.
 - **Background work:** Laravel Horizon backed by Redis.
 - **Scheduling:** `php artisan schedule:work`.
-- **Application metadata:** SQLite at `/app/storage/database/crucible.sqlite` in the persistent `crucible_storage` Docker volume.
+- **Application metadata:** administrator-selected SQLite, PostgreSQL, or MySQL through the `control` connection.
+- **Managed database state:** encrypted selection, migration plans, operation locks, and the maintenance fence in the persistent `crucible_storage` Docker volume.
 - **Target drivers:** PostgreSQL and MySQL.
 
 `Dockerfile.production` produces a single application image. Its Supervisor process starts three managed processes in that container: Octane/FrankenPHP on port 8000, Horizon, and the scheduler. `compose.production.yaml` pairs that application service with Redis and persists both application storage and Redis data in named volumes.
@@ -66,7 +67,7 @@ Deployment Batches receive a per-statement preflight report during creation and 
 - **Ready with warnings:** execution may continue, but the requester and reviewer should assess the finding; and
 - **Blocked:** a definite SQL, policy, target, or schedule safety failure prevents approval or execution.
 
-Current warnings include unbounded `SELECT` statements and `UPDATE`/`DELETE` statements without `WHERE`. Workspace administrators control the enabled governed SQL families: read queries, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, and `TRUNCATE TABLE`; the all-families setting overrides the individual controls without replacing their saved values. CTE-led statements are classified from the top-level executable `SELECT`, `INSERT`, `UPDATE`, or `DELETE`, so their policy and warning behavior remains accurate.
+Current warnings include unbounded `SELECT` statements and `UPDATE`/`DELETE` statements without `WHERE`. Workspace administrators control each enabled governed SQL family explicitly: read queries, `INSERT`, `UPDATE`, `DELETE`, `CREATE TABLE`, `ALTER TABLE`, `DROP TABLE`, and `TRUNCATE TABLE`. CTE-led statements are classified from the top-level executable `SELECT`, `INSERT`, `UPDATE`, or `DELETE`, so their policy and warning behavior remains accurate.
 
 The optional Emergency SQL fallback is an audited Deployment Batch escape hatch for an otherwise unsupported single statement. It is classified as write access, requires the applicable role permission and approval, and produces an explicit preflight warning. It never applies to Query Access. Administrative, file-access, security-management, procedural, transaction-control, multi-statement, and `EXPLAIN ANALYZE` SQL remain blocked even when fallback is enabled. A blocked scheduled batch stays approved but undispatched and emits notifications to relevant people.
 
@@ -76,9 +77,15 @@ The application emits in-app database notifications for approval decisions, revi
 
 Meaningful workflows are also written to audit records. Stored connection credentials are encrypted; credential values must never be exposed through UI, notifications, or audit payloads.
 
+## Application database lifecycle
+
+Managed first-run setup requires a deployment token before it may connect to a control database or create the first administrator. The selected SQLite, PostgreSQL, or MySQL configuration is encrypted with `APP_KEY`; network databases must be dedicated and empty before schema provisioning.
+
+An existing managed installation can create one migration plan at a time. Copy and rollback operations take an exclusive plan lock, require live access to be idle, wait for scheduled mutations, drain Redis queues, and hold a maintenance fence across copy, verification, runtime restart, and finalization. Durable tables are copied in foreign-key order, canonicalized across drivers, hashed, and verified. Ephemeral cache, queue, session, and migration bookkeeping tables are not copied. Rollback synchronizes new durable data back to the original database before changing the active selection.
+
 ## Operational constraints
 
-- The SQLite metadata database is intended for the single-node Compose deployment provided here. Multi-node production deployments need a deliberate shared metadata strategy before scaling horizontally.
+- The supplied Compose deployment runs one application service. A network control database does not by itself make the deployment horizontally scalable because managed selection and migration-fence files must also be shared consistently.
 - Redis is required for queues, Horizon metadata, cache, and sessions; do not substitute the metadata database as the queue backend.
 - Long-running target queries run in queued jobs, not in HTTP workers.
-- Kubernetes, service-account automation, table-level RBAC, break-glass access, and external SQL-client proxying are not current capabilities. Emergency SQL fallback is a governed and audited deployment-batch mechanism, not break-glass access.
+- Kubernetes, service-account automation, table-level RBAC, and generic break-glass access are not current capabilities. Emergency SQL fallback is a governed and audited deployment-batch mechanism, not break-glass access.

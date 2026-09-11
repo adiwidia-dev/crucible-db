@@ -1,6 +1,6 @@
 # People
 
-**Who sees it:** workspace administrators under **Admin → Access → People**.
+**Who sees it:** workspace administrators under **Manage → Administration → Access & identity → People**.
 
 ![People administration](../assets/screenshots/admin-people.png){ .docs-screenshot }
 

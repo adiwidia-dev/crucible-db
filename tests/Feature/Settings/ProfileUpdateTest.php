@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -18,7 +19,11 @@ class ProfileUpdateTest extends TestCase
             ->actingAs($user)
             ->get(route('profile.edit'));
 
-        $response->assertOk();
+        $response
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('settings/profile')
+                ->missing('timezones'));
     }
 
     public function test_profile_information_can_be_updated()
@@ -30,7 +35,6 @@ class ProfileUpdateTest extends TestCase
             ->patch(route('profile.update'), [
                 'name' => 'Test User',
                 'email' => 'test@example.com',
-                'timezone' => 'Asia/Jakarta',
             ]);
 
         $response
@@ -41,22 +45,22 @@ class ProfileUpdateTest extends TestCase
 
         $this->assertSame('Test User', $user->name);
         $this->assertSame('test@example.com', $user->email);
-        $this->assertSame('Asia/Jakarta', $user->timezone);
         $this->assertNull($user->email_verified_at);
     }
 
-    public function test_profile_timezone_must_be_valid(): void
+    public function test_profile_update_does_not_change_the_timezone_preference(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['timezone' => 'UTC']);
 
-        $this
-            ->actingAs($user)
+        $this->actingAs($user)
             ->patch(route('profile.update'), [
-                'name' => 'Test User',
+                'name' => $user->name,
                 'email' => $user->email,
-                'timezone' => 'Jakarta',
+                'timezone' => 'Asia/Jakarta',
             ])
-            ->assertSessionHasErrors('timezone');
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('UTC', $user->refresh()->timezone);
     }
 
     public function test_email_verification_status_is_unchanged_when_the_email_address_is_unchanged()
@@ -68,7 +72,6 @@ class ProfileUpdateTest extends TestCase
             ->patch(route('profile.update'), [
                 'name' => 'Test User',
                 'email' => $user->email,
-                'timezone' => $user->timezone,
             ]);
 
         $response
@@ -94,6 +97,67 @@ class ProfileUpdateTest extends TestCase
 
         $this->assertGuest();
         $this->assertNull($user->fresh());
+    }
+
+    public function test_only_active_administrator_cannot_delete_their_account(): void
+    {
+        $adminRole = Role::factory()->admin()->create();
+        $administrator = User::factory()->withRole($adminRole)->create();
+
+        $response = $this
+            ->actingAs($administrator)
+            ->from(route('profile.edit'))
+            ->delete(route('profile.destroy'), [
+                'password' => 'password',
+            ]);
+
+        $response
+            ->assertSessionHasErrors('password')
+            ->assertRedirect(route('profile.edit'));
+
+        $this->assertAuthenticatedAs($administrator);
+        $this->assertModelExists($administrator);
+    }
+
+    public function test_administrator_can_delete_their_account_when_another_active_administrator_exists(): void
+    {
+        $adminRole = Role::factory()->admin()->create();
+        $administrator = User::factory()->withRole($adminRole)->create();
+        User::factory()->withRole($adminRole)->create();
+
+        $response = $this
+            ->actingAs($administrator)
+            ->delete(route('profile.destroy'), [
+                'password' => 'password',
+            ]);
+
+        $response
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('home'));
+
+        $this->assertGuest();
+        $this->assertModelMissing($administrator);
+    }
+
+    public function test_disabled_administrator_does_not_allow_the_only_active_administrator_to_delete_their_account(): void
+    {
+        $adminRole = Role::factory()->admin()->create();
+        $administrator = User::factory()->withRole($adminRole)->create();
+        User::factory()->disabled()->withRole($adminRole)->create();
+
+        $response = $this
+            ->actingAs($administrator)
+            ->from(route('profile.edit'))
+            ->delete(route('profile.destroy'), [
+                'password' => 'password',
+            ]);
+
+        $response
+            ->assertSessionHasErrors('password')
+            ->assertRedirect(route('profile.edit'));
+
+        $this->assertAuthenticatedAs($administrator);
+        $this->assertModelExists($administrator);
     }
 
     public function test_correct_password_must_be_provided_to_delete_account()

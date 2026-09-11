@@ -4,6 +4,8 @@ namespace App\Http\Requests;
 
 use App\Concerns\PasswordValidationRules;
 use App\Models\User;
+use App\Services\InitialSetupAccess;
+use App\Services\InitialSetupState;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -14,7 +16,8 @@ class CompleteInitialSetupRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return ! User::query()->exists();
+        return app(InitialSetupState::class)->canInitialize()
+            && app(InitialSetupAccess::class)->isGranted($this);
     }
 
     /**

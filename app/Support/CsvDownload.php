@@ -19,10 +19,10 @@ class CsvDownload
                 return;
             }
 
-            fputcsv($output, $header);
+            fputcsv($output, $this->safeRow($header));
 
             foreach ($rows as $row) {
-                fputcsv($output, $row);
+                fputcsv($output, $this->safeRow($row));
             }
 
             fclose($output);
@@ -68,5 +68,22 @@ class CsvDownload
         }
 
         return $value;
+    }
+
+    /**
+     * @param  array<int, mixed>  $row
+     * @return array<int, mixed>
+     */
+    private function safeRow(array $row): array
+    {
+        return array_map(function (mixed $value): mixed {
+            $value = $this->stringableValue($value);
+
+            if (is_string($value) && preg_match('/^[\x00-\x20\x7F]*[=+\-@]/', $value) === 1) {
+                return "'".$value;
+            }
+
+            return $value;
+        }, $row);
     }
 }

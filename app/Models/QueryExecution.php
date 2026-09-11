@@ -31,7 +31,7 @@ use Illuminate\Support\Carbon;
  * @property-read QueryRequestStatement|null $statement
  * @property-read DatabaseConnection|null $databaseConnection
  */
-#[Fillable(['query_request_id', 'query_request_statement_id', 'database_connection_id', 'executed_by_id', 'sql', 'query_type', 'status', 'started_at', 'finished_at', 'duration_ms', 'row_count', 'result_truncated', 'sample_rows', 'error_message'])]
+#[Fillable(['query_request_id', 'native_proxy_connection_id', 'native_query_session_query_id', 'query_request_statement_id', 'database_connection_id', 'executed_by_id', 'sql', 'native_protocol_command', 'native_sql_fingerprint', 'native_parameter_count', 'query_type', 'status', 'started_at', 'finished_at', 'duration_ms', 'row_count', 'result_truncated', 'sample_rows', 'error_message'])]
 class QueryExecution extends Model
 {
     /** @use HasFactory<QueryExecutionFactory> */

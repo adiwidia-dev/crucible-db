@@ -22,6 +22,6 @@ class FactoryResetController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('setup.show');
+        return redirect()->route('setup.access.create');
     }
 }

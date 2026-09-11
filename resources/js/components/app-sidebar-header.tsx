@@ -7,6 +7,7 @@ import {
     Info,
     LogOut,
     MailCheck,
+    Terminal,
 } from 'lucide-react';
 import NotificationController from '@/actions/App/Http/Controllers/NotificationController';
 import { Breadcrumbs } from '@/components/breadcrumbs';
@@ -19,6 +20,11 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useInitials } from '@/hooks/use-initials';
 import { logout } from '@/routes';
 import { index as notificationsIndex } from '@/routes/notifications';
@@ -38,8 +44,13 @@ export function AppSidebarHeader({
 }: {
     breadcrumbs?: BreadcrumbItemType[];
 }) {
-    const { auth, notification_summary: notificationSummary } = usePage<{
+    const {
+        auth,
+        native_proxy_cli_download_url: cliDownloadUrl,
+        notification_summary: notificationSummary,
+    } = usePage<{
         auth: Auth;
+        native_proxy_cli_download_url?: string;
         notification_summary?: {
             unread_count?: number;
             recent?: NotificationPreview[];
@@ -63,6 +74,26 @@ export function AppSidebarHeader({
                 )}
             </div>
             <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+                {cliDownloadUrl && (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <a
+                                href={cliDownloadUrl}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                aria-label="Open Crucible CLI downloads in a new tab"
+                                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none motion-reduce:transition-none"
+                            >
+                                <Terminal className="size-4" />
+                                <span className="hidden md:inline">CLI</span>
+                            </a>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                            Download Crucible CLI
+                        </TooltipContent>
+                    </Tooltip>
+                )}
+
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button

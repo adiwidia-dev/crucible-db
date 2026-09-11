@@ -11,15 +11,26 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property int $id
  * @property int $query_request_id
+ * @property int $query_request_revision
  * @property int $reviewer_id
  * @property string $decision
  * @property string|null $comment
  */
-#[Fillable(['query_request_id', 'reviewer_id', 'decision', 'comment'])]
+#[Fillable(['query_request_id', 'query_request_revision', 'reviewer_id', 'decision', 'comment'])]
 class QueryReview extends Model
 {
     /** @use HasFactory<QueryReviewFactory> */
     use HasFactory;
+
+    /**
+     * @return array{query_request_revision: 'integer'}
+     */
+    protected function casts(): array
+    {
+        return [
+            'query_request_revision' => 'integer',
+        ];
+    }
 
     /**
      * @return BelongsTo<QueryRequest, $this>

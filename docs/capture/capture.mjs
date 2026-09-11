@@ -1,3 +1,5 @@
+/* global process */
+
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from '@playwright/test';
@@ -7,6 +9,10 @@ const outputDirectory = resolve('docs/assets/screenshots');
 const viewport = { width: 1440, height: 900 };
 const password = process.env.DOCS_DEMO_PASSWORD ?? 'password';
 const invitationUrl = process.env.DOCS_INVITATION_URL;
+const setupToken =
+    process.env.DOCS_SETUP_TOKEN ?? 'crucible-local-initial-setup-token';
+const provisionSetupDatabase =
+    process.env.DOCS_SETUP_PROVISION_DATABASE === 'true';
 const captureScope = process.env.DOCS_CAPTURE_SCOPE ?? 'all';
 const accounts = {
     admin: process.env.DOCS_ADMIN_EMAIL ?? 'admin@example.com',
@@ -20,6 +26,14 @@ await mkdir(outputDirectory, { recursive: true });
 const browser = await chromium.launch();
 
 try {
+    if (captureScope === 'setup') {
+        await captureSetupPages();
+    }
+
+    if (captureScope === 'setup-owner') {
+        await captureSetupOwnerPages();
+    }
+
     if (captureScope === 'all' || captureScope === 'public') {
         await capturePublicPages();
     }
@@ -38,6 +52,10 @@ try {
 
     if (captureScope === 'admin-details') {
         await captureAdministratorDetailPages();
+    }
+
+    if (captureScope === 'admin-database') {
+        await captureAdministratorDatabasePage();
     }
 
     console.info(`Captured the ${captureScope} documentation screenshot set.`);
@@ -127,6 +145,22 @@ async function captureRequesterPages() {
 
         await visit(page, new URL(sessionHref, baseUrl).pathname);
         await screenshot(page, 'query-access-session.png');
+
+        await visit(page, '/query-requests');
+        await visitLinkedPage(
+            page,
+            'Native Client: investigate checkout timing',
+        );
+        const nativeSessionHref = await page
+            .getByRole('link', { name: 'Resume Session', exact: true })
+            .getAttribute('href');
+
+        if (!nativeSessionHref) {
+            throw new Error('The native documentation session is missing.');
+        }
+
+        await visit(page, new URL(nativeSessionHref, baseUrl).pathname);
+        await screenshot(page, 'native-client-session.png');
     } finally {
         await context.close();
     }
@@ -196,6 +230,10 @@ async function captureAdministratorPages() {
             ['/settings/admin/roles', 'admin-access-roles.png'],
             ['/settings/admin/authentication', 'admin-authentication.png'],
             ['/settings/admin/application', 'admin-application.png'],
+            [
+                '/settings/admin/application-database',
+                'admin-application-database.png',
+            ],
             ['/settings/admin/notifications', 'admin-notification-policy.png'],
             ['/settings/admin/sql-policy', 'admin-sql-policy.png'],
             ['/settings/admin/audit-logs', 'admin-audit-log.png'],
@@ -252,6 +290,54 @@ async function captureAdministratorPages() {
     }
 }
 
+async function captureSetupPages() {
+    const { context, page } = await createPage();
+
+    try {
+        await visit(page, '/setup/access');
+        await screenshot(page, 'setup-access.png', true);
+        await page.locator('input[name=setup_token]').fill(setupToken);
+        await page.getByRole('button', { name: 'Unlock setup' }).click();
+        await page.waitForURL(/setup\/database/, { timeout: 15_000 });
+        await screenshot(page, 'setup-application-database.png', true);
+
+        if (provisionSetupDatabase) {
+            await page.getByRole('button', { name: 'Use SQLite' }).click();
+            await page.waitForURL(/\/setup(?:\/database\/restart)?$/, {
+                timeout: 15_000,
+            });
+        }
+    } finally {
+        await context.close();
+    }
+}
+
+async function captureSetupOwnerPages() {
+    const { context, page } = await createPage();
+
+    try {
+        await visit(page, '/setup/access');
+        await page.locator('input[name=setup_token]').fill(setupToken);
+        await page.getByRole('button', { name: 'Unlock setup' }).click();
+        await page.waitForURL(/\/setup$/, { timeout: 15_000 });
+        await screenshot(page, 'setup-owner.png', true);
+
+        await page.locator('input[name=app_name]').fill('Crucible DB');
+        await page.locator('input[name=first_name]').fill('Alex');
+        await page.locator('input[name=last_name]').fill('Morgan');
+        await page.locator('input[name=email]').fill(accounts.admin);
+        await page.locator('input[name=password]').fill(password);
+        await page.locator('input[name=password_confirmation]').fill(password);
+        await page
+            .getByRole('button', { name: 'Continue to database connection' })
+            .click();
+        await page.waitForURL(/setup\/connection/, { timeout: 15_000 });
+        await screenshot(page, 'setup-connection.png', true);
+    } finally {
+        await context.close();
+    }
+}
+
 async function authenticatedPage(email) {
     const result = await createPage();
     const { context, page } = result;
@@ -267,6 +353,7 @@ async function authenticatedPage(email) {
         return result;
     } catch (error) {
         await context.close();
+
         throw error;
     }
 }
@@ -287,6 +374,20 @@ async function captureAdministratorDetailPages() {
             .getByRole('heading', { name: 'Emergency SQL fallback' })
             .scrollIntoViewIfNeeded();
         await screenshot(page, 'admin-emergency-fallback.png');
+    } finally {
+        await context.close();
+    }
+}
+
+async function captureAdministratorDatabasePage() {
+    const { context, page } = await authenticatedPage(accounts.admin);
+
+    try {
+        await visit(page, '/settings/admin/application-database');
+        await page
+            .locator('input[name=sqlite_database]')
+            .fill('/tmp/crucible-docs-migration.sqlite');
+        await screenshot(page, 'admin-application-database.png');
     } finally {
         await context.close();
     }

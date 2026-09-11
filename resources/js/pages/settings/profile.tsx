@@ -1,8 +1,6 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
-import { useState } from 'react';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import { PageHeader } from '@/components/crucible/page-header';
-import { TimezoneCombobox } from '@/components/crucible/timezone-combobox';
 import DeleteUser from '@/components/delete-user';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -19,14 +17,11 @@ type PageProps = {
 export default function Profile({
     mustVerifyEmail,
     status,
-    timezones,
 }: {
     mustVerifyEmail: boolean;
     status?: string;
-    timezones: string[];
 }) {
     const { auth } = usePage<PageProps>().props;
-    const [timezone, setTimezone] = useState(auth.user.timezone ?? 'UTC');
 
     return (
         <>
@@ -37,7 +32,7 @@ export default function Profile({
             <div className="crucible-page">
                 <PageHeader
                     title="Profile"
-                    description="Update your name, email address, and operational timezone."
+                    description="Update the identity details used across your workspace."
                 />
 
                 <section className="max-w-3xl overflow-hidden border-y bg-card sm:rounded-lg sm:border">
@@ -95,18 +90,6 @@ export default function Profile({
                                     <InputError
                                         className="mt-2"
                                         message={errors.email}
-                                    />
-                                </div>
-
-                                <div className="grid gap-2">
-                                    <TimezoneCombobox
-                                        label="Timezone"
-                                        name="timezone"
-                                        timezones={timezones}
-                                        value={timezone}
-                                        onValueChange={setTimezone}
-                                        description="Scheduled query inputs and operational timestamps use this timezone."
-                                        error={errors.timezone}
                                     />
                                 </div>
 

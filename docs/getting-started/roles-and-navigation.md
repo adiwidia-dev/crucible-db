@@ -9,8 +9,8 @@ An ordinary user sees the menus required to request and track database work:
 - **Work → Overview**: personal work and operational items that need attention.
 - **Work → Query Requests**: Deployment Batches and Query Access requests.
 - **Data → Connections**: only connections allowed by effective role policy.
-- **Account → Profile**: name, email, timezone, and account deletion.
-- **Account → Preferences**: appearance, email preferences, and watched resources.
+- **Account → Profile**: name, email, and account deletion.
+- **Account → Preferences**: appearance, timezone, email preferences, and watched resources.
 - **Account → Security**: password, two-factor authentication, and passkeys.
 - **Notifications** in the top bar: recent operational events and notification history.
 
@@ -24,16 +24,14 @@ A reviewer sees the same menus as an ordinary user. Reviewer authority does not 
 
 ## Workspace administrator
 
-An administrator sees every ordinary menu plus:
+An administrator sees every ordinary menu plus **Data → Connection Groups** and the collapsible **Manage → Administration** tree:
 
-- **Data → Connection Groups**.
-- **Admin → Access → People**.
-- **Admin → Access → Access Roles**.
-- **Admin → Authentication → Authentication**.
-- **Admin → Workspace → Application**.
-- **Admin → Workspace → Notification Policy**.
-- **Admin → Governance → SQL Policy**.
-- **Admin → Governance → Audit Log**.
+- **Access & identity**: People, Access Roles, and Access Workflows.
+- **Security & policy**: Sign-in Methods, SSO Providers, and SQL Policy.
+- **Application**: General, Notification Policy, and Database.
+- **Governance**: Audit Log.
+
+Administration and Account are independent disclosures, so both can remain open. Each administration subsection is expanded or collapsed manually; opening another subsection does not close the current one.
 
 ![Administrator navigation](../assets/screenshots/admin-navigation.png){ .docs-screenshot }
 

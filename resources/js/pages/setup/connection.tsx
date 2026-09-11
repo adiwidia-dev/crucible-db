@@ -19,6 +19,14 @@ type Props = {
     drivers: Driver[];
 };
 
+const tlsModes = [
+    { value: 'disabled', label: 'Disabled' },
+    { value: 'preferred', label: 'Preferred' },
+    { value: 'required', label: 'Required' },
+    { value: 'verify_ca', label: 'Verify CA' },
+    { value: 'verify_identity', label: 'Verify identity' },
+];
+
 export default function SetupConnection({ drivers }: Props) {
     const [driver, setDriver] = useState<Driver>(
         drivers[0] ?? {
@@ -27,6 +35,10 @@ export default function SetupConnection({ drivers }: Props) {
             default_port: 5432,
         },
     );
+    const [tlsMode, setTlsMode] = useState('preferred');
+    const tlsIsEnabled = tlsMode !== 'disabled';
+    const tlsVerifiesServer =
+        tlsMode === 'verify_ca' || tlsMode === 'verify_identity';
 
     return (
         <>
@@ -47,6 +59,11 @@ export default function SetupConnection({ drivers }: Props) {
                     {...SetupController.storeConnection.form()}
                     disableWhileProcessing
                     className="grid gap-4"
+                    resetOnError={[
+                        'tls_ca_certificate',
+                        'tls_client_certificate',
+                        'tls_client_key',
+                    ]}
                 >
                     {({ processing, errors }) => (
                         <>
@@ -142,14 +159,78 @@ export default function SetupConnection({ drivers }: Props) {
                                 <InputError message={errors.password} />
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="ssl_mode">SSL mode</Label>
-                                <Input
-                                    id="ssl_mode"
-                                    name="ssl_mode"
-                                    placeholder="prefer"
-                                />
-                                <InputError message={errors.ssl_mode} />
+                                <Label htmlFor="tls_mode">
+                                    Target TLS policy
+                                </Label>
+                                <select
+                                    id="tls_mode"
+                                    name="tls_mode"
+                                    value={tlsMode}
+                                    onChange={(event) =>
+                                        setTlsMode(event.currentTarget.value)
+                                    }
+                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                    required
+                                >
+                                    {tlsModes.map((mode) => (
+                                        <option
+                                            key={mode.value}
+                                            value={mode.value}
+                                        >
+                                            {mode.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <InputError message={errors.tls_mode} />
                             </div>
+                            {tlsIsEnabled && (
+                                <div className="grid gap-3 rounded-md border bg-muted/20 p-3">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="tls_ca_certificate">
+                                            CA certificate
+                                            {tlsVerifiesServer && ' (required)'}
+                                        </Label>
+                                        <textarea
+                                            id="tls_ca_certificate"
+                                            name="tls_ca_certificate"
+                                            required={tlsVerifiesServer}
+                                            className="min-h-24 rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                        />
+                                        <InputError
+                                            message={errors.tls_ca_certificate}
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="tls_client_certificate">
+                                            Client certificate
+                                        </Label>
+                                        <textarea
+                                            id="tls_client_certificate"
+                                            name="tls_client_certificate"
+                                            className="min-h-24 rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                        />
+                                        <InputError
+                                            message={
+                                                errors.tls_client_certificate
+                                            }
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="tls_client_key">
+                                            Client private key
+                                        </Label>
+                                        <textarea
+                                            id="tls_client_key"
+                                            name="tls_client_key"
+                                            autoComplete="new-password"
+                                            className="min-h-24 rounded-md border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                        />
+                                        <InputError
+                                            message={errors.tls_client_key}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                             <input type="hidden" name="is_active" value="1" />
                             <Button
                                 className="mt-1 w-full"

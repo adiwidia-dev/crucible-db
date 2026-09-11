@@ -19,11 +19,19 @@ return new class extends Migration
         });
 
         Schema::create('connection_group_database_connection', function (Blueprint $table) {
-            $table->foreignId('connection_group_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('database_connection_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('connection_group_id');
+            $table->foreignId('database_connection_id');
             $table->timestamps();
 
-            $table->unique(['connection_group_id', 'database_connection_id']);
+            $table->foreign('connection_group_id', 'connection_group_database_group_fk')
+                ->references('id')->on('connection_groups')->cascadeOnDelete();
+            $table->foreign('database_connection_id', 'connection_group_database_connection_fk')
+                ->references('id')->on('database_connections')->cascadeOnDelete();
+
+            $table->unique(
+                ['connection_group_id', 'database_connection_id'],
+                'connection_group_database_connection_unique',
+            );
         });
     }
 

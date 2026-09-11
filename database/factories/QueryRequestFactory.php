@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\AccessMode;
+use App\Enums\AccessTransport;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
@@ -31,6 +32,7 @@ class QueryRequestFactory extends Factory
             'sql' => 'select 1 as value',
             'query_type' => QueryType::Read,
             'request_kind' => QueryRequestKind::SingleExecution,
+            'access_transport' => AccessTransport::Browser,
             'requested_access_mode' => null,
             'status' => QueryRequestStatus::PendingReview,
             'requires_approval' => true,

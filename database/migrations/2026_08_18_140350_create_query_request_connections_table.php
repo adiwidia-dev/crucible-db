@@ -17,7 +17,10 @@ return new class extends Migration
             $table->foreignId('database_connection_id')->constrained()->restrictOnDelete();
             $table->timestamps();
 
-            $table->unique(['query_request_id', 'database_connection_id']);
+            $table->unique(
+                ['query_request_id', 'database_connection_id'],
+                'query_request_connections_request_database_unique',
+            );
         });
     }
 

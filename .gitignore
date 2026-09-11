@@ -14,8 +14,9 @@
 /vendor
 .DS_Store
 .env
-.env.backup
-.env.production
+.env.*
+!.env.example
+!.env.production.example
 .phpactor.json
 .phpunit.result.cache
 Homestead.json
@@ -29,9 +30,18 @@ yarn-error.log
 /.vscode
 /.zed
 /graphify-out/
+/docs/security-reports/
+/docs/archive/
+/docs/superpowers/
 /.codex/
+/.playwright/
+/.shannon/
 /.venv-docs/
 /site/
+/native/dist/
+/coverage/
+/playwright-report/
+/test-results/
 
 **/caddy
 frankenphp

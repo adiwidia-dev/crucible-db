@@ -4,6 +4,28 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+### Added
+
+- SQLite, PostgreSQL, and MySQL application-database drivers for Crucible control-plane data, including driver selection during initial setup.
+- Encrypted, resumable application-database migration plans with independent verification, maintenance fencing, restart-aware cutover, and data-preserving rollback.
+- An admin-only **Application Database** workflow with connectivity validation, progress and activity reporting, typed confirmations, and recovery actions.
+- Optional isolated `control-postgres` and `control-mysql` production Compose profiles; external managed database endpoints remain supported without enabling either profile.
+- A compact, independently collapsible Administration and Account navigation structure with explicit Access & identity, Security & policy, Application, and Governance categories.
+
+### Security
+
+- Block normal web, queued, scheduled, and native-client control activity during application-database copy, cutover, and rollback while retaining an authenticated admin recovery path.
+- Keep application-database credentials only in encrypted configuration and migration files and omit them from browser props, audit metadata, and command inspection output.
+- Require a deployment-controlled token before first-run database selection or owner creation, preserve a completed-setup sentinel, and serialize initial ownership creation.
+- Encrypt and authenticate native proxy control request and response payloads, reject MySQL executable comments and optimizer hints, sanitize migration failures, and neutralize spreadsheet formulas in CSV exports.
+- Bind bundled HTTP origins and development service ports to loopback by default while documenting administrator-managed TLS termination and trusted proxy boundaries.
+
+### Operations
+
+- Verify the control database and Redis cache in application readiness checks.
+- Wait for the selected application database before startup migrations and document the required Octane, Horizon, and scheduler restart boundary.
+- Add corruption, invalid-credential, partial-copy resume, source-mutation, cross-driver, and native-client regression coverage.
+
 ## [0.1.0] - 2026-08-24
 
 ### Added

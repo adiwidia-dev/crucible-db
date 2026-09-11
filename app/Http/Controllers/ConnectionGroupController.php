@@ -6,7 +6,9 @@ use App\Http\Requests\StoreConnectionGroupRequest;
 use App\Http\Requests\UpdateConnectionGroupRequest;
 use App\Models\ConnectionGroup;
 use App\Models\DatabaseConnection;
+use App\Models\RoleConnectionGroupPolicy;
 use App\Services\AuditLogger;
+use App\Services\NativeProxy\LeaseWorkflow;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -57,11 +59,46 @@ class ConnectionGroupController extends Controller
         return redirect()->route('connection-groups.index');
     }
 
-    public function show(ConnectionGroup $connectionGroup): RedirectResponse
+    public function show(ConnectionGroup $connectionGroup): Response
     {
         abort_unless(request()->user()->isAdmin(), 403);
 
-        return redirect()->route('connection-groups.edit', $connectionGroup);
+        $connectionGroup->load([
+            'databaseConnections:id,name,driver,host,port,database,is_active',
+            'rolePolicies.role:id,name,slug,is_admin',
+        ]);
+
+        return Inertia::render('connection-groups/show', [
+            'connection_group' => [
+                'id' => $connectionGroup->id,
+                'name' => $connectionGroup->name,
+                'description' => $connectionGroup->description,
+                'connections' => $connectionGroup->databaseConnections->map(fn (DatabaseConnection $connection): array => [
+                    'id' => $connection->id,
+                    'name' => $connection->name,
+                    'driver' => $connection->driver->value,
+                    'endpoint' => $connection->host.':'.$connection->port,
+                    'database' => $connection->database,
+                    'is_active' => $connection->is_active,
+                ]),
+                'role_policies' => $connectionGroup->rolePolicies->map(fn (RoleConnectionGroupPolicy $policy): array => [
+                    'id' => $policy->id,
+                    'role' => [
+                        'id' => $policy->role->id,
+                        'name' => $policy->role->name,
+                        'slug' => $policy->role->slug,
+                        'is_admin' => $policy->role->is_admin,
+                    ],
+                    'access_mode' => $policy->access_mode->value,
+                    'query_access_mode' => $policy->query_access_mode->value,
+                    'native_proxy_access_mode' => $policy->native_proxy_access_mode->value,
+                    'can_review' => $policy->can_review,
+                    'read_requires_approval' => $policy->read_requires_approval,
+                    'write_requires_approval' => $policy->write_requires_approval,
+                    'max_write_session_minutes' => $policy->max_write_session_minutes,
+                ]),
+            ],
+        ]);
     }
 
     public function edit(ConnectionGroup $connectionGroup): Response
@@ -81,7 +118,7 @@ class ConnectionGroupController extends Controller
         ]);
     }
 
-    public function update(UpdateConnectionGroupRequest $request, ConnectionGroup $connectionGroup, AuditLogger $auditLogger): RedirectResponse
+    public function update(UpdateConnectionGroupRequest $request, ConnectionGroup $connectionGroup, AuditLogger $auditLogger, LeaseWorkflow $leaseWorkflow): RedirectResponse
     {
         $previousConnectionIds = $connectionGroup->databaseConnections()
             ->pluck('database_connections.id')
@@ -95,6 +132,12 @@ class ConnectionGroupController extends Controller
             $connectionGroup->update($request->groupAttributes());
             $connectionGroup->databaseConnections()->sync($connectionIds);
         });
+
+        $leaseWorkflow->revokeForDatabaseConnections(
+            array_values(array_unique([...$previousConnectionIds, ...$connectionIds])),
+            $request->user(),
+            'Connection group membership changed.',
+        );
 
         $auditLogger->log('connection_group.updated', $request->user(), $connectionGroup, [
             'connection_group_id' => $connectionGroup->id,

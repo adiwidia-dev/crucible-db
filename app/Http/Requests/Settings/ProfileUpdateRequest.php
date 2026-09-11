@@ -19,7 +19,6 @@ class ProfileUpdateRequest extends FormRequest
     {
         return [
             ...$this->profileRules($this->user()->id),
-            'timezone' => ['required', 'string', 'timezone:all'],
         ];
     }
 }

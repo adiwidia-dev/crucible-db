@@ -4,6 +4,8 @@ use App\Models\User;
 
 return [
 
+    'invitation_expiration_days' => (int) env('AUTH_INVITATION_EXPIRATION_DAYS', 7),
+
     /*
     |--------------------------------------------------------------------------
     | Authentication Defaults

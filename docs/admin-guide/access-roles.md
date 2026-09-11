@@ -1,6 +1,6 @@
 # Access roles
 
-**Who sees it:** workspace administrators under **Admin → Access → Access Roles**.
+**Who sees it:** workspace administrators under **Manage → Administration → Access & identity → Access Roles**.
 
 ![Access Roles page](../assets/screenshots/admin-access-roles.png){ .docs-screenshot }
 

@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $database_connection_id
  * @property AccessMode $access_mode
  * @property AccessMode $query_access_mode
+ * @property AccessMode $native_proxy_access_mode
  * @property bool $can_review
  * @property bool $requires_approval
  * @property bool $read_requires_approval
@@ -24,17 +25,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property-read Role $role
  * @property-read DatabaseConnection $databaseConnection
  */
-#[Fillable(['role_id', 'database_connection_id', 'access_mode', 'query_access_mode', 'can_review', 'requires_approval', 'read_requires_approval', 'write_requires_approval', 'max_write_session_minutes'])]
+#[Fillable(['role_id', 'database_connection_id', 'access_mode', 'query_access_mode', 'native_proxy_access_mode', 'can_review', 'requires_approval', 'read_requires_approval', 'write_requires_approval', 'max_write_session_minutes'])]
 class RoleDatabasePermission extends Model
 {
     /** @use HasFactory<RoleDatabasePermissionFactory> */
     use HasFactory;
+
+    /** @var array<string, string> */
+    protected $attributes = [
+        'native_proxy_access_mode' => AccessMode::None->value,
+    ];
 
     protected function casts(): array
     {
         return [
             'access_mode' => AccessMode::class,
             'query_access_mode' => AccessMode::class,
+            'native_proxy_access_mode' => AccessMode::class,
             'can_review' => 'boolean',
             'requires_approval' => 'boolean',
             'read_requires_approval' => 'boolean',

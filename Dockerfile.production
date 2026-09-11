@@ -13,7 +13,7 @@ RUN composer install \
     --ignore-platform-req=ext-pcntl \
     --no-scripts
 
-FROM dunglas/frankenphp:1-php8.4 AS frontend
+FROM dunglas/frankenphp:1-php8.5 AS frontend
 
 WORKDIR /app
 
@@ -45,11 +45,11 @@ RUN mkdir -p \
     && APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= php artisan wayfinder:generate --with-form --no-interaction \
     && APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= npm run build
 
-FROM dunglas/frankenphp:1-php8.4 AS production
+FROM dunglas/frankenphp:1-php8.5 AS production
 
 WORKDIR /app
 
-ARG CRUCIBLE_VERSION=0.1.0
+ARG CRUCIBLE_VERSION=dev
 ARG CRUCIBLE_REVISION=unknown
 
 LABEL org.opencontainers.image.title="Crucible DB" \
@@ -75,6 +75,7 @@ RUN apt-get update \
 COPY --from=vendor /app/vendor /app/vendor
 COPY . ./
 COPY --from=frontend /app/public/build /app/public/build
+COPY .docker/Caddyfile /etc/caddy/Caddyfile
 COPY .docker/production-entrypoint.sh /usr/local/bin/crucible-production-entrypoint
 COPY .docker/production-supervisord.conf /etc/supervisor/conf.d/crucible.conf
 

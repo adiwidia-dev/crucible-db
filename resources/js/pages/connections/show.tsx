@@ -13,6 +13,10 @@ import {
 import { useState } from 'react';
 import DatabaseConnectionController from '@/actions/App/Http/Controllers/DatabaseConnectionController';
 import NotificationSubscriptionController from '@/actions/App/Http/Controllers/NotificationSubscriptionController';
+import {
+    SemanticIcon,
+    semanticToneForStatus,
+} from '@/components/crucible/semantic-icon';
 import { StatusBadge } from '@/components/crucible/status-badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -43,7 +47,7 @@ type Connection = {
     port: number;
     database: string;
     username: string;
-    ssl_mode: string | null;
+    tls_mode: string;
     is_active: boolean;
     permissions: Array<{
         id: number;
@@ -89,7 +93,10 @@ export default function ConnectionShow({
                 <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                            <Database className="size-5 text-muted-foreground" />
+                            <SemanticIcon
+                                icon={Database}
+                                tone={semanticToneForStatus(connection.driver)}
+                            />
                             <h1 className="text-2xl leading-tight font-semibold tracking-[-0.025em] text-foreground">
                                 {connection.name}
                             </h1>
@@ -208,8 +215,8 @@ export default function ConnectionShow({
                                                     driver: connection.driver,
                                                     host: connection.host,
                                                     port: connection.port,
-                                                    ssl_mode:
-                                                        connection.ssl_mode,
+                                                    tls_mode:
+                                                        connection.tls_mode,
                                                 },
                                             })}
                                         >
@@ -300,10 +307,10 @@ export default function ConnectionShow({
                                 </div>
                                 <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-3">
                                     <dt className="text-muted-foreground">
-                                        SSL mode
+                                        TLS mode
                                     </dt>
                                     <dd className="font-medium">
-                                        {connection.ssl_mode || 'Not set'}
+                                        {connection.tls_mode}
                                     </dd>
                                 </div>
                             </dl>

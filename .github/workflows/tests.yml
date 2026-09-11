@@ -1,6 +1,7 @@
 name: tests
 
 on:
+  workflow_call:
   push:
     branches:
       - main
@@ -36,3 +37,85 @@ jobs:
 
       - name: Run CI Checks
         run: composer ci:check
+
+  application-database-matrix:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: crucible_control_test
+          POSTGRES_USER: crucible
+          POSTGRES_PASSWORD: crucible_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U crucible -d crucible_control_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: crucible_control_test
+          MYSQL_USER: crucible
+          MYSQL_PASSWORD: crucible_test
+          MYSQL_ROOT_PASSWORD: crucible_root_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -ucrucible -pcrucible_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_mysql, pdo_pgsql, sqlite3
+          tools: composer:v2
+          coverage: none
+
+      - name: Install backend dependencies
+        run: |
+          cp .env.example .env
+          touch database/database.sqlite
+          composer install --no-interaction --prefer-dist
+          php artisan key:generate --no-interaction
+
+      - name: Verify PostgreSQL migration history
+        run: php artisan migrate:fresh --force --no-interaction
+        env:
+          CRUCIBLE_DATABASE_CONFIG_MODE: environment
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: crucible_control_test
+          DB_USERNAME: crucible
+          DB_PASSWORD: crucible_test
+          DB_SSLMODE: disable
+
+      - name: Verify MySQL migration history
+        run: php artisan migrate:fresh --force --no-interaction
+        env:
+          CRUCIBLE_DATABASE_CONFIG_MODE: environment
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: crucible_control_test
+          DB_USERNAME: crucible
+          DB_PASSWORD: crucible_test
+
+      - name: Verify first-run network provisioning
+        run: php artisan test --compact tests/Feature/ApplicationDatabaseProvisioningMatrixTest.php
+        env:
+          CONTROL_DATABASE_POSTGRES_HOST: 127.0.0.1
+          CONTROL_DATABASE_MYSQL_HOST: 127.0.0.1

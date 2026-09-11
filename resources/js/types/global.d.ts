@@ -12,6 +12,7 @@ declare module '@inertiajs/core' {
         sharedPageProps: {
             name: string;
             auth: Auth;
+            native_proxy_cli_download_url?: string;
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

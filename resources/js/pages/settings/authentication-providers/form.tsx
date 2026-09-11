@@ -69,16 +69,12 @@ export default function AuthProviderForm({
     return (
         <>
             <Head
-                title={isEditing ? 'Edit auth provider' : 'New auth provider'}
+                title={isEditing ? 'Edit SSO provider' : 'New SSO provider'}
             />
 
             <div className="crucible-page">
                 <PageHeader
-                    title={
-                        isEditing
-                            ? 'Edit authentication provider'
-                            : 'New authentication provider'
-                    }
+                    title={isEditing ? 'Edit SSO provider' : 'New SSO provider'}
                     description="Configure an invitation-gated OAuth provider."
                 />
 
@@ -353,7 +349,7 @@ export default function AuthProviderForm({
 AuthProviderForm.layout = {
     breadcrumbs: [
         {
-            title: 'Authentication providers',
+            title: 'SSO Providers',
             href: index(),
         },
         {

@@ -19,6 +19,7 @@ class ReviewQueryRequestRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'expected_revision' => ['required', 'integer', 'min:1'],
             'decision' => ['required', Rule::in(['approved', 'rejected'])],
             'comment' => ['nullable', 'string', 'max:5000'],
         ];

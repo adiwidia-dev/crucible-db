@@ -1,6 +1,6 @@
 # Notification policy
 
-**Who sees it:** workspace administrators under **Admin → Workspace → Notification Policy**.
+**Who sees it:** workspace administrators under **Manage → Administration → Application → Notification Policy**.
 
 ![Notification Policy settings](../assets/screenshots/admin-notification-policy.png){ .docs-screenshot }
 

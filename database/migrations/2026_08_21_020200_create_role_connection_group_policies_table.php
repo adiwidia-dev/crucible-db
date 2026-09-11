@@ -23,7 +23,10 @@ return new class extends Migration
             $table->unsignedSmallInteger('max_write_session_minutes')->nullable();
             $table->timestamps();
 
-            $table->unique(['role_id', 'connection_group_id']);
+            $table->unique(
+                ['role_id', 'connection_group_id'],
+                'role_connection_group_policies_role_group_unique',
+            );
         });
     }
 

@@ -32,6 +32,16 @@ Every minute, the scheduler runs:
 
 Both commands prevent overlap and use the single-server scheduler lock. The supplied Compose topology is single-node.
 
+Application-database copy, activation, and rollback operations add a maintenance fence around these runtimes. The fence blocks normal web mutations, queued work, scheduled lifecycle mutations, and native-client control requests while the operation is in progress. It also waits for existing Query Access sessions, native leases/connections, and queued jobs to become idle before copying. The public `/health` endpoint and the administrator migration console remain available so an operator can verify and finalize the cutover.
+
+When an activation or rollback reaches its restart step, restart every Laravel runtime so Octane, Horizon, and the scheduler load the same database configuration:
+
+```bash
+docker compose restart app worker scheduler
+```
+
+The production image runs all three processes in the `app` container, so production restarts only that service. See [Application database](../admin-guide/application-database.md) for the complete sequence.
+
 ## Horizon dashboard
 
 ![Local Horizon queue dashboard](../assets/screenshots/operator-horizon.png){ .docs-screenshot }
