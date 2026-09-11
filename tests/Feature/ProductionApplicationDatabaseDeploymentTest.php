@@ -18,6 +18,10 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertStringNotContainsString('"3306:3306"', $compose);
         $this->assertStringNotContainsString('DB_CONNECTION: sqlite', $compose);
         $this->assertStringContainsString('crucible_storage:/app/storage', $compose);
+        $this->assertStringContainsString('${CRUCIBLE_IMAGE:?CRUCIBLE_IMAGE must be set to an immutable application release image}', $compose);
+        $this->assertStringContainsString('${CRUCIBLE_NATIVE_IMAGE:?CRUCIBLE_NATIVE_IMAGE must be set to the matching native proxy release image}', $compose);
+        $this->assertStringNotContainsString('hephaestus/crucible-db:latest', $compose);
+        $this->assertStringNotContainsString('hephaestus/crucible-db:0.1.0', $compose);
     }
 
     public function test_production_entrypoint_waits_for_the_selected_database(): void
@@ -109,5 +113,8 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertStringContainsString('DB_CONNECTION=sqlite', $environment);
         $this->assertStringContainsString('DB_SSLMODE=prefer', $environment);
         $this->assertStringContainsString('MYSQL_ATTR_SSL_CA=', $environment);
+        $this->assertMatchesRegularExpression('/^CRUCIBLE_IMAGE=$/m', $environment);
+        $this->assertMatchesRegularExpression('/^CRUCIBLE_NATIVE_IMAGE=$/m', $environment);
+        $this->assertStringContainsString('pin both images to the same release version or exact digests', $environment);
     }
 }

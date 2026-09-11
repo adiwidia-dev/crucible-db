@@ -151,21 +151,30 @@ Native proxy
 └─ Redis-backed immediate lease revocation plus durable heartbeats
 ```
 
-Production builds must use `Dockerfile.production`. Release `v0.1.0` is published as the immutable image `hephaestus/crucible-db:0.1.0`; `hephaestus/crucible-db:alpha` remains a moving convenience tag for existing alpha deployments. A deployment directory needs `compose.production.yaml`, `.env.production.example`, and a secure `.env.production` file—there is no need to clone the complete source repository or build the image on the server.
+Production builds use `Dockerfile.production` for the application and `Dockerfile.native` for the native proxy. A deployment directory needs `compose.production.yaml`, `.env.production.example`, and a secure `.env.production` file—there is no need to clone the complete source repository or build either image on the server.
 
 ```bash
 cp .env.production.example .env.production
+```
+
+Before starting Compose, replace `<version>` with one published release and set
+both required image variables in `.env.production`. Use the same application and
+native-proxy version; moving tags such as `latest` and the legacy `alpha` tag are
+for convenience, not production deployment.
+
+```dotenv
+CRUCIBLE_IMAGE=hephaestus/crucible-db:<version>
+CRUCIBLE_NATIVE_IMAGE=hephaestus/crucible-db-native:<version>
 ```
 
 Production requires an HTTPS `APP_URL`, a unique initial setup token, and a TLS
 terminator such as Nginx or Cloudflare Tunnel in front of the application
 container's loopback HTTP origin.
 
-Native Client Access additionally requires an explicitly pinned, matching native-proxy image. Set it in the deployment shell or Compose `.env` file before starting the stack. The release Compose file intentionally does not default this image, so a deployment cannot silently use a stale proxy build.
-
-```bash
-export CRUCIBLE_NATIVE_IMAGE=registry.example/crucible-db-native:vX.Y.Z
-```
+The production Compose file intentionally defaults neither release image. This
+prevents a restart from silently selecting a stale or incompatible application
+and proxy pair. Exact image digests may be used instead of version tags for the
+strongest reproducibility.
 
 Set a unique application key, public URL, and mail settings in `.env.production`. You can generate an application key with:
 
@@ -185,7 +194,7 @@ Compose waits for the Redis health check before starting the application. On sta
 curl --fail http://localhost:8000/health
 ```
 
-For a production update, back up the persistent storage and Redis volumes first. Then pull the exact production Compose stack and recreate its services:
+For a production update, back up the persistent storage and Redis volumes first. Update both image variables to the same approved release version or digests, then pull the exact production Compose stack and recreate its services:
 
 ```bash
 docker compose --env-file .env.production -f compose.production.yaml pull

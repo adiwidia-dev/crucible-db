@@ -1,6 +1,6 @@
 # Production deployment and upgrades
 
-Production uses `Dockerfile.production`, the Go 1.26.6-based `Dockerfile.native`, immutable matching application and native-proxy images, and `compose.production.yaml`. The moving `hephaestus/crucible-db:alpha` tag is retained for compatibility, but production installations should pin the release version.
+Production uses `Dockerfile.production`, the Go 1.26.6-based `Dockerfile.native`, immutable matching application and native-proxy images, and `compose.production.yaml`. Moving tags such as `latest` and the legacy `alpha` tag are convenience channels; production installations must explicitly pin both images to one release version or exact digests.
 
 ## Before the first deployment
 
@@ -21,10 +21,22 @@ printf 'APP_KEY=base64:%s\n' "$(openssl rand -base64 32)"
 printf 'CRUCIBLE_INITIAL_SETUP_TOKEN=%s\n' "$(openssl rand -hex 32)"
 ```
 
-Copy both generated values into `.env.production`. Do not commit this file. The
-setup token is required before the browser can choose a control database or
-create the first administrator. Rotate or remove it after initial setup; the
-completed-setup sentinel prevents the setup routes from reopening.
+Before starting Compose, replace `<version>` with one published release and set
+both required image variables in `.env.production`:
+
+```dotenv
+CRUCIBLE_IMAGE=hephaestus/crucible-db:<version>
+CRUCIBLE_NATIVE_IMAGE=hephaestus/crucible-db-native:<version>
+```
+
+Use the same version for both images. Exact digests are also supported and give
+the strongest reproducibility. Compose fails before startup if either variable
+is empty, which prevents an accidental mixed-version or moving-tag deployment.
+
+Copy both generated secret values into `.env.production`. Do not commit this
+file. The setup token is required before the browser can choose a control
+database or create the first administrator. Rotate or remove it after initial
+setup; the completed-setup sentinel prevents the setup routes from reopening.
 
 ## Terminate TLS in front of the local origin
 
@@ -125,8 +137,9 @@ finalization releases the fence.
 1. Announce the maintenance window according to your operational policy.
 2. Back up the persistent application storage and Redis volumes.
 3. Compare the deployed environment with `.env.production.example`. Keep the public `APP_URL` on HTTPS and `SESSION_SECURE_COOKIE=true`.
-4. Pull the approved image through the production Compose file.
-5. Recreate services and verify health and logs.
+4. Update `CRUCIBLE_IMAGE` and `CRUCIBLE_NATIVE_IMAGE` to the same approved release version or exact digests.
+5. Pull the approved images through the production Compose file.
+6. Recreate services and verify health and logs.
 
 ```bash
 docker compose --env-file .env.production -f compose.production.yaml pull

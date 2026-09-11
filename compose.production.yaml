@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${CRUCIBLE_IMAGE:-hephaestus/crucible-db:0.1.0}
+    image: ${CRUCIBLE_IMAGE:?CRUCIBLE_IMAGE must be set to an immutable application release image}
     pull_policy: always
     env_file:
       - ${CRUCIBLE_ENV_FILE:-.env.production}

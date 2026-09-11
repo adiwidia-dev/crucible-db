@@ -24,6 +24,7 @@ Set these values before the first production start.
 | `APP_URL` | `https://crucible.example.com` placeholder | Public HTTPS origin used for links, redirects, SSO callbacks, and native-client discovery. Replace the placeholder with the real origin. |
 | `CRUCIBLE_INITIAL_SETUP_TOKEN` | Required | One-time setup secret used before the first administrator exists. Use at least 32 random characters and rotate or remove it after setup. |
 | `NATIVE_PROXY_CONTROL_SECRET` | Required | Shared secret authenticating and encrypting proxy-to-Laravel control traffic. Use at least 32 random characters and never reuse `APP_KEY`. |
+| `CRUCIBLE_IMAGE` | Required | Immutable application image selected by production Compose. Pin a release version or exact digest. There is deliberately no fallback image. |
 | `CRUCIBLE_NATIVE_IMAGE` | Required | Immutable native-proxy image matching the application release. There is deliberately no fallback image. |
 | `CRUCIBLE_CONTROL_DATABASE_PASSWORD` | Required only with a control-database profile | Password provisioned into the optional Compose-managed PostgreSQL or MySQL control database. |
 
@@ -186,8 +187,8 @@ These variables are evaluated by Docker Compose. The recommended production comm
 
 | Variable | Default | Explanation |
 | --- | --- | --- |
-| `CRUCIBLE_IMAGE` | `hephaestus/crucible-db:0.1.0` | Application image used by production Compose. Pin an immutable release or digest. |
-| `CRUCIBLE_NATIVE_IMAGE` | Required | Matching native-proxy image. Pin the same release as `CRUCIBLE_IMAGE`. |
+| `CRUCIBLE_IMAGE` | Required | Application image used by production Compose. Pin an immutable release version or digest; moving tags such as `latest` are not production-safe. |
+| `CRUCIBLE_NATIVE_IMAGE` | Required | Matching native-proxy image. Pin the same release version as `CRUCIBLE_IMAGE`, or pin the corresponding digest. |
 | `CRUCIBLE_ENV_FILE` | `.env.production` | Environment file loaded into the production app container. |
 | `NATIVE_POSTGRES_IMAGE` | `postgres:17-alpine` | Development target PostgreSQL image. |
 | `NATIVE_MYSQL_IMAGE` | `mysql:8.4` | Development target MySQL image. |
