@@ -81,8 +81,8 @@ markdown_extensions:
 extra:
   github_url: https://github.com/adiwidia-dev/crucible-db
   github_star_url: https://github.com/adiwidia-dev/crucible-db
-  release_version: v0.1.0
-  release_url: https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.1.0
+  release_version: v0.2.0
+  release_url: https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.2.0
 
 extra_css:
   - stylesheets/extra.css
@@ -139,6 +139,7 @@ nav:
       - Native proxy operations: operations/native-proxy.md
       - Backup, recovery, and troubleshooting: operations/operations.md
   - Reference:
+      - Release notes v0.2.0: releases/v0.2.0.md
       - Release notes v0.1.0: releases/v0.1.0.md
       - Status and state reference: reference/statuses.md
       - Supported SQL: reference/supported-sql.md

@@ -4,6 +4,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-11
+
 ### Added
 
 - SQLite, PostgreSQL, and MySQL application-database drivers for Crucible control-plane data, including driver selection during initial setup.
@@ -68,5 +70,6 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.1.0
