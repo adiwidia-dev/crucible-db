@@ -18,7 +18,7 @@ Crucible stores synthetic passwords and bearer tokens only as hashes, encrypts c
 | --- | --- |
 | Database client → CLI | A TCP listener restricted to `127.0.0.1` or `::1`; no LAN listener is accepted. |
 | CLI → Crucible | Same-origin device authorization and authenticated WebSocket tunnel. The client uses the configured `APP_URL`; no proxy subdomain is required. |
-| Gateway → native proxy | Internal Compose network only. The discovery and `/native-tunnel/*` paths are the sole externally routed proxy paths. |
+| Embedded application route → native proxy | Internal Compose network only. The discovery and `/native-tunnel/*` paths are the sole externally routed proxy paths. |
 | Native proxy → Laravel | Signed and AES-256-GCM-encrypted control messages with timestamp, nonce replay prevention, proxy identity/IP allowlists, authorization checks, and rate limits. |
 | Native proxy → target database | Target credential and independent upstream TLS configuration. The proxy does not create target users or roles. |
 | Laravel → Redis | Immediate revocation publish/subscribe; durable heartbeat checks remain the fail-closed authorization backstop. |
@@ -31,7 +31,7 @@ Crucible stores synthetic passwords and bearer tokens only as hashes, encrypts c
 | Replayed tunnel/control request | Bearer hash verification, short-lived device token, signed timestamped nonce, and idempotent connection identifiers. | Keep the control secret unique and rotate it during an incident. |
 | Lost revocation event | Redis provides fast closure; each proxy connection reauthorizes by heartbeat and is closed on a revoked/expired policy result. | Monitor Redis and proxy health. |
 | Privilege escalation through a native session | Role-native-proxy access is separate from maximum and browser Query Access policies; every statement is checked against session access, role policy, SQL policy, and current connection state. | Configure least privilege and approval requirements. |
-| Direct proxy exposure | Proxy protocol and gateway listener ports are private; desktop traffic goes through the loopback CLI and application origin. | Do not add host port mappings or bypass the gateway. |
+| Direct proxy exposure | Proxy protocol and internal HTTP listener ports are private; desktop traffic goes through the loopback CLI and application origin. | Do not add host port mappings or bypass the app's fixed tunnel route. |
 | Secret/result leakage through observability | Sanitized fingerprints, counts, timings, and event metadata only. | Keep external log aggregation and browser extensions within your security boundary. |
 | Malicious target or upstream TLS downgrade | TLS mode, CA, client certificate, and key remain connection configuration. | Use verified upstream TLS for production targets and protect CA material. |
 

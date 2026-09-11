@@ -5,8 +5,8 @@ The Native proxy is a separate, non-root Go service that implements private Post
 ```mermaid
 flowchart LR
     C[Desktop client] --> L[Crucible CLI loopback listener]
-    L --> G[Same-origin tunnel gateway]
-    G --> P[Private native proxy]
+    L --> G[Application origin and embedded tunnel route]
+    G --> P[Private native proxy service]
     P --> T[(PostgreSQL or MySQL target)]
     P --> A[Laravel control API]
     P --> R[(Redis revocation channel)]
@@ -14,7 +14,7 @@ flowchart LR
 
 ## Health and monitoring
 
-The proxy exposes private `GET /healthz`, `GET /readyz`, and `/metrics` endpoints on its internal gateway port. Liveness reports that the process is serving. Readiness is true only after an encrypted, HMAC-authenticated Laravel control-health request and a Redis ping both succeed; the check is repeated at `NATIVE_PROXY_READINESS_INTERVAL`. The public tunnel handler returns `503` while dependencies are unavailable.
+The proxy exposes private `GET /healthz`, `GET /readyz`, and `/metrics` endpoints on its internal HTTP port. Liveness reports that the process is serving. Readiness is true only after an encrypted, HMAC-authenticated Laravel control-health request and a Redis ping both succeed; the check is repeated at `NATIVE_PROXY_READINESS_INTERVAL`. The public tunnel handler returns `503` while dependencies are unavailable.
 
 During an application-database activation or rollback, the maintenance fence intentionally rejects native control requests. The proxy can therefore report not ready until the administrator finalizes the operation and releases the fence. This is expected; do not bypass the fence or expose a database port to restore readiness.
 
@@ -42,4 +42,4 @@ PostgreSQL prepared-statement portals retain their execution context across `Por
 
 ## Backup and recovery
 
-The proxy has no durable credential store. Its source of truth is the application database; Redis is used for immediate revocation and cache/queue operations. Back up the application storage and Redis using the normal [production procedure](production.md). After restoring, restart the app, Redis, gateway, and native proxy together so current lease state and workers are coherent.
+The proxy has no durable credential store. Its source of truth is the application database; Redis is used for immediate revocation and cache/queue operations. Back up the application storage and Redis using the normal [production procedure](production.md). After restoring, restart the app, Redis, and native proxy together so current lease state and workers are coherent. Restarting the app also restarts its embedded Caddy/FrankenPHP origin, Horizon workers, and scheduler.

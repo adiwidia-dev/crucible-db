@@ -7,8 +7,8 @@ Native client access extends Query Access rather than introducing a second autho
 | Boundary | Responsibility |
 | --- | --- |
 | Desktop client to CLI | Loopback-only protocol listener. No inbound network exposure. |
-| CLI to gateway | Same-origin, authenticated WebSocket tunnel after device authorization. |
-| Gateway to proxy | Private Compose network route only. |
+| CLI to application origin | Same-origin, authenticated WebSocket tunnel after device authorization. |
+| Embedded Caddy route to proxy | Fixed native-client paths forwarded over the private Compose network only. |
 | Proxy to Laravel | HMAC-authenticated, AES-256-GCM-encrypted control messages with replay-safe request IDs, clock-skew checks, proxy allowlists, and rate limiting. |
 | Proxy to target | Uses the encrypted target connection configuration and configured upstream TLS mode. |
 

@@ -178,7 +178,7 @@ The application and native-proxy containers consume different subsets of these v
 | `NATIVE_PROXY_CLI_DOWNLOAD_URL` | `https://github.com/adiwidia-dev/crucible-db/releases/latest` | Release or mirror page opened from the Native Client Access workspace. Forks may point this to their artifact distribution page. |
 | `NATIVE_PROXY_POSTGRES_LISTEN` | `:5432` | Internal PostgreSQL listener address inside the native-proxy container. Compose does not publish it to the host. |
 | `NATIVE_PROXY_MYSQL_LISTEN` | `:3306` | Internal MySQL listener address inside the native-proxy container. Compose does not publish it to the host. |
-| `NATIVE_PROXY_GATEWAY_LISTEN` | `:8081` | Internal HTTP tunnel and readiness listener. The app's embedded gateway routes only the fixed public native-client paths to it. |
+| `NATIVE_PROXY_GATEWAY_LISTEN` | `:8081` | Internal HTTP tunnel and readiness listener. Despite the historical variable name, this is a listener inside the native-proxy process, not a standalone gateway service. The app's embedded Caddy route forwards only the fixed public native-client paths to it. |
 
 ## Compose images and files
 

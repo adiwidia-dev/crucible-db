@@ -71,7 +71,7 @@ Crucible DB gives engineering teams a safer path to production database work wit
 - **Operational guardrails** — show conservative per-statement preflight findings, require fresh preflight immediately before a deployment runs, and block definite safety violations.
 - **Follow-up and visibility** — cancel eligible work, create linked retries with fresh policy evaluation, watch important requests or connections, and receive in-app or optional email notifications.
 - **Practical authentication** — support password login, invitations, passkeys, two-factor authentication, and Google, GitHub, or Microsoft sign-in.
-- **Portable operations** — deploy the complete control plane as one application container, Redis, the private native proxy, and a loopback HTTP gateway. Store control-plane data in SQLite, PostgreSQL, or MySQL and move between supported drivers through a fenced, verified administrator workflow.
+- **Portable operations** — deploy the complete control plane as one application container with an embedded loopback HTTP origin and native-tunnel route, Redis, and the private native proxy. Store control-plane data in SQLite, PostgreSQL, or MySQL and move between supported drivers through a fenced, verified administrator workflow.
 
 ## How it works
 
@@ -131,13 +131,14 @@ The development Compose stack includes Crucible DB, Redis, Vite, disposable Post
 
 ## Production deployment
 
-Production uses four core services, plus the selected control database when it is not SQLite:
+Production uses three core services, plus an optional Compose-managed control database when PostgreSQL or MySQL is selected:
 
 ```text
 Crucible DB application
-├─ FrankenPHP / Laravel Octane
+├─ embedded Caddy / FrankenPHP / Laravel Octane HTTP origin
 ├─ Laravel Horizon
-└─ Laravel scheduler
+├─ Laravel scheduler
+└─ same-origin native-client discovery and tunnel routing
 
 Redis
 ├─ queues and Horizon metadata
@@ -146,11 +147,8 @@ Redis
 
 Native proxy
 ├─ private PostgreSQL/MySQL listeners
-├─ private tunnel gateway routed through the app origin
+├─ private WebSocket tunnel endpoint routed through the app origin
 └─ Redis-backed immediate lease revocation plus durable heartbeats
-
-Local Caddy gateway
-└─ loopback HTTP origin for an administrator-managed TLS terminator, including native-client discovery and tunnel paths
 ```
 
 Production builds must use `Dockerfile.production`. Release `v0.1.0` is published as the immutable image `hephaestus/crucible-db:0.1.0`; `hephaestus/crucible-db:alpha` remains a moving convenience tag for existing alpha deployments. A deployment directory needs `compose.production.yaml`, `.env.production.example`, and a secure `.env.production` file—there is no need to clone the complete source repository or build the image on the server.
@@ -160,7 +158,8 @@ cp .env.production.example .env.production
 ```
 
 Production requires an HTTPS `APP_URL`, a unique initial setup token, and a TLS
-terminator such as Nginx or Cloudflare Tunnel in front of the loopback gateway.
+terminator such as Nginx or Cloudflare Tunnel in front of the application
+container's loopback HTTP origin.
 
 Native Client Access additionally requires an explicitly pinned, matching native-proxy image. Set it in the deployment shell or Compose `.env` file before starting the stack. The release Compose file intentionally does not default this image, so a deployment cannot silently use a stale proxy build.
 
@@ -192,7 +191,7 @@ For a production update, back up the persistent storage and Redis volumes first.
 docker compose --env-file .env.production -f compose.production.yaml pull
 docker compose --env-file .env.production -f compose.production.yaml up -d --remove-orphans
 docker compose --env-file .env.production -f compose.production.yaml ps
-docker compose --env-file .env.production -f compose.production.yaml logs --tail=100 app redis
+docker compose --env-file .env.production -f compose.production.yaml logs --tail=100 app redis native-proxy
 ```
 
 The application entrypoint runs forward-only migrations before Supervisor starts Octane/FrankenPHP, Horizon, and the scheduler. Verify the application health after the services are ready:

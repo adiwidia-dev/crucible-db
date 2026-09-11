@@ -28,18 +28,19 @@ completed-setup sentinel prevents the setup routes from reopening.
 
 ## Terminate TLS in front of the local origin
 
-The supplied gateway is an HTTP origin and binds to `127.0.0.1:8000` by
-default. It is intentionally not a public TLS server. Remote deployments must
-place an administrator-managed TLS terminator such as Nginx or Cloudflare
-Tunnel in front of that loopback listener. Keep `APP_URL` set to the external
-`https://` origin and `SESSION_SECURE_COOKIE=true`.
+The application container includes the Caddy/FrankenPHP HTTP origin and binds
+it to `127.0.0.1:8000` by default. It is intentionally not a public TLS server.
+Remote deployments must place an administrator-managed TLS terminator such as
+Nginx or Cloudflare Tunnel in front of that loopback listener. Keep `APP_URL`
+set to the external `https://` origin and `SESSION_SECURE_COOKIE=true`.
 
 The terminator must preserve `Host`, `X-Forwarded-For`,
 `X-Forwarded-Proto=https`, and WebSocket upgrades. Do not apply buffering,
 compression, or a short request timeout to
-`/.well-known/crucible-native-client.json` or `/native-tunnel/*`. The bundled
-Caddy gateway accepts forwarded headers only from private proxy peers and then
-routes those fixed native-client paths to the private proxy.
+`/.well-known/crucible-native-client.json` or `/native-tunnel/*`. The embedded
+Caddy configuration accepts forwarded headers only from private proxy peers
+and routes those fixed native-client paths from the application origin to the
+private native-proxy service.
 
 Set `CRUCIBLE_BIND_ADDRESS` to a non-loopback address only when a separate
 machine must reach the origin over a protected private network. Never publish
@@ -89,11 +90,11 @@ curl --fail http://127.0.0.1:8000/health
 The application entrypoint creates the SQLite file when needed, waits for the
 selected database, runs forward-only migrations, and starts Octane/FrankenPHP,
 Horizon, and the scheduler under Supervisor. Redis must pass its health check
-before the application starts. The Caddy gateway is the only host-published service and remains loopback-only; it
-routes normal application traffic to the app and fixed Native client
-discovery/tunnel paths to the private proxy. Compose reports the app as healthy
-only after `/health` confirms the control database and Redis-backed cache are
-available.
+before the application starts. The app is the only host-published service and
+its embedded Caddy/FrankenPHP origin remains loopback-only. It serves normal
+application traffic and routes the fixed Native client discovery/tunnel paths
+to the private proxy. Compose reports the app as healthy only after `/health`
+confirms the control database and Redis-backed cache are available.
 
 ## Migrate an existing installation
 
@@ -131,7 +132,7 @@ finalization releases the fence.
 docker compose --env-file .env.production -f compose.production.yaml pull
 docker compose --env-file .env.production -f compose.production.yaml up -d --remove-orphans
 docker compose --env-file .env.production -f compose.production.yaml ps
-docker compose --env-file .env.production -f compose.production.yaml logs --tail=100 app redis native-proxy gateway
+docker compose --env-file .env.production -f compose.production.yaml logs --tail=100 app redis native-proxy
 curl --fail http://127.0.0.1:8000/health
 ```
 
@@ -145,7 +146,8 @@ Verify:
 - `/health` returns successfully.
 - The app and Redis services are healthy.
 - Horizon workers and the scheduler are running inside the app container.
-- The `native-proxy` and `gateway` services are running when Native client access is enabled; neither database listener has a host port mapping.
+- The `native-proxy` service is running when Native client access is enabled; neither native database listener has a host port mapping.
+- The app is the only host-published service, and its HTTP origin remains bound to the intended interface (loopback by default).
 - Existing requests, notifications, and audit records are present.
 - A safe read-only workflow can be created and reviewed.
 

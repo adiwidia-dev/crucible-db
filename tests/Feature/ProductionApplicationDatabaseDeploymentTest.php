@@ -56,6 +56,30 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertStringNotContainsString('docker compose restart app', $workflow);
     }
 
+    public function test_release_workflow_publishes_versioned_production_images_after_the_test_gates(): void
+    {
+        $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/release-native.yml');
+
+        $this->assertStringContainsString('name: release cli and production images', $workflow);
+        $this->assertStringContainsString("tags: ['v*']", $workflow);
+        $this->assertStringContainsString('needs: release-preflight', $workflow);
+        $this->assertStringContainsString('needs: [application-gate, native-gate]', $workflow);
+        $this->assertStringContainsString('DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}', $workflow);
+        $this->assertStringContainsString('DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}', $workflow);
+        $this->assertStringContainsString('images: hephaestus/crucible-db', $workflow);
+        $this->assertStringContainsString('images: hephaestus/crucible-db-native', $workflow);
+        $this->assertStringContainsString('type=semver,pattern={{version}}', $workflow);
+        $this->assertStringContainsString('^v[0-9]+\.[0-9]+\.[0-9]+$', $workflow);
+        $this->assertStringContainsString('version=${GITHUB_REF_NAME#v}', $workflow);
+        $this->assertStringContainsString('file: Dockerfile.production', $workflow);
+        $this->assertStringContainsString('file: Dockerfile.native', $workflow);
+        $this->assertSame(2, substr_count($workflow, 'platforms: linux/amd64,linux/arm64'));
+        $this->assertSame(2, substr_count($workflow, 'provenance: mode=max'));
+        $this->assertSame(2, substr_count($workflow, 'sbom: true'));
+        $this->assertStringContainsString('docker buildx imagetools inspect "hephaestus/crucible-db@$APPLICATION_DIGEST"', $workflow);
+        $this->assertStringContainsString('docker buildx imagetools inspect "hephaestus/crucible-db-native@$NATIVE_DIGEST"', $workflow);
+    }
+
     public function test_development_postgresql_target_uses_the_version_aware_data_root(): void
     {
         $compose = (string) file_get_contents(dirname(__DIR__, 2).'/compose.yaml');

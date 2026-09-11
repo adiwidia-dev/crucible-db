@@ -31,7 +31,7 @@ Verify every archive or dump before an upgrade. Restoration should occur only on
 
 ```bash
 docker compose --env-file .env.production -f compose.production.yaml ps
-docker compose --env-file .env.production -f compose.production.yaml logs --tail=100 app redis native-proxy gateway
+docker compose --env-file .env.production -f compose.production.yaml logs --tail=100 app redis native-proxy
 curl --fail http://127.0.0.1:8000/health
 ```
 

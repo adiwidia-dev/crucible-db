@@ -13,11 +13,15 @@ flowchart TB
     H --> P[(PostgreSQL target)]
     H --> Y[(MySQL target)]
     C[Desktop client] --> L[Crucible CLI]
-    L --> G[Same-origin tunnel gateway]
+    L --> G[Application origin and embedded tunnel route]
     G --> N[Native proxy]
     N --> P
     N --> Y
 ```
+
+The HTTP origin and its fixed native-client tunnel route are embedded in the
+application container. There is no standalone gateway service in the supplied
+Compose topology.
 
 ## Components
 
