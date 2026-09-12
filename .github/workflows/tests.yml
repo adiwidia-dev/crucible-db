@@ -20,6 +20,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate release metadata
+        run: |
+          version="$(jq -r .version package.json)"
+          release_tag="v$version"
+          expected_release_badge="  <a href=\"https://github.com/$GITHUB_REPOSITORY/releases/tag/$release_tag\"><img src=\"https://img.shields.io/badge/release-$release_tag-2563EB\" alt=\"Crucible DB $release_tag\"></a>"
+
+          grep -Fqx "$expected_release_badge" README.md || {
+            echo "The README release badge link, label, and alt text must match package.json version $version."
+            exit 1
+          }
+
       - name: Setup PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:

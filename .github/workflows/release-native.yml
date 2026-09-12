@@ -78,6 +78,12 @@ jobs:
             exit 1
           }
 
+          expected_release_badge="  <a href=\"https://github.com/$GITHUB_REPOSITORY/releases/tag/$release_tag\"><img src=\"https://img.shields.io/badge/release-$release_tag-2563EB\" alt=\"Crucible DB $release_tag\"></a>"
+          git show "$release_tag:README.md" | grep -Fqx "$expected_release_badge" || {
+            echo "The README release badge link, label, and alt text must match $release_tag."
+            exit 1
+          }
+
           if [[ "$release_components" == "all" || "$release_components" == "images" ]]; then
             test "$DOCKERHUB_USERNAME" = "hephaestus" || {
               echo "DOCKERHUB_USERNAME must be configured as hephaestus."
