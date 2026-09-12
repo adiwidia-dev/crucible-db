@@ -1,7 +1,7 @@
 {
     "$schema": "https://www.schemastore.org/package.json",
     "name": "crucible-db",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "private": true,
     "type": "module",
     "scripts": {
