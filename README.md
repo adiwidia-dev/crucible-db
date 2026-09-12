@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="https://github.com/adiwidia-dev/crucible-db/actions/workflows/tests.yml"><img src="https://github.com/adiwidia-dev/crucible-db/actions/workflows/tests.yml/badge.svg" alt="CI status"></a>
-  <a href="https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.2.0"><img src="https://img.shields.io/badge/release-v0.2.0-2563EB" alt="Crucible DB v0.2.0"></a>
+  <a href="https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.2.1"><img src="https://img.shields.io/badge/release-v0.2.1-2563EB" alt="Crucible DB v0.2.1"></a>
   <a href="https://adiwidia-dev.github.io/crucible-db/"><img src="https://img.shields.io/badge/docs-read-2563EB?logo=readthedocs&logoColor=white" alt="Read the documentation"></a>
   <img src="https://img.shields.io/badge/PHP-8.5%2B-777BB4?logo=php&logoColor=white" alt="PHP 8.5 or later">
   <img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13">
@@ -109,7 +109,7 @@ Deployment Batches can be saved as non-executable drafts, including when preflig
 
 - PHP 8.5 or later
 - Composer 2
-- Node.js 22
+- Node.js 22.13 or later
 - Docker and Docker Compose (recommended for the full local stack)
 
 ### Native setup
