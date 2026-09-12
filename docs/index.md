@@ -12,6 +12,7 @@ Use this documentation to request and review SQL work, grant time-bounded browse
 | Keep a blocked or unfinished batch without sending it for review | [Deployment drafts](guides/deployment-drafts.md) |
 | Obtain temporary access to inspect or change data | [Request Query Access](guides/query-access.md) |
 | Use DBeaver, DataGrip, `psql`, or another desktop client | [Native Client access](guides/native-client-access.md) |
+| Install or verify the local `crucible` tunnel CLI | [Crucible CLI reference](reference/crucible-cli.md) |
 | Approve or reject someone else's work | [Review requests](guides/review-requests.md) |
 | Configure roles, connections, and SQL guardrails | [Roles, groups, and connections](concepts/access-policy.md) |
 | Choose or migrate Crucible's own control database | [Application database](admin-guide/application-database.md) |
