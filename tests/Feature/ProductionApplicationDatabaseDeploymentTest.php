@@ -82,10 +82,10 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertStringContainsString('release_sha="$(git rev-parse "refs/tags/$release_tag^{commit}")"', $workflow);
         $this->assertStringContainsString('git show "$release_tag:package.json"', $workflow);
         $this->assertSame(3, substr_count($workflow, 'ref: ${{ needs.release-preflight.outputs.release_tag }}'));
-        $this->assertStringContainsString('anchore/sbom-action/download-syft@f8bdd1d8ac5e901a77a92f111440fdb1b593736b', $workflow);
+        $this->assertStringContainsString('anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26', $workflow);
         $this->assertStringContainsString('syft-version: v1.51.1', $workflow);
-        $this->assertStringContainsString('goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a', $workflow);
-        $this->assertStringContainsString('actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a', $workflow);
+        $this->assertStringContainsString('goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94', $workflow);
+        $this->assertStringContainsString('actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8', $workflow);
         $this->assertStringContainsString('name: attest published native cli', $workflow);
         $this->assertStringContainsString('gh release download "$RELEASE_TAG"', $workflow);
         $this->assertStringNotContainsString('e435f85e2a9c3a04eacd02cbaed8e1bc67075256', $workflow);
@@ -98,6 +98,14 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertStringContainsString('docker buildx imagetools inspect "hephaestus/crucible-db@$APPLICATION_DIGEST"', $workflow);
         $this->assertStringContainsString('docker buildx imagetools inspect "hephaestus/crucible-db-native@$NATIVE_DIGEST"', $workflow);
         $this->assertStringContainsString('token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"', $releaseConfiguration);
+    }
+
+    public function test_dependabot_targets_the_integration_branch_for_every_ecosystem(): void
+    {
+        $configuration = (string) file_get_contents(dirname(__DIR__, 2).'/.github/dependabot.yml');
+
+        $this->assertSame(5, substr_count($configuration, 'target-branch: "develop"'));
+        $this->assertSame(5, substr_count($configuration, 'package-ecosystem:'));
     }
 
     public function test_development_postgresql_target_uses_the_version_aware_data_root(): void

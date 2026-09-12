@@ -1,6 +1,6 @@
 # Production deployment and upgrades
 
-Production uses `Dockerfile.production`, the Go 1.26.6-based `Dockerfile.native`, immutable matching application and native-proxy images, and `compose.production.yaml`. Moving tags such as `latest` and the legacy `alpha` tag are convenience channels; production installations must explicitly pin both images to one release version or exact digests.
+Production uses `Dockerfile.production`, the Go 1.27.1-based `Dockerfile.native`, immutable matching application and native-proxy images, and `compose.production.yaml`. Moving tags such as `latest` and the legacy `alpha` tag are convenience channels; production installations must explicitly pin both images to one release version or exact digests.
 
 ## Before the first deployment
 

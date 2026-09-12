@@ -109,7 +109,7 @@ Deployment Batches can be saved as non-executable drafts, including when preflig
 
 - PHP 8.5 or later
 - Composer 2
-- Node.js 22
+- Node.js 22.13 or later
 - Docker and Docker Compose (recommended for the full local stack)
 
 ### Native setup
