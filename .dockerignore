@@ -5,9 +5,14 @@
 .github
 .agents
 .codex
+.playwright
+.shannon
+.venv-docs
 graphify-out
 frankenphp
 node_modules
+native/dist
+site
 vendor
 storage
 public/build
