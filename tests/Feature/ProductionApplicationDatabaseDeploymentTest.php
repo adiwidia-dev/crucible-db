@@ -63,26 +63,31 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
     public function test_release_workflow_publishes_versioned_production_images_after_the_test_gates(): void
     {
         $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/release-native.yml');
+        $releaseConfiguration = (string) file_get_contents(dirname(__DIR__, 2).'/native/.goreleaser.yaml');
 
         $this->assertStringContainsString('name: release cli and production images', $workflow);
         $this->assertStringContainsString("tags: ['v*']", $workflow);
         $this->assertStringContainsString('workflow_dispatch:', $workflow);
         $this->assertStringContainsString('release_components:', $workflow);
+        $this->assertStringContainsString('- attestation', $workflow);
         $this->assertStringContainsString('needs: release-preflight', $workflow);
         $this->assertStringContainsString('needs: [release-preflight, application-gate, native-gate]', $workflow);
         $this->assertStringContainsString('DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}', $workflow);
         $this->assertStringContainsString('DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}', $workflow);
+        $this->assertStringContainsString('HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}', $workflow);
         $this->assertStringContainsString('images: hephaestus/crucible-db', $workflow);
         $this->assertStringContainsString('images: hephaestus/crucible-db-native', $workflow);
         $this->assertSame(2, substr_count($workflow, 'type=raw,value=${{ needs.release-preflight.outputs.version }}'));
         $this->assertStringContainsString('^v[0-9]+\.[0-9]+\.[0-9]+$', $workflow);
         $this->assertStringContainsString('release_sha="$(git rev-parse "refs/tags/$release_tag^{commit}")"', $workflow);
         $this->assertStringContainsString('git show "$release_tag:package.json"', $workflow);
-        $this->assertSame(2, substr_count($workflow, 'ref: ${{ needs.release-preflight.outputs.release_tag }}'));
+        $this->assertSame(3, substr_count($workflow, 'ref: ${{ needs.release-preflight.outputs.release_tag }}'));
         $this->assertStringContainsString('anchore/sbom-action/download-syft@f8bdd1d8ac5e901a77a92f111440fdb1b593736b', $workflow);
         $this->assertStringContainsString('syft-version: v1.51.1', $workflow);
         $this->assertStringContainsString('goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a', $workflow);
         $this->assertStringContainsString('actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a', $workflow);
+        $this->assertStringContainsString('name: attest published native cli', $workflow);
+        $this->assertStringContainsString('gh release download "$RELEASE_TAG"', $workflow);
         $this->assertStringNotContainsString('e435f85e2a9c3a04eacd02cbaed8e1bc67075256', $workflow);
         $this->assertStringNotContainsString('977bb2f4a525b5be3a70f4a3e7a6ec5aa8a14a6c', $workflow);
         $this->assertStringContainsString('file: Dockerfile.production', $workflow);
@@ -92,6 +97,7 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertSame(2, substr_count($workflow, 'sbom: true'));
         $this->assertStringContainsString('docker buildx imagetools inspect "hephaestus/crucible-db@$APPLICATION_DIGEST"', $workflow);
         $this->assertStringContainsString('docker buildx imagetools inspect "hephaestus/crucible-db-native@$NATIVE_DIGEST"', $workflow);
+        $this->assertStringContainsString('token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"', $releaseConfiguration);
     }
 
     public function test_development_postgresql_target_uses_the_version_aware_data_root(): void
