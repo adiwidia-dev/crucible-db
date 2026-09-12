@@ -172,6 +172,7 @@ jobs:
           image: crucible-native:test
           artifact-name: native-proxy-sbom
           output-file: native-proxy.spdx.json
+          upload-release-assets: false
       - name: Scan the native image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
