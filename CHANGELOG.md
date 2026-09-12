@@ -4,6 +4,18 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-12
+
+### Security
+
+- Refresh the application, frontend, native-build, and release-automation dependencies, including patched `js-yaml` and `league/commonmark` releases with no remaining Composer or npm audit advisories.
+- Update pinned GitHub Actions used by documentation, native-proxy, and release workflows.
+
+### Operations
+
+- Build the native-proxy production image with Go 1.27.1 while retaining Go 1.26.6 in CI as a compatibility gate.
+- Route all Dependabot updates to `develop` so dependency changes follow the verified promotion path rather than targeting `main` directly.
+
 ## [0.2.0] - 2026-09-11
 
 ### Added
@@ -70,6 +82,7 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.1.0
