@@ -4,9 +4,31 @@ The `crucible` CLI creates a local tunnel for an approved Native client session.
 
 ## Install and verify
 
-Select **CLI** in the Crucible application header to open the configured download source. You can install the CLI before requesting Native Client Access. The default source is [GitHub Releases](https://github.com/adiwidia-dev/crucible-db/releases), but an administrator may configure a private release mirror.
+You can install the CLI before requesting Native Client Access. Select **CLI** in the Crucible application header to open the configured download source. The default source is [GitHub Releases](https://github.com/adiwidia-dev/crucible-db/releases), but an administrator may configure a private release mirror.
+
+### Homebrew
+
+The official Homebrew cask supports macOS and Linux on amd64 and arm64:
+
+```bash
+brew install --cask adiwidia-dev/tap/crucible
+crucible version
+```
+
+Homebrew verifies the cask's release-archive checksum during installation. To
+upgrade later, run:
+
+```bash
+brew upgrade --cask crucible
+```
+
+### GitHub Releases and Linux packages
 
 Download the archive for your operating system and architecture. Verify `checksums.txt` and its keyless `checksums.txt.sigstore.json` bundle before use. The release workflow publishes archives for macOS, Linux, and Windows on amd64 and arm64, plus `.deb` and `.rpm` packages for Linux.
+
+The Linux `.deb` and `.rpm` packages install the same `crucible` binary. Use
+your distribution's standard package installer and verify the release
+checksums before installing a downloaded package.
 
 ```bash
 cosign verify-blob \

@@ -91,6 +91,22 @@ flowchart LR
 
 Crucible DB supports PostgreSQL and MySQL target connections. For an approved **Native client** Query Access session, the Crucible CLI opens a loopback-only database listener and tunnels it through the private proxy service on the same application origin. The proxy never exposes database ports publicly, does not create target-database users, and applies the approved role, session, SQL, audit, and expiry controls to each protocol statement.
 
+### Install the Crucible CLI
+
+Install the CLI before starting a Native client session. On macOS or Linux with
+[Homebrew](https://brew.sh/):
+
+```bash
+brew install --cask adiwidia-dev/tap/crucible
+crucible version
+```
+
+Alternatively, download a platform archive or Linux package from
+[GitHub Releases](https://github.com/adiwidia-dev/crucible-db/releases). Each
+release includes checksums, a Sigstore bundle, SBOMs, and archives for macOS,
+Linux, and Windows on amd64 and arm64. See the [CLI reference](docs/reference/crucible-cli.md)
+for verification, connection, and desktop-client setup.
+
 ### Governed SQL behavior
 
 The workspace SQL policy controls the supported read, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP TABLE, and TRUNCATE TABLE families. Each family is enabled or disabled explicitly so the effective policy is always visible.
