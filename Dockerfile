@@ -1,13 +1,15 @@
+FROM node:22-bookworm-slim AS node
+
 FROM dunglas/frankenphp:1-php8.5 AS base
 
 WORKDIR /app
+
+COPY --from=node /usr/local /usr/local
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
         unzip \
-        nodejs \
-        npm \
         default-mysql-client \
         postgresql-client \
     && install-php-extensions \
@@ -16,7 +18,6 @@ RUN apt-get update \
         pdo_pgsql \
         redis \
         zip \
-    && npm install -g npm@10.9.0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
