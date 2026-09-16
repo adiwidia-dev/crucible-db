@@ -4,6 +4,33 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-16
+
+### Fixed
+
+- Keep native-proxy readiness visible on the dashboard before the first scheduler report and after a stale cache entry expires instead of incorrectly treating the feature as disabled.
+- Give the development scheduler the same native-proxy health configuration as the application so its minute-level readiness refresh reaches the private proxy endpoint.
+- Retain health snapshots long enough to bridge scheduler intervals without the dashboard briefly losing proxy status.
+
+### Changed
+
+- Move native-proxy readiness, reported version, active instance count, and connection count into a compact header indicator beside the Crucible CLI link.
+- Validate that the README release badge matches the package version in CI and before release publication.
+- Synchronize the README, MkDocs release metadata, changelog, and versioned release notes with the current release.
+
+## [0.2.2] - 2026-09-12
+
+### Security
+
+- Exclude ignored developer-local artifacts, generated documentation output, browser state, scanner configuration, and native build output from the production Docker context.
+- Prevent stale local binaries and tools from being copied into the production application image while reducing the locally verified image size without removing runtime features.
+
+### Operations
+
+- Keep native test-image SBOMs as workflow artifacts rather than attaching them from the read-only native test gate.
+- Document the official Homebrew cask installation path while retaining signed GitHub release archives and Linux packages.
+- Preserve least-privilege release permissions for Docker images, CLI artifacts, provenance, and Homebrew publication.
+
 ## [0.2.1] - 2026-09-12
 
 ### Security
@@ -82,7 +109,9 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.2...v0.2.3
+[0.2.2]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.1.0

@@ -84,6 +84,42 @@ jobs:
             exit 1
           }
 
+          git show "$release_tag:mkdocs.yml" | grep -Fqx "  release_version: $release_tag" || {
+            echo "The documentation release label must match $release_tag."
+            exit 1
+          }
+
+          git show "$release_tag:mkdocs.yml" | grep -Fqx "  release_url: https://github.com/$GITHUB_REPOSITORY/releases/tag/$release_tag" || {
+            echo "The documentation release URL must match $release_tag."
+            exit 1
+          }
+
+          git show "$release_tag:mkdocs.yml" | grep -Fqx "      - Release notes $release_tag: releases/$release_tag.md" || {
+            echo "The current release notes must be present in the documentation navigation."
+            exit 1
+          }
+
+          release_notes="docs/releases/$release_tag.md"
+          git cat-file -e "$release_tag:$release_notes" || {
+            echo "Release notes are missing at $release_notes."
+            exit 1
+          }
+
+          git show "$release_tag:$release_notes" | grep -Fqx "# Crucible DB $release_tag" || {
+            echo "The release-notes title must match $release_tag."
+            exit 1
+          }
+
+          git show "$release_tag:CHANGELOG.md" | grep -Fq "## [$version] - " || {
+            echo "CHANGELOG.md must include release $version."
+            exit 1
+          }
+
+          git show "$release_tag:CHANGELOG.md" | grep -Fqx "[Unreleased]: https://github.com/$GITHUB_REPOSITORY/compare/$release_tag...HEAD" || {
+            echo "The Unreleased changelog link must start at $release_tag."
+            exit 1
+          }
+
           if [[ "$release_components" == "all" || "$release_components" == "images" ]]; then
             test "$DOCKERHUB_USERNAME" = "hephaestus" || {
               echo "DOCKERHUB_USERNAME must be configured as hephaestus."

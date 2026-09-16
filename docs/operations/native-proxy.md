@@ -20,7 +20,7 @@ During an application-database activation or rollback, the maintenance fence int
 
 The metrics endpoint exposes the bounded `crucible_native_proxy_active_connections` gauge plus Go runtime and process collectors. Labels never contain a user, lease, connection, database, or SQL identifier. Per-connection byte counters, client application/version, CLI platform, upstream TLS verification, and privacy-safe statement counts are retained in the Laravel control-plane records rather than Prometheus labels. The Laravel scheduler checks readiness with a two-second bounded request and stores a short-lived snapshot. Dashboard health is cached and never performs a live proxy call during a user page request.
 
-An unhealthy or version-mismatched result notifies operational recipients when the state changes. The dashboard exposes readiness, reported version, instance count, and active connection count; it never exposes credentials, SQL values, parameters, or result rows.
+An unhealthy or version-mismatched result notifies operational recipients when the state changes. On the dashboard, the native-proxy icon immediately before the **CLI** link exposes readiness, reported version, instance count, active connection count, and the last check time in a hover and keyboard-focus panel. The indicator remains present before the first scheduler report or when a cached report expires; it never exposes credentials, SQL values, parameters, or result rows.
 
 ## Lifecycle behavior
 
