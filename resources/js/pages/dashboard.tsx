@@ -22,6 +22,7 @@ import {
     SessionAccessBadge,
     StatusBadge,
 } from '@/components/crucible/status-badge';
+import type { NativeProxyHealthSnapshot } from '@/components/native-proxy/health-status';
 import { Button } from '@/components/ui/button';
 import { formatDate, formatRemaining } from '@/lib/crucible';
 import type {
@@ -72,13 +73,7 @@ type DashboardProps = {
         native_proxy_connections: number;
         native_proxy_instances: number;
     };
-    native_proxy_health: {
-        status: 'disabled' | 'healthy' | 'unhealthy' | 'version_mismatch';
-        checked_at: string | null;
-        proxy_id: string | null;
-        version: string | null;
-        message: string | null;
-    };
+    native_proxy_health: NativeProxyHealthSnapshot;
     pending_reviews: DashboardRequest[];
     scheduled_requests: DashboardRequest[];
     failed_requests: DashboardRequest[];
@@ -347,7 +342,7 @@ export default function Dashboard({
                       value: summary.native_proxy_connections,
                       icon: Wifi,
                       tone: proxyTone,
-                      href: '#native-proxy-health',
+                      href: '#native-proxy-status',
                   },
               ]),
     ];
@@ -530,94 +525,6 @@ export default function Dashboard({
                         </QueueSection>
                     </div>
                 </section>
-
-                {native_proxy_health.status !== 'disabled' && (
-                    <section
-                        aria-labelledby="system-health-title"
-                        className="grid gap-4 sm:gap-5"
-                    >
-                        <div className="px-1">
-                            <h2
-                                id="system-health-title"
-                                className="text-base font-semibold"
-                            >
-                                System health
-                            </h2>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                                Service readiness for native client access.
-                            </p>
-                        </div>
-
-                        <div
-                            id="native-proxy-health"
-                            className="border-y bg-card sm:rounded-lg sm:border"
-                        >
-                            <div className="flex flex-col gap-5 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
-                                <div className="flex min-w-0 items-start gap-3">
-                                    <SemanticIcon
-                                        icon={Wifi}
-                                        tone={proxyTone}
-                                    />
-                                    <div className="min-w-0">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <h3 className="text-sm font-semibold">
-                                                Native proxy
-                                            </h3>
-                                            <StatusBadge
-                                                value={
-                                                    native_proxy_health.status
-                                                }
-                                            />
-                                        </div>
-                                        <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
-                                            {native_proxy_health.message ??
-                                                'Ready for native client connections.'}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <dl className="grid shrink-0 grid-cols-2 gap-x-8 gap-y-3 text-xs sm:grid-cols-4 lg:min-w-xl">
-                                    <div>
-                                        <dt className="text-muted-foreground">
-                                            Connections
-                                        </dt>
-                                        <dd className="mt-1 font-semibold text-foreground">
-                                            {summary.native_proxy_connections}
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-muted-foreground">
-                                            Instances
-                                        </dt>
-                                        <dd className="mt-1 font-semibold text-foreground">
-                                            {summary.native_proxy_instances}
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-muted-foreground">
-                                            Version
-                                        </dt>
-                                        <dd className="mt-1 font-mono text-foreground">
-                                            {native_proxy_health.version ??
-                                                'Unreported'}
-                                        </dd>
-                                    </div>
-                                    <div>
-                                        <dt className="text-muted-foreground">
-                                            Last checked
-                                        </dt>
-                                        <dd className="mt-1 text-foreground">
-                                            {formatDate(
-                                                native_proxy_health.checked_at,
-                                                userTimezone,
-                                            )}
-                                        </dd>
-                                    </div>
-                                </dl>
-                            </div>
-                        </div>
-                    </section>
-                )}
             </div>
         </>
     );

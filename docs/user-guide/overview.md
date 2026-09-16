@@ -8,7 +8,9 @@ Overview is the operational landing page. It summarizes work that needs attentio
 
 ## Summary counts
 
-The top summary identifies pending reviews, scheduled work, failed executions, and active Query Access sessions visible to you. Counts respect authorization, so an ordinary user does not receive a workspace-wide administrator view.
+The top summary identifies pending reviews, scheduled work, failed executions, and active Query Access sessions visible to you. When Native client access is enabled, administrators also see the active proxy-connection count. Counts respect authorization, so an ordinary user does not receive a workspace-wide administrator view.
+
+When Native client access is enabled, the header shows a status icon immediately before the **CLI** link. Hover over it, or focus it with the keyboard, to inspect proxy readiness, the reported proxy version, active instances, active connections, and the last health check. An unhealthy or version-mismatched state remains visible while operators investigate it.
 
 ## Needs attention
 

@@ -78,6 +78,17 @@ class NativeProxyControlContractTest extends TestCase
         $this->assertSame(DatabaseDriver::MySql, DatabaseDriver::fromNativeProxyProtocol('mysql'));
     }
 
+    public function test_development_scheduler_receives_native_proxy_health_configuration(): void
+    {
+        $developmentCompose = file_get_contents(base_path('compose.yaml'));
+
+        $this->assertNotFalse($developmentCompose);
+        preg_match('/^  scheduler:\n(?<service>.*?)(?=^  [a-z][a-z0-9-]*:\n|\z)/ms', $developmentCompose, $schedulerService);
+
+        $this->assertStringContainsString('NATIVE_PROXY_ENABLED: "true"', $schedulerService['service'] ?? '');
+        $this->assertStringContainsString('NATIVE_PROXY_HEALTH_URL: http://native-proxy:8081/readyz', $schedulerService['service'] ?? '');
+    }
+
     public function test_integration_seeder_creates_approved_devices_for_both_real_proxy_protocols(): void
     {
         $this->seed(NativeProxyIntegrationSeeder::class);

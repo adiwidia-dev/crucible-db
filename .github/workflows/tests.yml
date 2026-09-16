@@ -31,6 +31,42 @@ jobs:
             exit 1
           }
 
+          grep -Fqx "  release_version: $release_tag" mkdocs.yml || {
+            echo "The documentation release label must match package.json version $version."
+            exit 1
+          }
+
+          grep -Fqx "  release_url: https://github.com/$GITHUB_REPOSITORY/releases/tag/$release_tag" mkdocs.yml || {
+            echo "The documentation release URL must match package.json version $version."
+            exit 1
+          }
+
+          grep -Fqx "      - Release notes $release_tag: releases/$release_tag.md" mkdocs.yml || {
+            echo "The current release notes must be present in the documentation navigation."
+            exit 1
+          }
+
+          release_notes="docs/releases/$release_tag.md"
+          test -f "$release_notes" || {
+            echo "Release notes are missing at $release_notes."
+            exit 1
+          }
+
+          grep -Fqx "# Crucible DB $release_tag" "$release_notes" || {
+            echo "The release-notes title must match package.json version $version."
+            exit 1
+          }
+
+          grep -Fq "## [$version] - " CHANGELOG.md || {
+            echo "CHANGELOG.md must include release $version."
+            exit 1
+          }
+
+          grep -Fqx "[Unreleased]: https://github.com/$GITHUB_REPOSITORY/compare/$release_tag...HEAD" CHANGELOG.md || {
+            echo "The Unreleased changelog link must start at $release_tag."
+            exit 1
+          }
+
       - name: Setup PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:

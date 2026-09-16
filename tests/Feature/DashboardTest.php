@@ -9,7 +9,9 @@ use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\NativeProxy\ProxyHealth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -92,6 +94,16 @@ class DashboardTest extends TestCase
     public function test_dashboard_surfaces_cached_native_proxy_health_without_secrets_or_statement_data(): void
     {
         config()->set('native_proxy.enabled', true);
+        config()->set('native_proxy.health_url', 'http://native-proxy:8081/readyz');
+        config()->set('native_proxy.expected_version', '0.2.3');
+
+        Http::fake([
+            'http://native-proxy:8081/readyz' => Http::response([
+                'proxy_id' => 'proxy-a',
+                'version' => '0.2.3',
+            ]),
+        ]);
+
         $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
         $request = QueryRequest::factory()->queryAccess()->create();
         $session = QuerySession::factory()->create([
@@ -105,13 +117,32 @@ class DashboardTest extends TestCase
             'proxy_instance_id' => 'proxy-a',
         ]);
 
+        app(ProxyHealth::class)->refresh();
+        $this->travel(61)->seconds();
+
         $this->actingAs($admin)->get(route('dashboard'))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('summary.native_proxy_connections', 1)
                 ->where('summary.native_proxy_instances', 1)
-                ->where('native_proxy_health.status', 'disabled')
+                ->where('native_proxy_health.status', 'healthy')
+                ->where('native_proxy_health.version', '0.2.3')
                 ->missing('native_proxy_health.password')
                 ->missing('native_proxy_health.parameters')
-                ->missing('native_proxy_health.rows'));
+                ->missing('native_proxy_health.rows')
+                ->reloadOnly(['summary', 'native_proxy_health'], fn (Assert $reload) => $reload
+                    ->where('summary.native_proxy_connections', 1)
+                    ->where('native_proxy_health.status', 'healthy')));
+    }
+
+    public function test_dashboard_keeps_native_proxy_health_visible_before_the_first_health_check(): void
+    {
+        config()->set('native_proxy.enabled', true);
+
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
+
+        $this->actingAs($admin)->get(route('dashboard'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('native_proxy_health.status', 'unhealthy')
+                ->where('native_proxy_health.message', 'The native proxy health check has not reported yet.'));
     }
 }

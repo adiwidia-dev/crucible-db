@@ -39,6 +39,9 @@ services:
     build:
       context: .
     command: ["php", "artisan", "schedule:work"]
+    environment:
+      NATIVE_PROXY_ENABLED: "true"
+      NATIVE_PROXY_HEALTH_URL: http://native-proxy:8081/readyz
     healthcheck:
       disable: true
     volumes:

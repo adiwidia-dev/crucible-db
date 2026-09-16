@@ -81,6 +81,9 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertStringContainsString('^v[0-9]+\.[0-9]+\.[0-9]+$', $workflow);
         $this->assertStringContainsString('release_sha="$(git rev-parse "refs/tags/$release_tag^{commit}")"', $workflow);
         $this->assertStringContainsString('git show "$release_tag:package.json"', $workflow);
+        $this->assertStringContainsString('git show "$release_tag:mkdocs.yml"', $workflow);
+        $this->assertStringContainsString('git cat-file -e "$release_tag:$release_notes"', $workflow);
+        $this->assertStringContainsString('git show "$release_tag:CHANGELOG.md"', $workflow);
         $this->assertSame(3, substr_count($workflow, 'ref: ${{ needs.release-preflight.outputs.release_tag }}'));
         $this->assertStringContainsString('anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26', $workflow);
         $this->assertStringContainsString('syft-version: v1.51.1', $workflow);
