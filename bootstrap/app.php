@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AddSecurityHeaders;
+use App\Http\Middleware\CaptureAuditContext;
 use App\Http\Middleware\EnsureAuthenticationMethodIsEnabled;
 use App\Http\Middleware\EnsurePendingTwoFactorUserIsEnabled;
 use App\Http\Middleware\EnsureUserIsEnabled;
@@ -40,6 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(
             prepend: [
                 AddSecurityHeaders::class,
+                CaptureAuditContext::class,
                 RejectRequestsDuringApplicationDatabaseMigration::class,
             ],
             append: [

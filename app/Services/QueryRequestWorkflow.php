@@ -123,12 +123,13 @@ class QueryRequestWorkflow
         $accessDurationMinutes = $requestKind === QueryRequestKind::QueryAccess
             ? (int) ($data['access_duration_minutes'] ?? 60)
             : null;
+        $executionSourceIpAddress = $this->auditLogger->clientIpAddress();
 
         if ($requestedAccessMode === AccessMode::Write) {
             $this->ensureWriteSessionDurationIsAllowed($requester, $databaseConnections, $accessDurationMinutes ?? 60, $accessTransport);
         }
 
-        return DB::transaction(function () use ($requester, $databaseConnection, $databaseConnections, $data, $requestKind, $accessTransport, $queryType, $statements, $usesEmergencySqlFallback, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
+        return DB::transaction(function () use ($requester, $databaseConnection, $databaseConnections, $data, $requestKind, $accessTransport, $queryType, $statements, $usesEmergencySqlFallback, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes, $executionSourceIpAddress): QueryRequest {
             $status = QueryRequestStatus::PendingReview;
 
             if (! $requiresApproval) {
@@ -151,6 +152,7 @@ class QueryRequestWorkflow
                 'access_duration_minutes' => $accessDurationMinutes,
                 'approved_by_id' => $requiresApproval ? null : $requester->id,
                 'approved_at' => $requiresApproval ? null : now(),
+                'execution_source_ip_address' => $executionSourceIpAddress,
             ]);
 
             $this->replaceStatements($queryRequest, $statements);
@@ -218,8 +220,9 @@ class QueryRequestWorkflow
         $scheduledAt = filled($data['scheduled_at'] ?? null)
             ? Carbon::parse($data['scheduled_at'])
             : null;
+        $executionSourceIpAddress = $this->auditLogger->clientIpAddress();
 
-        return DB::transaction(function () use ($requester, $data, $statements, $databaseConnection, $scheduledAt): QueryRequest {
+        return DB::transaction(function () use ($requester, $data, $statements, $databaseConnection, $scheduledAt, $executionSourceIpAddress): QueryRequest {
             $queryRequest = QueryRequest::query()->create([
                 'requester_id' => $requester->id,
                 'database_connection_id' => $databaseConnection->id,
@@ -231,6 +234,7 @@ class QueryRequestWorkflow
                 'status' => QueryRequestStatus::Draft,
                 'requires_approval' => true,
                 'scheduled_at' => $scheduledAt,
+                'execution_source_ip_address' => $executionSourceIpAddress,
             ]);
 
             $this->replaceStatements($queryRequest, $statements);
@@ -318,6 +322,7 @@ class QueryRequestWorkflow
         $accessDurationMinutes = $requestKind === QueryRequestKind::QueryAccess
             ? (int) ($data['access_duration_minutes'] ?? 60)
             : null;
+        $executionSourceIpAddress = $this->auditLogger->clientIpAddress();
 
         if ($requestedAccessMode === AccessMode::Write) {
             $this->ensureWriteSessionDurationIsAllowed($actor, $databaseConnections, $accessDurationMinutes ?? 60, $accessTransport);
@@ -331,7 +336,7 @@ class QueryRequestWorkflow
             $accessTransport,
         );
 
-        return DB::transaction(function () use ($queryRequest, $actor, $databaseConnection, $databaseConnections, $data, $requestKind, $accessTransport, $statements, $usesEmergencySqlFallback, $queryType, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes): QueryRequest {
+        return DB::transaction(function () use ($queryRequest, $actor, $databaseConnection, $databaseConnections, $data, $requestKind, $accessTransport, $statements, $usesEmergencySqlFallback, $queryType, $requestedAccessMode, $requiresApproval, $scheduledAt, $accessDurationMinutes, $executionSourceIpAddress): QueryRequest {
             $lockedQueryRequest = QueryRequest::query()->lockForUpdate()->findOrFail($queryRequest->id);
 
             if (! $lockedQueryRequest->isEditable()) {
@@ -376,6 +381,7 @@ class QueryRequestWorkflow
                 'approved_by_id' => $submittingDraft && ! $requiresApproval ? $actor->id : null,
                 'approved_at' => $submittingDraft && ! $requiresApproval ? now() : null,
                 'dispatched_by_id' => null,
+                'execution_source_ip_address' => $executionSourceIpAddress ?? $lockedQueryRequest->execution_source_ip_address,
                 'dispatched_at' => null,
                 'completed_at' => null,
                 'result_summary' => null,
@@ -459,8 +465,9 @@ class QueryRequestWorkflow
         $scheduledAt = filled($data['scheduled_at'] ?? null)
             ? Carbon::parse($data['scheduled_at'])
             : null;
+        $executionSourceIpAddress = $this->auditLogger->clientIpAddress();
 
-        return DB::transaction(function () use ($queryRequest, $actor, $data, $statements, $databaseConnection, $scheduledAt): QueryRequest {
+        return DB::transaction(function () use ($queryRequest, $actor, $data, $statements, $databaseConnection, $scheduledAt, $executionSourceIpAddress): QueryRequest {
             $lockedQueryRequest = QueryRequest::query()->lockForUpdate()->findOrFail($queryRequest->id);
 
             if ($lockedQueryRequest->status !== QueryRequestStatus::Draft) {
@@ -480,6 +487,7 @@ class QueryRequestWorkflow
                 'approved_by_id' => null,
                 'approved_at' => null,
                 'dispatched_by_id' => null,
+                'execution_source_ip_address' => $executionSourceIpAddress ?? $lockedQueryRequest->execution_source_ip_address,
                 'dispatched_at' => null,
                 'completed_at' => null,
                 'result_summary' => null,
@@ -601,7 +609,9 @@ class QueryRequestWorkflow
 
     public function dispatch(QueryRequest $queryRequest, ?User $actor = null): bool
     {
-        [$wasDispatched, $blockedScheduledRequest] = DB::transaction(function () use ($queryRequest, $actor): array {
+        $actorIpAddress = $actor instanceof User ? $this->auditLogger->clientIpAddress() : null;
+
+        [$wasDispatched, $blockedScheduledRequest] = DB::transaction(function () use ($queryRequest, $actor, $actorIpAddress): array {
             $lockedQueryRequest = QueryRequest::query()
                 ->lockForUpdate()
                 ->findOrFail($queryRequest->id);
@@ -623,6 +633,7 @@ class QueryRequestWorkflow
             }
 
             $wasScheduled = $lockedQueryRequest->status === QueryRequestStatus::Scheduled;
+            $executionSourceIpAddress = $actorIpAddress ?? $lockedQueryRequest->execution_source_ip_address;
             $report = $this->refreshDeploymentPreflight($lockedQueryRequest);
 
             if ($report['status'] === PreflightStatus::Blocked) {
@@ -632,10 +643,10 @@ class QueryRequestWorkflow
                     'dispatched_by_id' => null,
                 ])->save();
 
-                $this->auditLogger->log('query_request.preflight_blocked', $actor, $lockedQueryRequest, [
+                $this->auditLogger->logWithClientIp('query_request.preflight_blocked', $actor, $lockedQueryRequest, [
                     'trigger' => $wasScheduled ? 'scheduled_dispatch' : 'manual_dispatch',
                     'blocker_count' => $report['summary']['blocker_count'],
-                ]);
+                ], $executionSourceIpAddress);
 
                 return [false, $wasScheduled ? $lockedQueryRequest->fresh() : null];
             }
@@ -644,11 +655,12 @@ class QueryRequestWorkflow
                 'status' => QueryRequestStatus::Approved,
                 'dispatched_at' => now(),
                 'dispatched_by_id' => $actor?->id,
+                'execution_source_ip_address' => $executionSourceIpAddress,
             ])->save();
 
             ExecuteQueryRequest::dispatch($lockedQueryRequest->id)->onQueue('queries')->afterCommit();
 
-            $this->auditLogger->log('query_request.dispatched', $actor, $lockedQueryRequest);
+            $this->auditLogger->logWithClientIp('query_request.dispatched', $actor, $lockedQueryRequest, [], $executionSourceIpAddress);
 
             return [true, null];
         }, attempts: 3);
@@ -728,7 +740,9 @@ class QueryRequestWorkflow
      */
     public function retry(QueryRequest $queryRequest, User $actor): QueryRequest
     {
-        $retriedRequest = DB::transaction(function () use ($queryRequest, $actor): QueryRequest {
+        $executionSourceIpAddress = $this->auditLogger->clientIpAddress();
+
+        $retriedRequest = DB::transaction(function () use ($queryRequest, $actor, $executionSourceIpAddress): QueryRequest {
             $lockedQueryRequest = QueryRequest::query()
                 ->with([
                     'requester',
@@ -746,7 +760,7 @@ class QueryRequestWorkflow
                     ]);
                 }
 
-                return $this->createRetryRequest($lockedQueryRequest, $actor, null);
+                return $this->createRetryRequest($lockedQueryRequest, $actor, null, $executionSourceIpAddress);
             }
 
             if ($lockedQueryRequest->status !== QueryRequestStatus::Failed) {
@@ -762,6 +776,7 @@ class QueryRequestWorkflow
                     'status' => QueryRequestStatus::Approved,
                     'dispatched_at' => now(),
                     'dispatched_by_id' => $actor->id,
+                    'execution_source_ip_address' => $executionSourceIpAddress ?? $lockedQueryRequest->execution_source_ip_address,
                     'completed_at' => null,
                     'last_error' => null,
                     'result_summary' => null,
@@ -779,7 +794,7 @@ class QueryRequestWorkflow
                 return $lockedQueryRequest->refresh();
             }
 
-            return $this->createRetryRequest($lockedQueryRequest, $actor, $retryFromPosition);
+            return $this->createRetryRequest($lockedQueryRequest, $actor, $retryFromPosition, $executionSourceIpAddress);
         }, attempts: 3);
 
         if ($retriedRequest->id !== $queryRequest->id && $retriedRequest->requires_approval) {
@@ -801,7 +816,7 @@ class QueryRequestWorkflow
         return $failedExecution?->statement->position ?? 1;
     }
 
-    private function createRetryRequest(QueryRequest $sourceRequest, User $actor, ?int $retryFromPosition): QueryRequest
+    private function createRetryRequest(QueryRequest $sourceRequest, User $actor, ?int $retryFromPosition, ?string $executionSourceIpAddress): QueryRequest
     {
         $this->ensureAccessWorkflowIsEnabled($sourceRequest->request_kind, $sourceRequest->access_transport);
 
@@ -900,6 +915,7 @@ class QueryRequestWorkflow
             'access_duration_minutes' => $sourceRequest->access_duration_minutes,
             'approved_by_id' => $approvedById,
             'approved_at' => $approvedAt,
+            'execution_source_ip_address' => $executionSourceIpAddress ?? $sourceRequest->execution_source_ip_address,
         ]);
 
         if ($sourceRequest->request_kind === QueryRequestKind::SingleExecution) {
