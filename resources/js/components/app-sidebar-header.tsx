@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import NotificationController from '@/actions/App/Http/Controllers/NotificationController';
 import { Breadcrumbs } from '@/components/breadcrumbs';
+import { NativeProxyHealthStatus } from '@/components/native-proxy/health-status';
+import type { NativeProxyHealthSnapshot } from '@/components/native-proxy/health-status';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -39,23 +41,36 @@ type NotificationPreview = {
     read_at: string | null;
 };
 
+type DashboardHeaderProps = {
+    summary?: {
+        native_proxy_connections: number;
+        native_proxy_instances: number;
+    };
+    native_proxy_health?: NativeProxyHealthSnapshot;
+};
+
 export function AppSidebarHeader({
     breadcrumbs = [],
 }: {
     breadcrumbs?: BreadcrumbItemType[];
 }) {
+    const page = usePage<
+        {
+            auth: Auth;
+            native_proxy_cli_download_url?: string;
+            notification_summary?: {
+                unread_count?: number;
+                recent?: NotificationPreview[];
+            };
+        } & DashboardHeaderProps
+    >();
     const {
         auth,
         native_proxy_cli_download_url: cliDownloadUrl,
         notification_summary: notificationSummary,
-    } = usePage<{
-        auth: Auth;
-        native_proxy_cli_download_url?: string;
-        notification_summary?: {
-            unread_count?: number;
-            recent?: NotificationPreview[];
-        };
-    }>().props;
+        native_proxy_health: nativeProxyHealth,
+        summary,
+    } = page.props;
     const getInitials = useInitials();
     const unreadCount = notificationSummary?.unread_count ?? 0;
     const recentNotifications = notificationSummary?.recent ?? [];
@@ -74,6 +89,18 @@ export function AppSidebarHeader({
                 )}
             </div>
             <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+                {page.component === 'dashboard' &&
+                    nativeProxyHealth &&
+                    nativeProxyHealth.status !== 'disabled' &&
+                    summary && (
+                        <NativeProxyHealthStatus
+                            health={nativeProxyHealth}
+                            connections={summary.native_proxy_connections}
+                            instances={summary.native_proxy_instances}
+                            timezone={auth.user?.timezone ?? 'UTC'}
+                        />
+                    )}
+
                 {cliDownloadUrl && (
                     <Tooltip>
                         <TooltipTrigger asChild>

@@ -15,10 +15,14 @@ class ProxyHealth
      */
     public function latest(): array
     {
+        if (! config('native_proxy.enabled')) {
+            return $this->disabledSnapshot();
+        }
+
         /** @var array{status: 'disabled'|'healthy'|'unhealthy'|'version_mismatch', checked_at: string|null, proxy_id: string|null, version: string|null, message: string|null}|null $snapshot */
         $snapshot = Cache::get(self::CacheKey);
 
-        return $snapshot ?? $this->disabledSnapshot();
+        return $snapshot ?? $this->unavailableSnapshot('The native proxy health check has not reported yet.');
     }
 
     /**
@@ -28,8 +32,12 @@ class ProxyHealth
     {
         $url = config('native_proxy.health_url');
 
-        if (! config('native_proxy.enabled') || ! is_string($url) || $url === '') {
+        if (! config('native_proxy.enabled')) {
             return $this->disabledSnapshot();
+        }
+
+        if (! is_string($url) || $url === '') {
+            return $this->store($this->unavailableSnapshot('The native proxy readiness endpoint is not configured.'));
         }
 
         try {
@@ -95,6 +103,20 @@ class ProxyHealth
             'proxy_id' => null,
             'version' => null,
             'message' => 'Native client access is not enabled for this workspace.',
+        ];
+    }
+
+    /**
+     * @return array{status: 'unhealthy', checked_at: string|null, proxy_id: null, version: null, message: string}
+     */
+    private function unavailableSnapshot(string $message): array
+    {
+        return [
+            'status' => 'unhealthy',
+            'checked_at' => null,
+            'proxy_id' => null,
+            'version' => null,
+            'message' => $message,
         ];
     }
 }

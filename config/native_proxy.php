@@ -47,5 +47,5 @@ return [
 
     'cli_download_url' => env('NATIVE_PROXY_CLI_DOWNLOAD_URL', 'https://github.com/adiwidia-dev/crucible-db/releases/latest'),
 
-    'health_cache_seconds' => 30,
+    'health_cache_seconds' => 120,
 ];
