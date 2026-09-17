@@ -41,7 +41,10 @@ import { index as usersIndex } from '@/routes/users';
 import type { Auth, NavItem } from '@/types';
 
 export function AppSidebar() {
-    const { auth } = usePage<{ auth: Auth }>().props;
+    const { auth, policy_review_summary: policyReviewSummary } = usePage<{
+        auth: Auth;
+        policy_review_summary?: { pending_count?: number };
+    }>().props;
     const { isCurrentOrParentUrl, isCurrentUrl } = useCurrentUrl();
     const isAdmin = Boolean(auth.user.roles?.some((role) => role.is_admin));
     const workNavItems: NavItem[] = [
@@ -99,6 +102,7 @@ export function AppSidebar() {
                 {
                     title: 'SQL Policy',
                     href: editSqlStatementPolicy(),
+                    badge: policyReviewSummary?.pending_count ?? 0,
                 },
             ],
         },

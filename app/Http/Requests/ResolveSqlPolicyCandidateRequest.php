@@ -35,6 +35,12 @@ class ResolveSqlPolicyCandidateRequest extends FormRequest
                 'integer',
                 'min:1',
             ],
+            'comment' => [
+                Rule::requiredIf(in_array($this->string('action')->toString(), ['deny', 'dismiss'], true)),
+                'nullable',
+                'string',
+                'max:1000',
+            ],
         ];
     }
 }

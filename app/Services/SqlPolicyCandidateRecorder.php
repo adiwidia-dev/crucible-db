@@ -7,14 +7,11 @@ use App\Models\QueryRequest;
 use App\Models\QueryRequestStatement;
 use App\Models\SqlPolicyCandidate;
 use App\Models\SqlPolicyCandidateOccurrence;
-use App\Models\User;
-use App\Notifications\OperationalNotification;
 
 class SqlPolicyCandidateRecorder
 {
     public function __construct(
         private readonly SqlPolicyStatementAnalyzer $analyzer,
-        private readonly ApplicationSettings $settings,
     ) {}
 
     /**
@@ -29,7 +26,7 @@ class SqlPolicyCandidateRecorder
     ): SqlPolicyCandidate {
         $now = now();
         $fingerprint = $this->analyzer->exactFingerprint($sql);
-        $inserted = SqlPolicyCandidate::query()->insertOrIgnore([
+        SqlPolicyCandidate::query()->insertOrIgnore([
             'database_driver' => $connection->driver->value,
             'exact_fingerprint' => $fingerprint,
             'canonical_sql' => $this->analyzer->canonicalSql($sql),
@@ -65,35 +62,6 @@ class SqlPolicyCandidateRecorder
             ],
         );
 
-        if ($inserted === 1) {
-            $this->notifyAdministrators($candidate, $queryRequest);
-        }
-
         return $candidate;
-    }
-
-    private function notifyAdministrators(SqlPolicyCandidate $candidate, QueryRequest $queryRequest): void
-    {
-        if (! $this->settings->notificationsInAppEnabled()) {
-            return;
-        }
-
-        User::query()
-            ->whereNull('disabled_at')
-            ->whereHas('roles', fn ($query) => $query->where('is_admin', true))
-            ->get()
-            ->each(fn (User $administrator) => $administrator->notify(new OperationalNotification(
-                [
-                    'event' => 'sql_policy.candidate_discovered',
-                    'severity' => 'warning',
-                    'title' => 'SQL policy candidate discovered',
-                    'message' => "An unsupported {$candidate->database_driver->value} statement was found in {$queryRequest->title}.",
-                    'action_label' => 'Review candidate',
-                    'url' => route('sql-statement-policy.edit', ['candidate' => $candidate->id]),
-                    'request_id' => $queryRequest->id,
-                ],
-                true,
-                false,
-            )));
     }
 }

@@ -23,6 +23,7 @@ class SqlPolicyManager
     public function __construct(
         private readonly AuditLogger $auditLogger,
         private readonly DeploymentPreflight $deploymentPreflight,
+        private readonly NotificationDispatcher $notificationDispatcher,
     ) {}
 
     public function resolveCandidate(
@@ -32,15 +33,20 @@ class SqlPolicyManager
         SqlPolicyRuleMatchType $matchType,
         SqlPolicyRuleScope $scope,
         ?int $scopeId,
+        ?string $comment,
     ): ?SqlPolicyRule {
         if ($action === 'dismiss') {
             $candidate->forceFill([
                 'resolution' => SqlPolicyCandidateResolution::Dismissed,
                 'resolved_by_id' => $actor->id,
                 'resolved_rule_id' => null,
+                'resolution_comment' => $comment,
             ])->save();
 
-            $this->auditLogger->log('sql_policy_candidate.dismissed', $actor, $candidate);
+            $this->auditLogger->log('sql_policy_candidate.dismissed', $actor, $candidate, [
+                'comment' => $comment,
+            ]);
+            $this->notificationDispatcher->sqlPolicyCandidateResolved($candidate);
 
             return null;
         }
@@ -63,7 +69,7 @@ class SqlPolicyManager
             ? $candidate->exact_fingerprint
             : hash('sha256', (string) $candidate->shape_signature);
 
-        $rule = DB::transaction(function () use ($actor, $candidate, $effect, $matchType, $scope, $scopeId, $scopeKey, $matchValue): SqlPolicyRule {
+        $rule = DB::transaction(function () use ($actor, $candidate, $effect, $matchType, $scope, $scopeId, $scopeKey, $matchValue, $comment): SqlPolicyRule {
             $rule = SqlPolicyRule::query()->updateOrCreate(
                 [
                     'database_driver' => $candidate->database_driver->value,
@@ -94,6 +100,7 @@ class SqlPolicyManager
                 'resolution' => $resolution,
                 'resolved_by_id' => $actor->id,
                 'resolved_rule_id' => $rule->id,
+                'resolution_comment' => $comment,
             ])->save();
 
             $this->auditLogger->log('sql_policy_candidate.resolved', $actor, $candidate, [
@@ -102,6 +109,7 @@ class SqlPolicyManager
                 'effect' => $effect->value,
                 'match_type' => $matchType->value,
                 'scope' => $scopeKey,
+                'comment' => $comment,
             ]);
 
             return $rule;
@@ -109,6 +117,7 @@ class SqlPolicyManager
 
         $this->markActiveDeploymentPreflightStale();
         $this->refreshCandidateRequests($candidate);
+        $this->notificationDispatcher->sqlPolicyCandidateResolved($candidate);
 
         return $rule;
     }

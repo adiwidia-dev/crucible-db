@@ -8,6 +8,7 @@ import {
     CircleX,
     Clock3,
     FileCode2,
+    FileSearch,
     KeyRound,
     Plus,
     ShieldAlert,
@@ -31,6 +32,8 @@ import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import type { PolicyPreview } from '@/hooks/use-deployment-policy-preview';
+import { useDeploymentPolicyPreview } from '@/hooks/use-deployment-policy-preview';
 import type { DatabaseConnectionSummary } from '@/lib/crucible';
 import {
     isoToZonedDateTimeLocal,
@@ -77,6 +80,7 @@ type Props = {
         native_client_access_enabled: boolean;
     };
     query_request: EditableQueryRequest | null;
+    policy_previews?: PolicyPreview[];
 };
 
 type SqlStatementPolicy = {
@@ -142,6 +146,9 @@ const SQL_STATEMENT_FAMILIES = [
 
 const EMERGENCY_FALLBACK_BLOCKED_SQL_PATTERN =
     /\b(grant|revoke|create\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\s+data\s+wrapper|server|publication|subscription)|alter\s+(?:user|role|database|system|function|procedure|trigger|rule)|drop\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\s+data\s+wrapper|server|publication|subscription)|copy|load\s+data|load_file|into\s+outfile|vacuum|analyze|reindex|cluster|checkpoint|call|prepare|execute|deallocate|discard|lock|listen|notify|unlisten|reset)\b/i;
+
+const UNSUPPORTED_SQL_POLICY_MESSAGE =
+    'This SQL statement is not supported by the governed SQL policy.';
 
 function topLevelGovernedSql(executableSql: string): string {
     if (!/^with\b/i.test(executableSql)) {
@@ -220,7 +227,7 @@ function sqlStatementPolicyMessage(
     if (statementFamily === undefined) {
         return policy.sql_emergency_fallback_enabled
             ? null
-            : 'This SQL statement is not supported by the governed SQL policy.';
+            : UNSUPPORTED_SQL_POLICY_MESSAGE;
     }
 
     if (!policy[statementFamily.key]) {
@@ -287,6 +294,7 @@ export default function QueryRequestCreate({
     sql_statement_policy: sqlStatementPolicy,
     access_features: accessFeatures,
     query_request,
+    policy_previews: initialPolicyPreviews = [],
 }: Props) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const userTimezone = auth.user.timezone ?? 'UTC';
@@ -322,6 +330,14 @@ export default function QueryRequestCreate({
     >(query_request?.requested_access_mode ?? 'read');
     const [statements, setStatements] = useState<StatementDraft[]>(() =>
         initialStatements(query_request, defaultConnectionId),
+    );
+    const policyPreviews = useDeploymentPolicyPreview(
+        statements.map((statement) => ({
+            sql: statement.sql,
+            database_connection_id: Number(statement.databaseConnectionId),
+        })),
+        requestKind === 'single_execution',
+        initialPolicyPreviews,
     );
     const form = query_request
         ? QueryRequestController.update.form(query_request.id)
@@ -391,9 +407,16 @@ export default function QueryRequestCreate({
                     (item) =>
                         String(item.id) === statement.databaseConnectionId,
                 );
+                const serverPolicy = policyPreviews.find(
+                    (preview) =>
+                        preview.sql === statement.sql &&
+                        String(preview.database_connection_id) ===
+                            statement.databaseConnectionId,
+                );
                 const messages: Array<{
                     level: 'warning' | 'blocked';
                     message: string;
+                    policyReviewEligible?: boolean;
                 }> = [];
 
                 if (connection === undefined) {
@@ -408,27 +431,45 @@ export default function QueryRequestCreate({
                         level: 'blocked',
                         message: 'Add the SQL statement to check it.',
                     });
-                } else if (/;\s*\S/.test(sql.replace(/;\s*$/, ''))) {
+                } else if (
+                    serverPolicy === undefined &&
+                    /;\s*\S/.test(sql.replace(/;\s*$/, ''))
+                ) {
                     messages.push({
                         level: 'blocked',
                         message:
                             'Only one SQL statement may be submitted per statement slot.',
                     });
                 } else {
-                    const policyMessage = sqlStatementPolicyMessage(
-                        sql,
-                        sqlStatementPolicy,
-                    );
+                    const policyMessage =
+                        serverPolicy !== undefined
+                            ? serverPolicy.message
+                            : sqlStatementPolicyMessage(
+                                  sql,
+                                  sqlStatementPolicy,
+                              );
 
                     if (policyMessage !== null) {
                         messages.push({
                             level: 'blocked',
                             message: policyMessage,
+                            policyReviewEligible:
+                                serverPolicy !== undefined
+                                    ? serverPolicy.reviewable
+                                    : policyMessage ===
+                                      UNSUPPORTED_SQL_POLICY_MESSAGE,
                         });
                     }
 
                     if (policyMessage === null) {
-                        if (usesEmergencySqlFallback(sql, sqlStatementPolicy)) {
+                        if (
+                            serverPolicy !== undefined
+                                ? serverPolicy.source === 'emergency_fallback'
+                                : usesEmergencySqlFallback(
+                                      sql,
+                                      sqlStatementPolicy,
+                                  )
+                        ) {
                             messages.push({
                                 level: 'warning',
                                 message:
@@ -467,8 +508,21 @@ export default function QueryRequestCreate({
                     messages,
                 };
             }),
-        [connections, sqlStatementPolicy, statements],
+        [connections, policyPreviews, sqlStatementPolicy, statements],
     );
+    const policyReviewEligibility = useMemo(() => {
+        const blockers = deploymentPreflightPreview.flatMap((statement) =>
+            statement.messages.filter((message) => message.level === 'blocked'),
+        );
+
+        return {
+            canRequest:
+                blockers.length > 0 &&
+                blockers.every(
+                    (message) => message.policyReviewEligible === true,
+                ),
+        };
+    }, [deploymentPreflightPreview]);
 
     function updateStatement(index: number, sql: string): void {
         setStatements((current) =>
@@ -1491,10 +1545,27 @@ export default function QueryRequestCreate({
                                                     Save draft
                                                 </Button>
                                             )}
+                                        {requestKind === 'single_execution' &&
+                                            (!isEditing || isDraft) &&
+                                            policyReviewEligibility.canRequest && (
+                                                <Button
+                                                    name="intent"
+                                                    value="policy_review"
+                                                    variant="outline"
+                                                    disabled={processing}
+                                                    className="border-amber-300 text-amber-900 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-100 dark:hover:bg-amber-950/40"
+                                                >
+                                                    <FileSearch />
+                                                    Request SQL policy review
+                                                </Button>
+                                            )}
                                         <Button
                                             name="intent"
                                             value="submit"
-                                            disabled={processing}
+                                            disabled={
+                                                processing ||
+                                                policyReviewEligibility.canRequest
+                                            }
                                         >
                                             <Check />
                                             {processing
@@ -1510,6 +1581,15 @@ export default function QueryRequestCreate({
                                         </Button>
                                     </div>
                                 </div>
+                                {policyReviewEligibility.canRequest && (
+                                    <p className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950 sm:px-5 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100">
+                                        This batch cannot enter approval yet.
+                                        Request SQL policy review to save it as
+                                        a draft and notify administrators. If
+                                        allowed, review the refreshed preflight
+                                        and submit the draft explicitly.
+                                    </p>
+                                )}
                             </section>
                         </>
                     )}

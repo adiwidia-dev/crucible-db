@@ -8,6 +8,8 @@ use App\Models\NativeProxyConnection;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\Role;
+use App\Models\SqlPolicyCandidate;
+use App\Models\SqlPolicyCandidateOccurrence;
 use App\Models\User;
 use App\Services\NativeProxy\ProxyHealth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -74,6 +76,15 @@ class DashboardTest extends TestCase
             'database_connection_id' => $accessRequest->database_connection_id,
             'user_id' => $requester->id,
         ]);
+        $candidate = SqlPolicyCandidate::factory()->create();
+        SqlPolicyCandidateOccurrence::factory()->create([
+            'sql_policy_candidate_id' => $candidate->id,
+            'query_request_id' => $pendingReview->id,
+            'query_request_statement_id' => null,
+            'database_connection_id' => $pendingReview->database_connection_id,
+            'review_requested_by_id' => $requester->id,
+            'review_requested_at' => now(),
+        ]);
 
         $this->actingAs($admin)
             ->get(route('dashboard'))
@@ -81,6 +92,7 @@ class DashboardTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('dashboard')
                 ->where('summary.pending_reviews', 1)
+                ->where('summary.policy_reviews', 1)
                 ->where('summary.scheduled', 1)
                 ->where('summary.failed', 1)
                 ->where('summary.active_sessions', 1)
@@ -88,7 +100,9 @@ class DashboardTest extends TestCase
                 ->where('scheduled_requests.0.id', $scheduledRequest->id)
                 ->where('failed_requests.0.id', $failedRequest->id)
                 ->where('pending_reviews.0.requested_access_mode', AccessMode::Write->value)
-                ->where('expiring_sessions.0.id', $session->id));
+                ->where('expiring_sessions.0.id', $session->id)
+                ->where('policy_review_candidates.0.id', $candidate->id)
+                ->where('policy_review_summary.pending_count', 1));
     }
 
     public function test_dashboard_surfaces_cached_native_proxy_health_without_secrets_or_statement_data(): void

@@ -44,12 +44,14 @@ type PolicyCandidate = {
     shape_label: string | null;
     shape_available: boolean;
     occurrences_count: number;
+    requested_occurrences_count: number;
     first_seen_at: string;
     last_seen_at: string;
     occurrences: Array<{
         request_id: number;
         request_title: string | null;
         connection_name: string | null;
+        review_requested_at: string | null;
     }>;
     scope_options: PolicyScopeOption[];
 };
@@ -131,14 +133,14 @@ export default function SqlPolicy({
                                 SQL policy candidates
                             </h2>
                             <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                                Structurally safe unsupported deployment
-                                statements are collected automatically during
-                                preflight. Review a statement once, then scope
-                                the decision.
+                                Explicit developer requests appear first. Other
+                                structurally safe unsupported statements remain
+                                available as observations without creating
+                                review work.
                             </p>
                         </div>
                         <Badge className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
-                            {candidates.total} pending
+                            {candidates.total} unresolved
                         </Badge>
                     </div>
 
@@ -427,6 +429,11 @@ function CandidateReview({
                                 ? 'occurrence'
                                 : 'occurrences'}
                         </Badge>
+                        {candidate.requested_occurrences_count > 0 && (
+                            <Badge className="border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+                                Review requested
+                            </Badge>
+                        )}
                         {candidate.shape_available && (
                             <Badge
                                 variant="outline"
@@ -456,6 +463,9 @@ function CandidateReview({
                                 {occurrence.connection_name
                                     ? ` · ${occurrence.connection_name}`
                                     : ''}
+                                {occurrence.review_requested_at
+                                    ? ' · requested'
+                                    : ' · observed'}
                             </Link>
                         ))}
                     </div>
@@ -544,6 +554,23 @@ function CandidateReview({
                                 />
                                 <InputError message={errors.scope_type} />
                                 <InputError message={errors.scope_id} />
+                            </div>
+
+                            <div className="mt-3">
+                                <label
+                                    htmlFor={`candidate-${candidate.id}-comment`}
+                                    className="text-xs font-medium"
+                                >
+                                    Decision note
+                                </label>
+                                <textarea
+                                    id={`candidate-${candidate.id}-comment`}
+                                    name="comment"
+                                    rows={3}
+                                    placeholder="Required when denying or dismissing; shared with the requester."
+                                    className="mt-1 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                />
+                                <InputError message={errors.comment} />
                             </div>
 
                             <div className="mt-4 grid grid-cols-2 gap-2">

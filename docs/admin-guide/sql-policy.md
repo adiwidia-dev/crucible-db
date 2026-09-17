@@ -18,4 +18,21 @@ Emergency fallback is a separately enabled Deployment Batch exception for one ot
 
 Changing statement policy can affect drafts, approved work, and active sessions at the next server-side check. Review currently prepared work before tightening or expanding policy.
 
+## Policy-review queue
+
+Developers can explicitly request review when a Deployment Batch is blocked only by structurally reviewable unsupported SQL. These requests appear in three places:
+
+- the administrator Overview queue and summary count;
+- the badge beside **SQL Policy** in administration navigation; and
+- the notification inbox, with optional email delivery controlled by workspace notification policy and each administrator's preferences.
+
+Requested candidates appear before passive observations on this page and carry a **Review requested** badge. Review the originating draft and choose the narrowest appropriate decision:
+
+- allow the exact statement;
+- allow a parser-proven reusable shape where offered;
+- deny the exact statement; or
+- dismiss the observation without creating a rule.
+
+A decision note is required for denial and dismissal and is sent to the requester. Allowing a candidate refreshes affected preflight reports, but the Deployment Batch remains a draft until its requester submits it through the normal approval flow.
+
 See [SQL statement policy](../concepts/sql-policy.md) and [Supported SQL](../reference/supported-sql.md).

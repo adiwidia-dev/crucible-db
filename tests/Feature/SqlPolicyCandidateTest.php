@@ -72,7 +72,7 @@ class SqlPolicyCandidateTest extends TestCase
         $this->assertSame(1, $candidate->occurrences()->count());
         $this->assertSame('CREATE INDEX', $candidate->shape_label);
         $this->assertSame($candidate->id, $firstReport['statements'][0]['messages'][0]['candidate_id']);
-        Notification::assertSentToTimes($admin, OperationalNotification::class, 1);
+        Notification::assertNothingSent();
 
         $this->actingAs($admin)
             ->get(route('sql-statement-policy.edit', ['candidate' => $candidate->id]))
@@ -108,7 +108,7 @@ class SqlPolicyCandidateTest extends TestCase
         $this->assertTrue($message['shape_available']);
         $this->assertSame('CREATE INDEX', $candidate->shape_label);
         $this->assertSame(1, $candidate->occurrences()->count());
-        Notification::assertSentToTimes($admin, OperationalNotification::class, 1);
+        Notification::assertNothingSent();
     }
 
     public function test_immutable_safety_block_does_not_create_a_policy_candidate(): void
@@ -207,6 +207,43 @@ SQL;
         $this->assertFalse($nativeDecision->allowed);
     }
 
+    public function test_policy_decision_refreshes_the_draft_and_notifies_the_requester_without_submitting_it(): void
+    {
+        Notification::fake();
+        $adminRole = Role::factory()->admin()->create();
+        $requester = User::factory()->withRole($adminRole)->create();
+        $reviewer = User::factory()->withRole($adminRole)->create();
+        $connection = DatabaseConnection::factory()->postgresql()->create();
+        $sql = 'CREATE INDEX CONCURRENTLY users_email_idx ON users (email)';
+        $queryRequest = $this->deploymentRequest($requester, $connection, [$sql]);
+        $report = app(DeploymentPreflight::class)->evaluate($queryRequest);
+        app(DeploymentPreflight::class)->persist($queryRequest, $report);
+        $candidate = SqlPolicyCandidate::query()->sole();
+        $candidate->occurrences()->update([
+            'review_requested_by_id' => $requester->id,
+            'review_requested_at' => now(),
+        ]);
+
+        $this->actingAs($reviewer)
+            ->post(route('sql-policy-candidates.resolve', $candidate), [
+                'action' => 'allow',
+                'match_type' => 'exact',
+                'scope_type' => 'workspace',
+                'scope_id' => null,
+                'comment' => 'Approved for this exact index statement.',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(QueryRequestStatus::Draft, $queryRequest->refresh()->status);
+        $this->assertSame('passed', $queryRequest->preflight_status->value);
+        $this->assertSame('Approved for this exact index statement.', $candidate->refresh()->resolution_comment);
+        Notification::assertSentTo(
+            $requester,
+            OperationalNotification::class,
+            fn (OperationalNotification $notification): bool => $notification->toArray($requester)['event'] === 'sql_policy.review_resolved',
+        );
+    }
+
     public function test_admin_can_promote_a_parser_proven_create_index_shape_for_one_driver(): void
     {
         Notification::fake();
@@ -264,6 +301,7 @@ SQL;
                 'match_type' => 'shape',
                 'scope_type' => 'database_connection',
                 'scope_id' => $connection->id,
+                'comment' => 'This statement is not approved for deployment.',
             ])
             ->assertSessionHasNoErrors();
 

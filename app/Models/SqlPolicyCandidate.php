@@ -23,13 +23,15 @@ use Illuminate\Support\Carbon;
  * @property SqlPolicyCandidateResolution|null $resolution
  * @property int|null $resolved_by_id
  * @property int|null $resolved_rule_id
+ * @property string|null $resolution_comment
  * @property Carbon $first_seen_at
  * @property Carbon $last_seen_at
  * @property int $occurrences_count
+ * @property int $requested_occurrences_count
  * @property-read Collection<int, SqlPolicyCandidateOccurrence> $occurrences
  * @property-read User|null $resolvedBy
  */
-#[Fillable(['database_driver', 'exact_fingerprint', 'canonical_sql', 'shape_signature', 'shape_label', 'resolution', 'resolved_by_id', 'resolved_rule_id', 'first_seen_at', 'last_seen_at'])]
+#[Fillable(['database_driver', 'exact_fingerprint', 'canonical_sql', 'shape_signature', 'shape_label', 'resolution', 'resolved_by_id', 'resolved_rule_id', 'resolution_comment', 'first_seen_at', 'last_seen_at'])]
 
 class SqlPolicyCandidate extends Model
 {

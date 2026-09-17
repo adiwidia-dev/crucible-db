@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateSqlStatementPolicyRequest;
 use App\Models\ConnectionGroup;
 use App\Models\DatabaseConnection;
 use App\Models\SqlPolicyCandidate;
+use App\Models\SqlPolicyCandidateOccurrence;
 use App\Models\SqlPolicyRule;
 use App\Services\ApplicationSettings;
 use App\Services\AuditLogger;
@@ -36,9 +37,22 @@ class SqlStatementPolicyController extends Controller
             ->with([
                 'occurrences' => fn ($query) => $query
                     ->with(['queryRequest:id,title', 'databaseConnection:id,name'])
+                    ->orderByRaw('CASE WHEN review_requested_at IS NULL THEN 1 ELSE 0 END')
+                    ->latest('review_requested_at')
                     ->latest('last_seen_at'),
             ])
             ->withCount('occurrences')
+            ->withCount([
+                'occurrences as requested_occurrences_count' => fn ($query) => $query->whereNotNull('review_requested_at'),
+            ])
+            ->orderByDesc(
+                SqlPolicyCandidateOccurrence::query()
+                    ->select('review_requested_at')
+                    ->whereColumn('sql_policy_candidate_id', 'sql_policy_candidates.id')
+                    ->whereNotNull('review_requested_at')
+                    ->latest('review_requested_at')
+                    ->limit(1),
+            )
             ->latest('last_seen_at')
             ->paginate(10, ['*'], 'candidates_page')
             ->withQueryString()
@@ -81,12 +95,14 @@ class SqlStatementPolicyController extends Controller
                     'shape_label' => $candidate->shape_label,
                     'shape_available' => $candidate->shape_signature !== null,
                     'occurrences_count' => $candidate->occurrences_count,
+                    'requested_occurrences_count' => $candidate->requested_occurrences_count,
                     'first_seen_at' => $candidate->first_seen_at->toIso8601String(),
                     'last_seen_at' => $candidate->last_seen_at->toIso8601String(),
                     'occurrences' => $candidate->occurrences->take(5)->map(fn ($occurrence): array => [
                         'request_id' => $occurrence->query_request_id,
                         'request_title' => $occurrence->queryRequest?->title,
                         'connection_name' => $occurrence->databaseConnection?->name,
+                        'review_requested_at' => $occurrence->review_requested_at?->toIso8601String(),
                     ])->values(),
                     'scope_options' => $scopeOptions,
                 ];

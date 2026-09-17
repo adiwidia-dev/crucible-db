@@ -73,7 +73,7 @@ class UpdateQueryRequestRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'intent' => ['nullable', Rule::in(['submit', 'draft'])],
+            'intent' => ['nullable', Rule::in(['submit', 'draft', 'policy_review'])],
             'access_transport' => ['required', Rule::enum(AccessTransport::class)],
             'database_connection_id' => ['nullable', 'integer', 'exists:database_connections,id'],
             'database_connection_ids' => ['nullable', 'required_if:request_kind,'.QueryRequestKind::QueryAccess->value, 'array', 'min:1', 'max:10'],

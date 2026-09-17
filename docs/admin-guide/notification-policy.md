@@ -4,7 +4,7 @@
 
 ![Notification Policy settings](../assets/screenshots/admin-notification-policy.png){ .docs-screenshot }
 
-Control workspace-wide in-app and email delivery plus event defaults for review requests, successful and failed execution, Query Access lifecycle, and connection failures.
+Control workspace-wide in-app and email delivery plus event defaults for approval requests, SQL policy reviews, successful and failed execution, Query Access lifecycle, and connection failures.
 
 Individual preferences can narrow optional email delivery but cannot create delivery the workspace has disabled. Audit records are independent of notification delivery.
 
@@ -15,7 +15,7 @@ Individual preferences can narrow optional email delivery but cannot create deli
 
 ## Event policy
 
-Review and decision, completed batch, failed batch, Query Access, and failed connection-test events can be controlled independently. Disabling delivery does not suppress the corresponding audit events.
+Approval decisions, SQL policy reviews, completed batches, failed batches, Query Access, and failed connection-test events can be controlled independently. Disabling delivery does not suppress the corresponding audit events. Each user can independently opt into or out of optional SQL policy-review email while in-app delivery follows workspace policy.
 
 ## Operational alert recipients
 

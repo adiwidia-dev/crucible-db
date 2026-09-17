@@ -21,6 +21,7 @@ import { edit } from '@/routes/preferences';
 
 type Preferences = {
     email_approvals: boolean;
+    email_policy_reviews: boolean;
     email_execution_completed: boolean;
     email_execution_failed: boolean;
     email_sessions: boolean;
@@ -136,6 +137,14 @@ export default function Preferences({
                                     defaultChecked={preferences.email_approvals}
                                     title="Approval decisions"
                                     description="Approved, rejected, and reapproval-required requests."
+                                />
+                                <PreferenceField
+                                    name="email_policy_reviews"
+                                    defaultChecked={
+                                        preferences.email_policy_reviews
+                                    }
+                                    title="SQL policy reviews"
+                                    description="New policy-review requests and the allow or deny decision for your deployment drafts."
                                 />
                                 <PreferenceField
                                     name="email_execution_completed"

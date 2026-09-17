@@ -46,6 +46,8 @@ class ApplicationSettings
 
     public const NotificationsReviewEnabled = 'notifications_review_enabled';
 
+    public const NotificationsPolicyReviewEnabled = 'notifications_policy_review_enabled';
+
     public const NotificationsExecutionCompletedEnabled = 'notifications_execution_completed_enabled';
 
     public const NotificationsExecutionFailedEnabled = 'notifications_execution_failed_enabled';
@@ -177,6 +179,7 @@ class ApplicationSettings
             'notifications_in_app_enabled' => $this->notificationsInAppEnabled(),
             'notifications_email_enabled' => $this->notificationsEmailEnabled(),
             'notifications_review_enabled' => $this->notificationEventEnabled('review'),
+            'notifications_policy_review_enabled' => $this->notificationEventEnabled('policy_review'),
             'notifications_execution_completed_enabled' => $this->notificationEventEnabled('execution_completed'),
             'notifications_execution_failed_enabled' => $this->notificationEventEnabled('execution_failed'),
             'notifications_query_access_enabled' => $this->notificationEventEnabled('query_access'),
@@ -198,6 +201,7 @@ class ApplicationSettings
     {
         return match ($event) {
             'review' => $this->boolean(self::NotificationsReviewEnabled, true),
+            'policy_review' => $this->boolean(self::NotificationsPolicyReviewEnabled, true),
             'execution_completed' => $this->boolean(self::NotificationsExecutionCompletedEnabled, true),
             'execution_failed' => $this->boolean(self::NotificationsExecutionFailedEnabled, true),
             'query_access' => $this->boolean(self::NotificationsQueryAccessEnabled, true),

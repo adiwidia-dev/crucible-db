@@ -109,7 +109,7 @@ for verification, connection, and desktop-client setup.
 
 ### Governed SQL behavior
 
-The workspace SQL policy controls the supported read, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP TABLE, and TRUNCATE TABLE families. Each family is enabled or disabled explicitly so the effective policy is always visible.
+The workspace SQL policy controls the supported read, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP TABLE, and TRUNCATE TABLE families. Each family is enabled or disabled explicitly so the effective policy is always visible. Structurally reviewable unsupported Deployment Batch SQL can be saved atomically as a draft and sent to the administrator policy-review queue; an allow decision refreshes preflight but never bypasses normal request approval.
 
 Common-table expressions are classified by their top-level executable statement, so `WITH ... UPDATE`, `WITH ... INSERT`, `WITH ... DELETE`, and `WITH ... SELECT` receive the same policy and preflight treatment as their non-CTE forms.
 

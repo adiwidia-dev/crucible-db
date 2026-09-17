@@ -28,6 +28,7 @@ class UpdateNotificationSettingsRequest extends FormRequest
             'notifications_in_app_enabled' => ['required', 'boolean'],
             'notifications_email_enabled' => ['required', 'boolean'],
             'notifications_review_enabled' => ['required', 'boolean'],
+            'notifications_policy_review_enabled' => ['required', 'boolean'],
             'notifications_execution_completed_enabled' => ['required', 'boolean'],
             'notifications_execution_failed_enabled' => ['required', 'boolean'],
             'notifications_query_access_enabled' => ['required', 'boolean'],

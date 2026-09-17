@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DatabaseConnectionController;
+use App\Http\Controllers\DeploymentPolicyPreviewController;
 use App\Http\Controllers\NativeProxy\ConnectionController as NativeProxyConnectionController;
 use App\Http\Controllers\NativeProxy\DeviceAuthorizationController as NativeProxyDeviceAuthorizationController;
 use App\Http\Controllers\NativeProxy\LeaseController;
@@ -91,6 +92,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('connections/{database_connection}/subscription', [NotificationSubscriptionController::class, 'destroyDatabaseConnection'])
         ->name('connections.subscription.destroy');
 
+    Route::post('query-requests/policy-preview', DeploymentPolicyPreviewController::class)
+        ->middleware('throttle:120,1')
+        ->name('query-requests.policy-preview');
     Route::resource('query-requests', QueryRequestController::class)
         ->parameters(['query-requests' => 'query_request']);
     Route::post('query-requests/{query_request}/reviews', [QueryReviewController::class, 'store'])

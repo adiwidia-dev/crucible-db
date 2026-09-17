@@ -13,6 +13,7 @@ use App\Jobs\ExecuteQueryRequest;
 use App\Models\DatabaseConnection;
 use App\Models\QueryRequest;
 use App\Models\QueryReview;
+use App\Models\SqlPolicyCandidateOccurrence;
 use App\Models\User;
 use App\Services\NativeProxy\LeaseWorkflow;
 use Illuminate\Support\Carbon;
@@ -31,6 +32,7 @@ class QueryRequestWorkflow
         private readonly DeploymentPreflight $deploymentPreflight,
         private readonly DeploymentStatementPolicy $deploymentStatementPolicy,
         private readonly NotificationDispatcher $notificationDispatcher,
+        private readonly SqlPolicyReviewWorkflow $sqlPolicyReviewWorkflow,
         private readonly LeaseWorkflow $nativeProxyLeaseWorkflow,
         private readonly ApplicationSettings $applicationSettings,
     ) {}
@@ -199,7 +201,7 @@ class QueryRequestWorkflow
      *
      * @throws ValidationException
      */
-    public function createDraft(User $requester, array $data): QueryRequest
+    public function createDraft(User $requester, array $data, bool $requestPolicyReview = false): QueryRequest
     {
         $this->ensureAccessTransportIsValidForRequestKind(
             $this->accessTransport($data),
@@ -222,7 +224,7 @@ class QueryRequestWorkflow
             : null;
         $executionSourceIpAddress = $this->auditLogger->clientIpAddress();
 
-        return DB::transaction(function () use ($requester, $data, $statements, $databaseConnection, $scheduledAt, $executionSourceIpAddress): QueryRequest {
+        return DB::transaction(function () use ($requester, $data, $statements, $databaseConnection, $scheduledAt, $executionSourceIpAddress, $requestPolicyReview): QueryRequest {
             $queryRequest = QueryRequest::query()->create([
                 'requester_id' => $requester->id,
                 'database_connection_id' => $databaseConnection->id,
@@ -238,7 +240,11 @@ class QueryRequestWorkflow
             ]);
 
             $this->replaceStatements($queryRequest, $statements);
-            $this->refreshDeploymentPreflight($queryRequest);
+            $report = $this->refreshDeploymentPreflight($queryRequest);
+
+            if ($requestPolicyReview) {
+                $this->sqlPolicyReviewWorkflow->request($queryRequest, $requester, $report);
+            }
 
             $this->auditLogger->log('query_request.draft_saved', $requester, $queryRequest, [
                 'statement_count' => count($statements),
@@ -444,7 +450,7 @@ class QueryRequestWorkflow
      *
      * @throws ValidationException
      */
-    public function updateDraft(QueryRequest $queryRequest, User $actor, array $data): QueryRequest
+    public function updateDraft(QueryRequest $queryRequest, User $actor, array $data, bool $requestPolicyReview = false): QueryRequest
     {
         $this->ensureAccessTransportIsValidForRequestKind(
             $this->accessTransport($data),
@@ -467,7 +473,7 @@ class QueryRequestWorkflow
             : null;
         $executionSourceIpAddress = $this->auditLogger->clientIpAddress();
 
-        return DB::transaction(function () use ($queryRequest, $actor, $data, $statements, $databaseConnection, $scheduledAt, $executionSourceIpAddress): QueryRequest {
+        return DB::transaction(function () use ($queryRequest, $actor, $data, $statements, $databaseConnection, $scheduledAt, $executionSourceIpAddress, $requestPolicyReview): QueryRequest {
             $lockedQueryRequest = QueryRequest::query()->lockForUpdate()->findOrFail($queryRequest->id);
 
             if ($lockedQueryRequest->status !== QueryRequestStatus::Draft) {
@@ -495,8 +501,39 @@ class QueryRequestWorkflow
                 'revision' => $lockedQueryRequest->revision + 1,
             ])->save();
 
+            $existingReviewRequests = SqlPolicyCandidateOccurrence::query()
+                ->where('query_request_id', $lockedQueryRequest->id)
+                ->whereNotNull('review_requested_at')
+                ->get()
+                ->keyBy(fn (SqlPolicyCandidateOccurrence $occurrence): string => $occurrence->sql_policy_candidate_id.':'.$occurrence->database_connection_id);
+
             $this->replaceStatements($lockedQueryRequest, $statements);
-            $this->refreshDeploymentPreflight($lockedQueryRequest);
+            SqlPolicyCandidateOccurrence::query()
+                ->where('query_request_id', $lockedQueryRequest->id)
+                ->update([
+                    'review_requested_by_id' => null,
+                    'review_requested_at' => null,
+                ]);
+            $report = $this->refreshDeploymentPreflight($lockedQueryRequest);
+
+            SqlPolicyCandidateOccurrence::query()
+                ->where('query_request_id', $lockedQueryRequest->id)
+                ->whereIn('query_request_statement_id', $lockedQueryRequest->statements()->pluck('id'))
+                ->get()
+                ->each(function (SqlPolicyCandidateOccurrence $occurrence) use ($existingReviewRequests): void {
+                    $existingRequest = $existingReviewRequests->get($occurrence->sql_policy_candidate_id.':'.$occurrence->database_connection_id);
+
+                    if ($existingRequest !== null) {
+                        $occurrence->forceFill([
+                            'review_requested_by_id' => $existingRequest->review_requested_by_id,
+                            'review_requested_at' => $existingRequest->review_requested_at,
+                        ])->save();
+                    }
+                });
+
+            if ($requestPolicyReview) {
+                $this->sqlPolicyReviewWorkflow->request($lockedQueryRequest, $actor, $report);
+            }
 
             $this->auditLogger->log('query_request.draft_saved', $actor, $lockedQueryRequest, [
                 'statement_count' => count($statements),
