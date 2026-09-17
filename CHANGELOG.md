@@ -4,6 +4,13 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-09-17
+
+### Fixed
+
+- Restore review submission for both Deployment Batches and Query Access requests by including the required request revision in the detail-page response.
+- Display validation feedback when a review cannot be submitted, including when the request changed after the reviewer opened it.
+
 ## [0.2.4] - 2026-09-17
 
 ### Fixed
@@ -120,7 +127,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.1...v0.2.2

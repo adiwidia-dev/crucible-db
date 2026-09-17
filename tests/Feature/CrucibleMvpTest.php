@@ -1081,6 +1081,61 @@ SQL;
         Queue::assertPushed(ExecuteQueryRequest::class, 1);
     }
 
+    public function test_admin_can_review_both_request_kinds_using_the_revision_from_the_detail_page(): void
+    {
+        Queue::fake();
+
+        $requester = $this->developerUser();
+        $reviewer = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $this->roleId($requester),
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+            'requires_approval' => true,
+        ]);
+
+        foreach ([QueryRequestKind::SingleExecution, QueryRequestKind::QueryAccess] as $kind) {
+            foreach (['approved', 'rejected'] as $decision) {
+                $queryRequest = app(QueryRequestWorkflow::class)->create($requester, $connection, [
+                    'request_kind' => $kind->value,
+                    'title' => 'Review '.$kind->value.' '.$decision,
+                    'sql' => 'select 1 as value',
+                    'requested_access_mode' => AccessMode::Read->value,
+                    'access_duration_minutes' => 60,
+                ]);
+                $queryRequest->forceFill(['revision' => 2])->save();
+
+                $page = $this->actingAs($reviewer)
+                    ->get(route('query-requests.show', $queryRequest))
+                    ->assertOk()
+                    ->assertInertia(fn (Assert $page) => $page
+                        ->component('query-requests/show')
+                        ->where('can_review', true)
+                        ->where('query_request.revision', 2));
+
+                $this->from(route('query-requests.show', $queryRequest))
+                    ->post(route('query-requests.reviews.store', $queryRequest), [
+                        'expected_revision' => $page->inertiaProps('query_request.revision'),
+                        'decision' => $decision,
+                        'comment' => 'Reviewed from the detail page.',
+                    ])
+                    ->assertRedirect(route('query-requests.show', $queryRequest))
+                    ->assertSessionHasNoErrors();
+
+                $this->assertSame(QueryRequestStatus::from($decision), $queryRequest->refresh()->status);
+                $this->assertDatabaseHas('query_reviews', [
+                    'query_request_id' => $queryRequest->id,
+                    'query_request_revision' => 2,
+                    'reviewer_id' => $reviewer->id,
+                    'decision' => $decision,
+                ]);
+            }
+        }
+
+        Queue::assertNotPushed(ExecuteQueryRequest::class);
+    }
+
     public function test_reviewer_cannot_decide_using_a_stale_query_request_revision(): void
     {
         $requester = $this->developerUser();
