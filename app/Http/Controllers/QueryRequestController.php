@@ -208,6 +208,7 @@ class QueryRequestController extends Controller
         return Inertia::render('query-requests/show', [
             'query_request' => [
                 'id' => $queryRequest->id,
+                'revision' => $queryRequest->revision,
                 'title' => $queryRequest->title,
                 'description' => $queryRequest->description,
                 'sql' => $queryRequest->sql,

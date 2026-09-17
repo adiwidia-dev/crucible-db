@@ -1582,6 +1582,9 @@ export default function QueryRequestShow({
                                             name="expected_revision"
                                             value={query_request.revision}
                                         />
+                                        <InputError
+                                            message={errors.expected_revision}
+                                        />
                                         <div className="grid gap-2 md:w-80">
                                             <Label htmlFor="decision">
                                                 Decision
@@ -1618,6 +1621,7 @@ export default function QueryRequestShow({
                                             />
                                         </div>
                                         <Button
+                                            type="submit"
                                             className="w-fit"
                                             disabled={processing}
                                         >
