@@ -72,7 +72,7 @@ export default function ApplicationSettings({
                 >
                     {({ processing, errors }) => (
                         <>
-                            <Card className="max-w-3xl gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                            <Card className="gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
                                 <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle className="flex items-center gap-2">
                                         <Settings2 className="size-4 text-muted-foreground" />
