@@ -4,6 +4,23 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-09-17
+
+### Added
+
+- Let developers explicitly request administrator SQL-policy review for structurally reviewable unsupported Deployment Batch SQL while atomically preserving the batch as a non-executable draft.
+- Surface pending policy-review work in the administrator dashboard, SQL Policy navigation badge, notifications, and requester-visible decision history.
+- Re-evaluate current policy against the exact SQL and target in the Deployment Batch editor so draft editing reflects an administrator's allow or deny decision without needing a stale client-side policy snapshot.
+
+### Changed
+
+- Keep SQL-policy decisions separate from Deployment Batch approval, scheduling, and execution. An allow decision refreshes preflight; the requester must still submit the draft through the normal governed workflow.
+- Require the narrowest available administrator decision: exact rule, parser-proven reusable shape, denial, or dismissal with an actionable decision note where required.
+
+### Fixed
+
+- Preserve request revisions in request details so reviewers can submit approvals or rejections with optimistic-concurrency protection and clear validation feedback.
+
 ## [0.2.5] - 2026-09-17
 
 ### Fixed
@@ -127,7 +144,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.2...v0.2.3
