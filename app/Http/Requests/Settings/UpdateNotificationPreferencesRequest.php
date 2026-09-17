@@ -24,6 +24,7 @@ class UpdateNotificationPreferencesRequest extends FormRequest
     {
         return [
             'email_approvals' => ['required', 'boolean'],
+            'email_policy_reviews' => ['required', 'boolean'],
             'email_execution_completed' => ['required', 'boolean'],
             'email_execution_failed' => ['required', 'boolean'],
             'email_sessions' => ['required', 'boolean'],

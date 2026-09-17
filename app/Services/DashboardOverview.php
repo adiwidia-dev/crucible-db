@@ -7,6 +7,7 @@ use App\Enums\QueryRequestStatus;
 use App\Models\NativeProxyConnection;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
+use App\Models\SqlPolicyCandidate;
 use App\Models\User;
 use App\Services\NativeProxy\ProxyHealth;
 use Carbon\CarbonInterface;
@@ -35,6 +36,7 @@ use Illuminate\Database\Eloquent\Builder;
  *     user: string,
  *     expires_at: string
  * }
+ * @phpstan-type PolicyReviewQueueItem array{id:int,statement:string,driver:string,request_count:int,request_title:string|null,requester:string|null,requested_at:string|null}
  */
 class DashboardOverview
 {
@@ -42,12 +44,13 @@ class DashboardOverview
 
     /**
      * @return array{
-     *     summary: array{pending_reviews: int, scheduled: int, failed: int, active_sessions: int, native_proxy_connections: int, native_proxy_instances: int},
+     *     summary: array{pending_reviews: int, policy_reviews: int, scheduled: int, failed: int, active_sessions: int, native_proxy_connections: int, native_proxy_instances: int},
      *     native_proxy_health: array{status: 'disabled'|'healthy'|'unhealthy'|'version_mismatch', checked_at: string|null, proxy_id: string|null, version: string|null, message: string|null},
      *     pending_reviews: array<int, RequestQueueItem>,
      *     scheduled_requests: array<int, RequestQueueItem>,
      *     failed_requests: array<int, RequestQueueItem>,
-     *     expiring_sessions: array<int, SessionQueueItem>
+     *     expiring_sessions: array<int, SessionQueueItem>,
+     *     policy_review_candidates: array<int, PolicyReviewQueueItem>
      * }
      */
     public function for(User $user): array
@@ -83,10 +86,14 @@ class DashboardOverview
         $activeNativeConnections = NativeProxyConnection::query()
             ->whereIn('query_session_id', $visibleSessionIds)
             ->whereIn('status', [NativeProxyConnectionStatus::Reserved, NativeProxyConnectionStatus::Active]);
+        $policyReviewCandidates = SqlPolicyCandidate::query()
+            ->whereNull('resolution')
+            ->whereHas('occurrences', fn (Builder $query) => $query->whereNotNull('review_requested_at'));
 
         return [
             'summary' => [
                 'pending_reviews' => (clone $pendingReviews)->count(),
+                'policy_reviews' => $isAdmin ? (clone $policyReviewCandidates)->count() : 0,
                 'scheduled' => (clone $scheduledRequests)->count(),
                 'failed' => (clone $failedRequests)->count(),
                 'active_sessions' => (clone $expiringSessions)->count(),
@@ -98,6 +105,9 @@ class DashboardOverview
             'scheduled_requests' => $this->requestQueue($scheduledRequests),
             'failed_requests' => $this->requestQueue($failedRequests),
             'expiring_sessions' => $this->sessionQueue($expiringSessions),
+            'policy_review_candidates' => $isAdmin
+                ? $this->policyReviewQueue($policyReviewCandidates)
+                : [],
         ];
     }
 
@@ -212,6 +222,39 @@ class DashboardOverview
                 'expires_at',
             ])
             ->map(fn (QuerySession $querySession) => $this->sessionQueueItem($querySession))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Builder<SqlPolicyCandidate>  $candidates
+     * @return array<int, PolicyReviewQueueItem>
+     */
+    private function policyReviewQueue(Builder $candidates): array
+    {
+        return $candidates
+            ->with([
+                'occurrences' => fn ($query) => $query
+                    ->whereNotNull('review_requested_at')
+                    ->with('queryRequest.requester:id,name')
+                    ->latest('review_requested_at'),
+            ])
+            ->latest('last_seen_at')
+            ->limit(5)
+            ->get()
+            ->map(function (SqlPolicyCandidate $candidate): array {
+                $latestOccurrence = $candidate->occurrences->first();
+
+                return [
+                    'id' => $candidate->id,
+                    'statement' => $candidate->shape_label ?? $candidate->canonical_sql,
+                    'driver' => $candidate->database_driver->value,
+                    'request_count' => $candidate->occurrences->unique('query_request_id')->count(),
+                    'request_title' => $latestOccurrence?->queryRequest?->title,
+                    'requester' => $latestOccurrence?->queryRequest?->requester?->name,
+                    'requested_at' => $this->dateString($latestOccurrence?->review_requested_at),
+                ];
+            })
             ->values()
             ->all();
     }

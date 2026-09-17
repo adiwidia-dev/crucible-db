@@ -30,6 +30,7 @@ class NotificationDeliveryTest extends TestCase
             'notifications_in_app_enabled' => true,
             'notifications_email_enabled' => true,
             'notifications_review_enabled' => true,
+            'notifications_policy_review_enabled' => true,
             'notifications_execution_completed_enabled' => true,
             'notifications_execution_failed_enabled' => true,
             'notifications_query_access_enabled' => true,
@@ -54,6 +55,7 @@ class NotificationDeliveryTest extends TestCase
             'notifications_in_app_enabled' => true,
             'notifications_email_enabled' => true,
             'notifications_review_enabled' => true,
+            'notifications_policy_review_enabled' => true,
             'notifications_execution_completed_enabled' => false,
             'notifications_execution_failed_enabled' => true,
             'notifications_query_access_enabled' => true,
@@ -79,6 +81,7 @@ class NotificationDeliveryTest extends TestCase
 
         $this->actingAs($user)->patch(route('user-notifications.update'), [
             'email_approvals' => true,
+            'email_policy_reviews' => true,
             'email_execution_completed' => true,
             'email_execution_failed' => false,
             'email_sessions' => true,
@@ -88,6 +91,7 @@ class NotificationDeliveryTest extends TestCase
         $preferences = $user->refresh()->notification_preferences;
 
         $this->assertTrue($preferences['email']['approvals']);
+        $this->assertTrue($preferences['email']['policy_reviews']);
         $this->assertTrue($preferences['email']['execution_completed']);
         $this->assertFalse($preferences['email']['execution_failed']);
         $this->assertTrue($preferences['email']['sessions']);

@@ -8,7 +8,7 @@ A draft preserves a Deployment Batch without making it executable. Use it for in
 
 - Stores the title, statement order, target connections, SQL, and latest preflight report.
 - Can retain a report that is currently blocked.
-- Cannot create review work, notifications, schedules, or execution jobs.
+- Does not create review work, notifications, schedules, or execution jobs unless you explicitly choose **Request SQL policy review**.
 - Remains editable until you submit it.
 
 ## Save a draft
@@ -16,6 +16,16 @@ A draft preserves a Deployment Batch without making it executable. Use it for in
 On the Deployment Batch form, choose **Save draft**. You can do this even when preflight blocks submission.
 
 Use a title that lets another engineer understand the intended change. Record assumptions or open questions in the request context before handing it over.
+
+## Request SQL policy review
+
+When preflight is blocked only because one or more structurally reviewable statements are not yet supported by workspace policy, the form shows **Request SQL policy review**.
+
+This action is atomic: Crucible saves the Deployment Batch as a draft, links its current unsupported statements to policy candidates, records an audit event, and notifies administrators. Refreshing the page does not lose the batch. Permanently prohibited SQL, missing targets, permission failures, and other hard blockers never offer this action.
+
+The draft remains non-executable while the decision is pending. If an administrator allows every candidate, Crucible refreshes preflight and notifies the requester. The requester must still review the draft and explicitly submit it into the normal approval workflow. An SQL policy decision never approves, schedules, or executes a Deployment Batch.
+
+Saving with **Save draft** remains a private preparation action. Unsupported statements may be retained as policy observations, but administrators are not notified and no policy-review work is created until the explicit review action is used.
 
 ## Run preflight again
 

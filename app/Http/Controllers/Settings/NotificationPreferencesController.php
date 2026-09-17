@@ -15,6 +15,7 @@ class NotificationPreferencesController extends Controller
             'notification_preferences' => [
                 'email' => [
                     'approvals' => $request->boolean('email_approvals'),
+                    'policy_reviews' => $request->boolean('email_policy_reviews'),
                     'execution_completed' => $request->boolean('email_execution_completed'),
                     'execution_failed' => $request->boolean('email_execution_failed'),
                     'sessions' => $request->boolean('email_sessions'),

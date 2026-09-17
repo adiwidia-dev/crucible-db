@@ -4,7 +4,7 @@ Use the request detail page as the source of truth for work state. It keeps pref
 
 ## Watch important work
 
-Use **Watch** on a request or connection to receive resource-specific in-app notifications. Notifications can include review requests, decisions, execution outcomes, session lifecycle events, preflight blocks, retries, and connection test failures.
+Use **Watch** on a request or connection to receive resource-specific in-app notifications. Notifications can include approval requests, SQL policy-review requests and decisions, execution outcomes, session lifecycle events, preflight blocks, retries, and connection test failures.
 
 Your notification preferences control optional email delivery. Workspace administrators can also enable or disable workspace email delivery.
 

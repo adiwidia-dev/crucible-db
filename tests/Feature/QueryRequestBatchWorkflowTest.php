@@ -135,6 +135,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
 
     public function test_blocked_deployment_batch_can_be_saved_as_a_draft(): void
     {
+        Notification::fake();
         $admin = $this->adminUser();
         $connection = DatabaseConnection::factory()->create();
 
@@ -162,6 +163,108 @@ class QueryRequestBatchWorkflowTest extends TestCase
             'action' => 'query_request.draft_saved',
             'auditable_id' => $queryRequest->id,
         ]);
+        $this->assertNull($queryRequest->sqlPolicyCandidateOccurrences()->sole()->review_requested_at);
+        Notification::assertNothingSent();
+    }
+
+    public function test_existing_draft_policy_review_is_idempotent_and_removed_when_sql_changes(): void
+    {
+        Notification::fake();
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->postgresql()->create();
+        $data = [
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Index review draft',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'CREATE INDEX CONCURRENTLY users_email_idx ON users (email)',
+            ]],
+        ];
+
+        $this->actingAs($admin)->post(route('query-requests.store'), ['intent' => 'draft', ...$data])
+            ->assertSessionHasNoErrors();
+        $queryRequest = QueryRequest::query()->sole();
+        Notification::assertNothingSent();
+
+        foreach (range(1, 2) as $attempt) {
+            $this->patch(route('query-requests.update', $queryRequest), ['intent' => 'policy_review', ...$data])
+                ->assertSessionHasNoErrors();
+        }
+
+        $this->assertSame(QueryRequestStatus::Draft, $queryRequest->refresh()->status);
+        $this->assertSame(1, $queryRequest->sqlPolicyCandidateOccurrences()->whereNotNull('review_requested_at')->count());
+        Notification::assertSentToTimes($admin, OperationalNotification::class, 1);
+        $this->get(route('query-requests.show', $queryRequest))
+            ->assertInertia(fn (Assert $page) => $page->where('query_request.policy_review.status', 'pending'));
+
+        $data['statements'][0]['sql'] = 'SELECT 1';
+        $this->patch(route('query-requests.update', $queryRequest), ['intent' => 'draft', ...$data])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(0, $queryRequest->sqlPolicyCandidateOccurrences()->whereNotNull('review_requested_at')->count());
+        Notification::assertSentToTimes($admin, OperationalNotification::class, 1);
+    }
+
+    public function test_developer_can_atomically_save_a_draft_and_request_sql_policy_review(): void
+    {
+        Notification::fake();
+        $developerRole = Role::factory()->developer()->create();
+        $developer = User::factory()->withRole($developerRole)->create();
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->postgresql()->create();
+        RoleDatabasePermission::factory()->write()->create([
+            'role_id' => $developerRole->id,
+            'database_connection_id' => $connection->id,
+        ]);
+
+        $response = $this->actingAs($developer)->post(route('query-requests.store'), [
+            'intent' => 'policy_review',
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Add transaction lookup index',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tsm_pending_user_exp ON transaction_state_machines (id_transaction) WHERE user_exp_status = 0',
+            ]],
+        ]);
+
+        $queryRequest = QueryRequest::query()->sole();
+        $occurrence = $queryRequest->sqlPolicyCandidateOccurrences()->sole();
+
+        $response->assertRedirect(route('query-requests.show', $queryRequest));
+        $this->assertSame(QueryRequestStatus::Draft, $queryRequest->status);
+        $this->assertSame(PreflightStatus::Blocked, $queryRequest->preflight_status);
+        $this->assertSame($developer->id, $occurrence->review_requested_by_id);
+        $this->assertNotNull($occurrence->review_requested_at);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'sql_policy.review_requested',
+            'auditable_id' => $queryRequest->id,
+        ]);
+        Notification::assertSentTo(
+            $admin,
+            OperationalNotification::class,
+            fn (OperationalNotification $notification): bool => $notification->toArray($admin)['event'] === 'sql_policy.review_requested',
+        );
+        Notification::assertNotSentTo($developer, OperationalNotification::class);
+    }
+
+    public function test_policy_review_request_rolls_back_when_a_permanent_blocker_is_present(): void
+    {
+        Notification::fake();
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->postgresql()->create();
+
+        $this->actingAs($admin)->post(route('query-requests.store'), [
+            'intent' => 'policy_review',
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Unsafe role change',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'CREATE ROLE deployment_operator',
+            ]],
+        ])->assertSessionHasErrors('statements');
+
+        $this->assertDatabaseCount('query_requests', 0);
+        $this->assertDatabaseCount('sql_policy_candidates', 0);
+        Notification::assertNothingSent();
     }
 
     public function test_draft_submission_requires_strict_validation_before_it_can_enter_the_workflow(): void

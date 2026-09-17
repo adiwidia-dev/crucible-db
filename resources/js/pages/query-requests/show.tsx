@@ -10,6 +10,7 @@ import {
     ChevronDown,
     Download,
     FileCode2,
+    FileSearch,
     KeyRound,
     Pencil,
     RefreshCw,
@@ -149,6 +150,12 @@ type QueryRequest = {
             }>;
         }>;
     };
+    policy_review: {
+        status: 'pending' | 'allowed' | 'denied';
+        candidate_count: number;
+        requested_at: string | null;
+        decision_notes: string[];
+    } | null;
     requester: string;
     approved_by: string | null;
     cancelled_by: string | null;
@@ -1142,6 +1149,43 @@ export default function QueryRequestShow({
                             )}
                     </div>
                 </section>
+
+                {query_request.request_kind === 'single_execution' &&
+                    query_request.policy_review && (
+                        <section className="flex items-start gap-3 border-y bg-card px-4 py-4 sm:rounded-lg sm:border sm:px-5">
+                            <FileSearch className="mt-0.5 size-5 shrink-0 text-amber-600" />
+                            <div className="min-w-0">
+                                <h2 className="text-sm font-semibold">
+                                    {query_request.policy_review.status ===
+                                    'pending'
+                                        ? 'SQL policy review requested'
+                                        : query_request.policy_review.status ===
+                                            'allowed'
+                                          ? 'SQL policy request allowed'
+                                          : 'SQL policy request denied'}
+                                </h2>
+                                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                    {query_request.policy_review.status ===
+                                    'pending'
+                                        ? 'An administrator has been notified. This deployment remains a draft until every candidate is decided.'
+                                        : query_request.policy_review.status ===
+                                            'allowed'
+                                          ? 'Preflight has been refreshed. Review the draft, then submit it explicitly for the normal approval workflow.'
+                                          : 'The deployment remains blocked. Update the SQL or contact an administrator about the decision note.'}
+                                </p>
+                                {query_request.policy_review.decision_notes.map(
+                                    (note) => (
+                                        <p
+                                            key={note}
+                                            className="mt-2 text-xs text-foreground"
+                                        >
+                                            Decision note: {note}
+                                        </p>
+                                    ),
+                                )}
+                            </div>
+                        </section>
+                    )}
 
                 {query_request.request_kind === 'single_execution' && (
                     <section

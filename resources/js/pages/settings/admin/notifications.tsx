@@ -11,6 +11,7 @@ type Settings = {
     notifications_in_app_enabled: boolean;
     notifications_email_enabled: boolean;
     notifications_review_enabled: boolean;
+    notifications_policy_review_enabled: boolean;
     notifications_execution_completed_enabled: boolean;
     notifications_execution_failed_enabled: boolean;
     notifications_query_access_enabled: boolean;
@@ -88,6 +89,14 @@ export default function NotificationSettings({
                                         }
                                         title="Reviews and decisions"
                                         description="Review requests, approvals, rejections, and reapproval requirements."
+                                    />
+                                    <SettingField
+                                        name="notifications_policy_review_enabled"
+                                        defaultChecked={
+                                            settings.notifications_policy_review_enabled
+                                        }
+                                        title="SQL policy reviews"
+                                        description="Explicit requests to review unsupported SQL and the resulting decisions."
                                     />
                                     <SettingField
                                         name="notifications_execution_completed_enabled"

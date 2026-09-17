@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="https://github.com/adiwidia-dev/crucible-db/actions/workflows/tests.yml"><img src="https://github.com/adiwidia-dev/crucible-db/actions/workflows/tests.yml/badge.svg" alt="CI status"></a>
-  <a href="https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.2.5"><img src="https://img.shields.io/badge/release-v0.2.5-2563EB" alt="Crucible DB v0.2.5"></a>
+  <a href="https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.2.6"><img src="https://img.shields.io/badge/release-v0.2.6-2563EB" alt="Crucible DB v0.2.6"></a>
   <a href="https://adiwidia-dev.github.io/crucible-db/"><img src="https://img.shields.io/badge/docs-read-2563EB?logo=readthedocs&logoColor=white" alt="Read the documentation"></a>
   <img src="https://img.shields.io/badge/PHP-8.5%2B-777BB4?logo=php&logoColor=white" alt="PHP 8.5 or later">
   <img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13">
@@ -109,7 +109,7 @@ for verification, connection, and desktop-client setup.
 
 ### Governed SQL behavior
 
-The workspace SQL policy controls the supported read, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP TABLE, and TRUNCATE TABLE families. Each family is enabled or disabled explicitly so the effective policy is always visible.
+The workspace SQL policy controls the supported read, INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE, DROP TABLE, and TRUNCATE TABLE families. Each family is enabled or disabled explicitly so the effective policy is always visible. Structurally reviewable unsupported Deployment Batch SQL can be saved atomically as a draft and sent to the administrator policy-review queue; an allow decision refreshes preflight but never bypasses normal request approval.
 
 Common-table expressions are classified by their top-level executable statement, so `WITH ... UPDATE`, `WITH ... INSERT`, `WITH ... DELETE`, and `WITH ... SELECT` receive the same policy and preflight treatment as their non-CTE forms.
 

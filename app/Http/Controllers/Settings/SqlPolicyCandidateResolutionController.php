@@ -29,6 +29,7 @@ class SqlPolicyCandidateResolutionController extends Controller
             SqlPolicyRuleMatchType::from($validated['match_type']),
             SqlPolicyRuleScope::from($validated['scope_type']),
             isset($validated['scope_id']) ? (int) $validated['scope_id'] : null,
+            $validated['comment'] ?? null,
         );
 
         Inertia::flash('toast', [

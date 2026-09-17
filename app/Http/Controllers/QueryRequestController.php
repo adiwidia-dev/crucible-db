@@ -21,6 +21,7 @@ use App\Models\QuerySessionQuery;
 use App\Models\User;
 use App\Services\ApplicationSettings;
 use App\Services\AuditLogger;
+use App\Services\DeploymentPolicyPreview;
 use App\Services\QueryRequestWorkflow;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -118,15 +119,18 @@ class QueryRequestController extends Controller
 
         $this->authorizeRequestedConnections($request->user(), $data);
 
-        $isDraft = $request->string('intent')->toString() === 'draft';
+        $intent = $request->string('intent')->toString();
+        $isDraft = in_array($intent, ['draft', 'policy_review'], true);
         $queryRequest = $isDraft
-            ? $workflow->createDraft($request->user(), $data)
+            ? $workflow->createDraft($request->user(), $data, $intent === 'policy_review')
             : $workflow->create($request->user(), $data);
 
         if ($isDraft) {
             Inertia::flash('toast', [
                 'type' => 'success',
-                'message' => 'Deployment batch saved as a draft.',
+                'message' => $intent === 'policy_review'
+                    ? 'Draft saved and SQL policy review requested.'
+                    : 'Deployment batch saved as a draft.',
             ]);
         }
 
@@ -147,6 +151,7 @@ class QueryRequestController extends Controller
             'retries',
             'reviews.reviewer',
             'statements.databaseConnection',
+            'sqlPolicyCandidateOccurrences.candidate',
         ]);
 
         $sessions = $queryRequest->sessions()
@@ -262,6 +267,7 @@ class QueryRequestController extends Controller
                 'last_error' => $queryRequest->last_error,
                 'result_summary' => $queryRequest->result_summary,
                 'preflight' => $this->preflightSummary($queryRequest),
+                'policy_review' => $this->policyReviewSummary($queryRequest),
                 'requester' => $queryRequest->requester->name,
                 'approved_by' => $queryRequest->approvedBy?->name,
                 'cancelled_by' => $queryRequest->cancelledBy?->name,
@@ -525,16 +531,20 @@ class QueryRequestController extends Controller
             : 'create_retry_request';
     }
 
-    public function edit(QueryRequest $queryRequest, ApplicationSettings $settings): Response
+    public function edit(QueryRequest $queryRequest, ApplicationSettings $settings, DeploymentPolicyPreview $preview): Response
     {
         Gate::authorize('update', $queryRequest);
 
-        $queryRequest->load(['statements', 'accessConnections']);
+        $queryRequest->load(['statements.databaseConnection', 'accessConnections']);
 
         return Inertia::render('query-requests/create', [
             'connections' => $this->connectionOptions(request()->user()),
             'sql_statement_policy' => $settings->sqlStatementPolicyFormValues(),
             'access_features' => $this->accessFeatures($settings),
+            'policy_previews' => $queryRequest->statements
+                ->filter(fn ($statement): bool => $statement->databaseConnection !== null && Gate::allows('view', $statement->databaseConnection))
+                ->map(fn ($statement): array => $preview->forStatement($statement->sql, $statement->databaseConnection))
+                ->values(),
             'query_request' => [
                 'id' => $queryRequest->id,
                 'database_connection_id' => $queryRequest->database_connection_id,
@@ -564,16 +574,19 @@ class QueryRequestController extends Controller
 
         $this->authorizeRequestedConnections($request->user(), $data);
 
-        $isDraft = $request->string('intent')->toString() === 'draft';
+        $intent = $request->string('intent')->toString();
+        $isDraft = in_array($intent, ['draft', 'policy_review'], true);
         $submittingDraft = ! $isDraft && $queryRequest->status === QueryRequestStatus::Draft;
         $queryRequest = $isDraft
-            ? $workflow->updateDraft($queryRequest, $request->user(), $data)
+            ? $workflow->updateDraft($queryRequest, $request->user(), $data, $intent === 'policy_review')
             : $workflow->update($queryRequest, $request->user(), $data);
 
         Inertia::flash('toast', [
             'type' => 'success',
             'message' => $isDraft
-                ? 'Deployment batch draft saved.'
+                ? ($intent === 'policy_review'
+                    ? 'Draft saved and SQL policy review requested.'
+                    : 'Deployment batch draft saved.')
                 : ($submittingDraft
                     ? 'Deployment batch submitted for workflow processing.'
                     : 'Query request updated and returned for approval.'),
@@ -711,6 +724,43 @@ class QueryRequestController extends Controller
             QueryRequestStatus::Cancelled => 'No decision',
             default => 'Awaiting decision',
         };
+    }
+
+    /**
+     * @return array{status:'pending'|'allowed'|'denied',candidate_count:int,requested_at:string|null,decision_notes:array<int, string>}|null
+     */
+    private function policyReviewSummary(QueryRequest $queryRequest): ?array
+    {
+        if ($queryRequest->status !== QueryRequestStatus::Draft) {
+            return null;
+        }
+
+        $occurrences = $queryRequest->sqlPolicyCandidateOccurrences
+            ->filter(fn ($occurrence): bool => $occurrence->review_requested_at !== null)
+            ->unique('sql_policy_candidate_id')
+            ->values();
+
+        if ($occurrences->isEmpty()) {
+            return null;
+        }
+
+        $candidates = $occurrences->pluck('candidate')->filter();
+        $status = $candidates->contains(fn ($candidate): bool => $candidate->resolution === null)
+            ? 'pending'
+            : ($candidates->contains(fn ($candidate): bool => in_array($candidate->resolution?->value, ['denied', 'dismissed'], true))
+                ? 'denied'
+                : 'allowed');
+
+        return [
+            'status' => $status,
+            'candidate_count' => $candidates->count(),
+            'requested_at' => $occurrences->max('review_requested_at')?->toIso8601String(),
+            'decision_notes' => $candidates
+                ->pluck('resolution_comment')
+                ->filter()
+                ->values()
+                ->all(),
+        ];
     }
 
     /**

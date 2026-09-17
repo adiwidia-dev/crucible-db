@@ -6,6 +6,7 @@ use App\Models\DatabaseConnection;
 use App\Models\NativeProxyLease;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
+use App\Models\SqlPolicyCandidate;
 use App\Models\User;
 use App\Notifications\OperationalNotification;
 use Illuminate\Support\Collection;
@@ -85,6 +86,69 @@ class NotificationDispatcher
             ),
             'approvals',
         );
+    }
+
+    public function sqlPolicyReviewRequested(QueryRequest $queryRequest, int $candidateCount, int $firstCandidateId): void
+    {
+        if (! $this->settings->notificationEventEnabled('policy_review')) {
+            return;
+        }
+
+        $candidateLabel = $candidateCount === 1 ? 'statement needs' : "{$candidateCount} statements need";
+
+        $this->notify(
+            $this->administrators(),
+            [
+                ...$this->requestPayload(
+                    'sql_policy.review_requested',
+                    'warning',
+                    'SQL policy review requested',
+                    "{$queryRequest->title}: {$candidateLabel} an administrator policy decision.",
+                    $queryRequest,
+                ),
+                'action_label' => 'Review SQL policy',
+                'url' => route('sql-statement-policy.edit', ['candidate' => $firstCandidateId]),
+            ],
+            'policy_reviews',
+            true,
+        );
+    }
+
+    public function sqlPolicyCandidateResolved(SqlPolicyCandidate $candidate): void
+    {
+        if (! $this->settings->notificationEventEnabled('policy_review')) {
+            return;
+        }
+
+        $candidate->loadMissing('occurrences.queryRequest.requester');
+        $approved = in_array($candidate->resolution?->value, ['allowed_exact', 'allowed_shape'], true);
+
+        $candidate->occurrences
+            ->filter(fn ($occurrence): bool => $occurrence->review_requested_at !== null && $occurrence->queryRequest !== null)
+            ->unique('query_request_id')
+            ->each(function ($occurrence) use ($approved, $candidate): void {
+                $queryRequest = $occurrence->queryRequest;
+                $message = $approved
+                    ? "A requested SQL policy candidate for {$queryRequest->title} was allowed. Its preflight has been refreshed; review any remaining findings before submitting the draft."
+                    : "The requested SQL policy exception for {$queryRequest->title} was not allowed.";
+
+                if (filled($candidate->resolution_comment)) {
+                    $message .= " Decision note: {$candidate->resolution_comment}";
+                }
+
+                $this->notify(
+                    collect([$queryRequest->requester]),
+                    $this->requestPayload(
+                        'sql_policy.review_resolved',
+                        $approved ? 'success' : 'warning',
+                        $approved ? 'SQL policy request allowed' : 'SQL policy request denied',
+                        $message,
+                        $queryRequest,
+                    ),
+                    'policy_reviews',
+                    true,
+                );
+            });
     }
 
     public function requestCancelled(QueryRequest $queryRequest, User $actor): void
@@ -461,6 +525,17 @@ class NotificationDispatcher
             return $recipients;
         }
 
+        return User::query()
+            ->whereNull('disabled_at')
+            ->whereHas('roles', fn ($roles) => $roles->where('is_admin', true))
+            ->get();
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    private function administrators(): Collection
+    {
         return User::query()
             ->whereNull('disabled_at')
             ->whereHas('roles', fn ($roles) => $roles->where('is_admin', true))

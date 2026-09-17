@@ -5,6 +5,7 @@ import {
     CalendarClock,
     CheckCircle2,
     FileCheck2,
+    FileSearch,
     KeyRound,
     Plus,
     Wifi,
@@ -24,7 +25,7 @@ import {
 } from '@/components/crucible/status-badge';
 import type { NativeProxyHealthSnapshot } from '@/components/native-proxy/health-status';
 import { Button } from '@/components/ui/button';
-import { formatDate, formatRemaining } from '@/lib/crucible';
+import { driverLabel, formatDate, formatRemaining } from '@/lib/crucible';
 import type {
     QueryRequestKind,
     QueryRequestStatus,
@@ -38,6 +39,7 @@ import {
     show as showQueryRequest,
 } from '@/routes/query-requests';
 import { show as showQuerySession } from '@/routes/query-sessions';
+import { edit as editSqlPolicy } from '@/routes/sql-statement-policy';
 import type { Auth } from '@/types';
 
 type DashboardRequest = {
@@ -64,9 +66,20 @@ type ExpiringSession = {
     expires_at: string;
 };
 
+type PolicyReviewCandidate = {
+    id: number;
+    statement: string;
+    driver: 'pgsql' | 'mysql';
+    request_count: number;
+    request_title: string | null;
+    requester: string | null;
+    requested_at: string | null;
+};
+
 type DashboardProps = {
     summary: {
         pending_reviews: number;
+        policy_reviews: number;
         scheduled: number;
         failed: number;
         active_sessions: number;
@@ -78,6 +91,7 @@ type DashboardProps = {
     scheduled_requests: DashboardRequest[];
     failed_requests: DashboardRequest[];
     expiring_sessions: ExpiringSession[];
+    policy_review_candidates: PolicyReviewCandidate[];
 };
 
 type QueueSectionProps = {
@@ -270,22 +284,84 @@ function SessionQueue({ sessions }: { sessions: ExpiringSession[] }) {
     );
 }
 
+function PolicyReviewQueue({
+    candidates,
+    timezone,
+}: {
+    candidates: PolicyReviewCandidate[];
+    timezone: string;
+}) {
+    if (candidates.length === 0) {
+        return (
+            <EmptyQueue>
+                <p className="font-medium text-foreground">
+                    No SQL policy reviews are waiting.
+                </p>
+                <p className="mt-1 text-xs leading-5">
+                    Explicit developer requests for unsupported SQL will appear
+                    here.
+                </p>
+            </EmptyQueue>
+        );
+    }
+
+    return (
+        <div className="divide-y">
+            {candidates.map((candidate) => (
+                <Link
+                    key={candidate.id}
+                    href={editSqlPolicy({ query: { candidate: candidate.id } })}
+                    className="group flex gap-3 px-4 py-3 transition-colors hover:bg-accent/60 sm:px-5"
+                >
+                    <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium group-hover:text-primary">
+                            {candidate.statement}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {driverLabel(candidate.driver)} ·{' '}
+                            {candidate.request_title ?? 'Deployment draft'}
+                            {candidate.requester
+                                ? ` · ${candidate.requester}`
+                                : ''}
+                        </p>
+                    </div>
+                    <div className="shrink-0 text-right text-xs text-muted-foreground">
+                        <p>
+                            {candidate.request_count}{' '}
+                            {candidate.request_count === 1
+                                ? 'request'
+                                : 'requests'}
+                        </p>
+                        <p className="mt-1">
+                            {formatDate(candidate.requested_at, timezone)}
+                        </p>
+                    </div>
+                    <ArrowRight className="mt-0.5 size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                </Link>
+            ))}
+        </div>
+    );
+}
+
 export default function Dashboard({
     summary,
     pending_reviews,
     scheduled_requests,
     failed_requests,
     expiring_sessions,
+    policy_review_candidates,
     native_proxy_health,
 }: DashboardProps) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const userTimezone = auth.user.timezone ?? 'UTC';
+    const isAdmin = Boolean(auth.user.roles?.some((role) => role.is_admin));
     const [, setTimerTick] = useState(0);
 
     usePoll(30000, {
         only: [
             'summary',
             'pending_reviews',
+            'policy_review_candidates',
             'scheduled_requests',
             'failed_requests',
             'expiring_sessions',
@@ -313,6 +389,17 @@ export default function Dashboard({
                 query: { status: 'pending_review' },
             }),
         },
+        ...(isAdmin
+            ? [
+                  {
+                      label: 'Policy reviews',
+                      value: summary.policy_reviews,
+                      icon: FileSearch,
+                      tone: 'pending' as const,
+                      href: editSqlPolicy.url(),
+                  },
+              ]
+            : []),
         {
             label: 'Scheduled',
             value: summary.scheduled,
@@ -347,7 +434,11 @@ export default function Dashboard({
               ]),
     ];
     const summaryColumnClassName =
-        summaryItems.length === 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-4';
+        summaryItems.length === 6
+            ? 'lg:grid-cols-3 xl:grid-cols-6'
+            : summaryItems.length === 5
+              ? 'lg:grid-cols-5'
+              : 'lg:grid-cols-4';
 
     return (
         <>
@@ -438,6 +529,29 @@ export default function Dashboard({
                     </div>
 
                     <div className="grid gap-4 sm:gap-5 xl:grid-cols-2">
+                        {isAdmin && (
+                            <QueueSection
+                                id="policy-review-title"
+                                title="SQL policy review"
+                                detail="Unsupported statements explicitly submitted for an administrator decision."
+                                icon={FileSearch}
+                                tone="pending"
+                                className="xl:col-span-2"
+                                action={
+                                    <Link
+                                        href={editSqlPolicy()}
+                                        className="shrink-0 text-xs font-medium text-primary hover:underline"
+                                    >
+                                        View all
+                                    </Link>
+                                }
+                            >
+                                <PolicyReviewQueue
+                                    candidates={policy_review_candidates}
+                                    timezone={userTimezone}
+                                />
+                            </QueueSection>
+                        )}
                         <QueueSection
                             id="pending-review-title"
                             title="Pending review"

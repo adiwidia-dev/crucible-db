@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\SqlPolicyCandidate;
 use App\Services\ApplicationSettings;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
@@ -63,6 +64,14 @@ class HandleInertiaRequests extends Middleware
                     ])
                     ->values()
                     ->all() ?? [],
+            ],
+            'policy_review_summary' => fn (): array => [
+                'pending_count' => $request->user()?->isAdmin()
+                    ? SqlPolicyCandidate::query()
+                        ->whereNull('resolution')
+                        ->whereHas('occurrences', fn ($query) => $query->whereNotNull('review_requested_at'))
+                        ->count()
+                    : 0,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

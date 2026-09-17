@@ -73,6 +73,11 @@ function NavItems({
                             >
                                 {!nested && ItemIcon && <ItemIcon />}
                                 <span>{item.title}</span>
+                                {(item.badge ?? 0) > 0 && (
+                                    <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] leading-none font-semibold text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                                        {item.badge! > 99 ? '99+' : item.badge}
+                                    </span>
+                                )}
                                 {nested && isActive && (
                                     <span
                                         aria-hidden="true"

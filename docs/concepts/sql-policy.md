@@ -40,3 +40,11 @@ It never applies to Query Access sessions.
 ## Review policy changes deliberately
 
 When changing SQL policy, consider active drafts, approved batches, and sessions. New checks occur when work is submitted or executed, so a policy change can appropriately block previously prepared work. Use the audit trail to explain the decision.
+
+## Candidate observation and explicit review
+
+Preflight can record a deduplicated candidate for structurally reviewable SQL that is not covered by built-in or custom rules. A normal draft can retain that observation without interrupting administrators.
+
+**Request SQL policy review** is the explicit handoff. It saves the current Deployment Batch as a draft in the same transaction, marks the current candidate occurrences as requested, records the handoff, and notifies administrators. The candidate represents the shared SQL identity; the request marker preserves which draft and requester asked for a decision.
+
+Policy decisions and deployment approval are intentionally separate. An allow decision changes policy and refreshes affected preflight reports. It does not submit, approve, schedule, or execute any draft. Denial or dismissal keeps the batch blocked and returns the administrator's decision note to the requester.

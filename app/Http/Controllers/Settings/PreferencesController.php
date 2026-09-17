@@ -25,6 +25,7 @@ class PreferencesController extends Controller
         return Inertia::render('settings/preferences', [
             'preferences' => [
                 'email_approvals' => data_get($preferences, 'email.approvals', false),
+                'email_policy_reviews' => data_get($preferences, 'email.policy_reviews', true),
                 'email_execution_completed' => data_get($preferences, 'email.execution_completed', false),
                 'email_execution_failed' => data_get($preferences, 'email.execution_failed', true),
                 'email_sessions' => data_get($preferences, 'email.sessions', false),
