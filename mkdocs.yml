@@ -152,7 +152,6 @@ nav:
       - Crucible CLI: reference/crucible-cli.md
       - Native client compatibility: reference/native-client-compatibility.md
       - Native client threat model: security/native-client-threat-model.md
-      - Historical security assessment: security-reports/codex-security-report.md
       - Configuration reference: reference/configuration.md
       - Contributing to docs: contributing.md
       - Capture documentation screenshots: capture/README.md
