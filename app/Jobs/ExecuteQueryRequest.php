@@ -72,10 +72,10 @@ class ExecuteQueryRequest implements ShouldQueue
                 'dispatched_by_id' => null,
             ])->save();
 
-            $auditLogger->log('query_request.preflight_blocked', $executorUser, $queryRequest, [
+            $auditLogger->logWithClientIp('query_request.preflight_blocked', $executorUser, $queryRequest, [
                 'trigger' => 'execution_guard',
                 'blocker_count' => $preflight['summary']['blocker_count'],
-            ]);
+            ], $queryRequest->execution_source_ip_address);
 
             if ($queryRequest->scheduled_at?->isPast()) {
                 $notificationDispatcher->scheduledBatchPreflightBlocked($queryRequest);
@@ -157,13 +157,13 @@ class ExecuteQueryRequest implements ShouldQueue
                     'result_truncated' => $result['result_truncated'] ?? false,
                 ];
 
-                $auditLogger->log('query_request.statement_executed', $executorUser, $queryRequest, [
+                $auditLogger->logWithClientIp('query_request.statement_executed', $executorUser, $queryRequest, [
                     'statement_position' => $statement['position'],
                     'database_connection_id' => $statement['database_connection']->id,
                     'execution_id' => $execution->id,
                     'row_count' => $result['row_count'],
                     'result_truncated' => $result['result_truncated'] ?? false,
-                ]);
+                ], $queryRequest->execution_source_ip_address);
             } catch (Throwable $exception) {
                 $finishedAt = now();
 
@@ -194,12 +194,12 @@ class ExecuteQueryRequest implements ShouldQueue
                     ],
                 ])->save();
 
-                $auditLogger->log('query_request.execution_failed', $executorUser, $queryRequest, [
+                $auditLogger->logWithClientIp('query_request.execution_failed', $executorUser, $queryRequest, [
                     'statement_position' => $statement['position'],
                     'database_connection_id' => $statement['database_connection']->id,
                     'execution_id' => $execution->id,
                     'error' => $exception->getMessage(),
-                ]);
+                ], $queryRequest->execution_source_ip_address);
 
                 $notificationDispatcher->batchFailed($queryRequest, $statement['position']);
 
@@ -227,12 +227,12 @@ class ExecuteQueryRequest implements ShouldQueue
             ],
         ])->save();
 
-        $auditLogger->log('query_request.executed', $executorUser, $queryRequest, [
+        $auditLogger->logWithClientIp('query_request.executed', $executorUser, $queryRequest, [
             'execution_ids' => $executionIds,
             'statement_count' => $statements->count(),
             'row_count' => $totalRowCount,
             'result_truncated' => $resultTruncated,
-        ]);
+        ], $queryRequest->execution_source_ip_address);
 
         $notificationDispatcher->batchCompleted($queryRequest);
     }
@@ -262,8 +262,8 @@ class ExecuteQueryRequest implements ShouldQueue
 
     private function recordCancellationAcknowledgement(AuditLogger $auditLogger, User $executorUser, QueryRequest $queryRequest): void
     {
-        $auditLogger->log('query_request.execution_stop_acknowledged', $executorUser, $queryRequest, [
+        $auditLogger->logWithClientIp('query_request.execution_stop_acknowledged', $executorUser, $queryRequest, [
             'resume_from_statement_position' => $this->resumeFromPosition,
-        ]);
+        ], $queryRequest->execution_source_ip_address);
     }
 }

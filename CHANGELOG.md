@@ -4,6 +4,17 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-09-17
+
+### Fixed
+
+- Preserve the verified initiating client IP address for Deployment Batch audit events emitted by queued or scheduled execution, instead of attributing those events to a worker loopback address.
+- Make the Workspace identity, SMTP delivery, and Factory reset sections use a consistent full-width layout in Application settings.
+
+### Changed
+
+- Update the development and production frontend build stages to Node.js 22 and refresh the JavaScript and native PostgreSQL client dependencies.
+
 ## [0.2.3] - 2026-09-16
 
 ### Fixed
@@ -109,7 +120,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.0...v0.2.1

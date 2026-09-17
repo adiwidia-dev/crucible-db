@@ -38,6 +38,7 @@ class QueryRequestFactory extends Factory
             'requires_approval' => true,
             'scheduled_at' => null,
             'access_duration_minutes' => null,
+            'execution_source_ip_address' => null,
         ];
     }
 

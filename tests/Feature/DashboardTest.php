@@ -95,12 +95,12 @@ class DashboardTest extends TestCase
     {
         config()->set('native_proxy.enabled', true);
         config()->set('native_proxy.health_url', 'http://native-proxy:8081/readyz');
-        config()->set('native_proxy.expected_version', '0.2.3');
+        config()->set('native_proxy.expected_version', '0.2.4');
 
         Http::fake([
             'http://native-proxy:8081/readyz' => Http::response([
                 'proxy_id' => 'proxy-a',
-                'version' => '0.2.3',
+                'version' => '0.2.4',
             ]),
         ]);
 
@@ -125,7 +125,7 @@ class DashboardTest extends TestCase
                 ->where('summary.native_proxy_connections', 1)
                 ->where('summary.native_proxy_instances', 1)
                 ->where('native_proxy_health.status', 'healthy')
-                ->where('native_proxy_health.version', '0.2.3')
+                ->where('native_proxy_health.version', '0.2.4')
                 ->missing('native_proxy_health.password')
                 ->missing('native_proxy_health.parameters')
                 ->missing('native_proxy_health.rows')

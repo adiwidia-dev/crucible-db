@@ -42,8 +42,12 @@ class QueryRequestBatchWorkflowTest extends TestCase
     {
         $admin = $this->adminUser();
         $connection = DatabaseConnection::factory()->create();
+        config(['trustedproxy.proxies' => ['10.0.0.0/8']]);
 
-        $response = $this->actingAs($admin)->post(route('query-requests.store'), [
+        $response = $this->withServerVariables([
+            'REMOTE_ADDR' => '10.20.0.10',
+            'HTTP_X_FORWARDED_FOR' => '182.253.55.39',
+        ])->actingAs($admin)->post(route('query-requests.store'), [
             'database_connection_id' => $connection->id,
             'request_kind' => QueryRequestKind::SingleExecution->value,
             'title' => 'DEP-204 customer migration',
@@ -66,6 +70,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
             $queryRequest->statements()->pluck('sql')->all(),
         );
         $this->assertSame([1, 2], $queryRequest->statements()->pluck('position')->all());
+        $this->assertSame('182.253.55.39', $queryRequest->execution_source_ip_address);
     }
 
     public function test_deployment_batch_assigns_each_statement_to_its_target_and_requires_approval_when_any_target_requires_it(): void

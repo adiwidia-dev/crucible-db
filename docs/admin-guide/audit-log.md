@@ -4,7 +4,7 @@
 
 ![Audit Log page](../assets/screenshots/admin-audit-log.png){ .docs-screenshot }
 
-Use filters for action, actor, IP address, and free-text context to investigate meaningful user and system activity. Open an event for structured metadata and related-resource context.
+Use filters for action, actor, IP address, and free-text context to investigate meaningful user and system activity. Open an event for structured metadata and related-resource context. Browser activity records the verified client IP supplied through the trusted proxy boundary. Queued and scheduled Deployment Batch events retain the initiating request's verified IP; console-only system work has no client IP.
 
 ## Find an event
 

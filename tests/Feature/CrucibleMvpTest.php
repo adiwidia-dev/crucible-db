@@ -1555,7 +1555,9 @@ SQL;
 
         $this->assertNotNull($session->refresh()->ended_at);
         $this->assertSame(QueryRequestStatus::Completed, $queryRequest->refresh()->status);
-        $this->assertTrue(AuditLog::query()->where('action', 'query_session.expired')->exists());
+        $auditLog = AuditLog::query()->where('action', 'query_session.expired')->firstOrFail();
+
+        $this->assertNull($auditLog->ip_address);
     }
 
     public function test_execution_job_records_result_summary_and_audit_log(): void
@@ -1578,6 +1580,7 @@ SQL;
             'requester_id' => $admin->id,
             'sql' => 'select 1 as value',
             'query_type' => QueryType::Read,
+            'execution_source_ip_address' => '182.253.55.39',
         ]);
 
         (new ExecuteQueryRequest($queryRequest->id))->handle(
@@ -1599,7 +1602,9 @@ SQL;
             'status' => ExecutionStatus::Succeeded->value,
             'row_count' => 1,
         ]);
-        $this->assertTrue(AuditLog::query()->where('action', 'query_request.executed')->exists());
+        $auditLog = AuditLog::query()->where('action', 'query_request.executed')->firstOrFail();
+
+        $this->assertSame('182.253.55.39', $auditLog->ip_address);
     }
 
     private function adminUser(): User
