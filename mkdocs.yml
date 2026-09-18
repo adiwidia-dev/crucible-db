@@ -81,8 +81,8 @@ markdown_extensions:
 extra:
   github_url: https://github.com/adiwidia-dev/crucible-db
   github_star_url: https://github.com/adiwidia-dev/crucible-db
-  release_version: v0.2.6
-  release_url: https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.2.6
+  release_version: v0.2.7
+  release_url: https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.2.7
 
 extra_css:
   - stylesheets/extra.css
@@ -113,6 +113,7 @@ nav:
       - Access roles: admin-guide/access-roles.md
       - Authentication: admin-guide/authentication.md
       - Application settings: admin-guide/application.md
+      - System Status: admin-guide/system-status.md
       - Application database: admin-guide/application-database.md
       - Notification policy: admin-guide/notification-policy.md
       - SQL policy: admin-guide/sql-policy.md
@@ -139,6 +140,7 @@ nav:
       - Native proxy operations: operations/native-proxy.md
       - Backup, recovery, and troubleshooting: operations/operations.md
   - Reference:
+      - Release notes v0.2.7: releases/v0.2.7.md
       - Release notes v0.2.6: releases/v0.2.6.md
       - Release notes v0.2.5: releases/v0.2.5.md
       - Release notes v0.2.4: releases/v0.2.4.md

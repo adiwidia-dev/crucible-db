@@ -38,3 +38,13 @@ mkdocs build --strict
 ```
 
 The GitHub Actions documentation workflow performs the same build on pull requests and publishes the site only from `main`.
+
+## Release verification
+
+Before promoting `develop` to `main`, run `composer ci:check`, the production frontend build, the native race-enabled test suite, and `mkdocs build --strict`. For the Docker development stack, use `docker compose exec -T app composer ci:check`; PHPUnit pins the setup token in both environment and server variables, independently of the container's deployment token.
+
+If a test fails, reproduce it individually and compare with the previous release using the same runtime and dependencies before changing application logic. Do not skip or weaken a failing test to complete a release.
+
+Require successful application, database-matrix, native-proxy, and documentation checks on the promotion pull request. After merging, confirm the checks and GitHub Pages deployment on the exact `main` commit before creating its matching release tag. Supervise the tag-triggered publication workflow through image, CLI, signing, provenance, and Homebrew completion; then verify the published release description and live documentation version.
+
+Current version labels and install examples must match the release. Historical changelog entries, versioned release notes, and dependency versions remain intact.

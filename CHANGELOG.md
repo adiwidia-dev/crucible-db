@@ -4,6 +4,22 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-09-18
+
+### Added
+
+- Add an administrator-only System Status page with read-only, scheduler-refreshed snapshots for the application runtime, control database, Redis, Horizon, scheduler, native proxy, and generated Wayfinder contracts.
+
+### Changed
+
+- Document the System Status operational model, scheduler lifecycle, and canonical CLI `--help` and `--version` entry points.
+- Make the CLI root `--version` output a clean release string suitable for scripts and interactive verification.
+
+### Fixed
+
+- Accept Deployment Batch statements up to 1,000,000 characters, store them safely in MySQL and PostgreSQL control databases, and surface statement-specific validation feedback in the editor.
+- Isolate the PHPUnit setup token from Docker's inherited deployment token so setup-flow tests use the same configuration locally and in CI.
+
 ## [0.2.6] - 2026-09-17
 
 ### Added
@@ -144,7 +160,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.6...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.3...v0.2.4

@@ -1,5 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
+    Activity,
     Database,
     FileCode2,
     FolderTree,
@@ -37,6 +38,7 @@ import { index as queryRequestsIndex } from '@/routes/query-requests';
 import { index as rolesIndex } from '@/routes/roles';
 import { edit as editSecurity } from '@/routes/security';
 import { edit as editSqlStatementPolicy } from '@/routes/sql-statement-policy';
+import { show as showSystemStatus } from '@/routes/system-status';
 import { index as usersIndex } from '@/routes/users';
 import type { Auth, NavItem } from '@/types';
 
@@ -120,6 +122,11 @@ export function AppSidebar() {
                 {
                     title: 'Database',
                     href: editApplicationDatabase(),
+                },
+                {
+                    title: 'System Status',
+                    href: showSystemStatus(),
+                    icon: Activity,
                 },
             ],
         },

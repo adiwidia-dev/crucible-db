@@ -335,3 +335,27 @@ func TestVersionSubcommandPrintsTheCLIRelease(t *testing.T) {
 		t.Fatalf("unexpected version output: %q", stdout.String())
 	}
 }
+
+func TestRootHelpAndVersionFlagsAreAvailable(t *testing.T) {
+	var helpOutput bytes.Buffer
+	helpCommand := cli.NewRootCommand(cli.Dependencies{Stdout: &helpOutput, Stderr: &bytes.Buffer{}})
+	helpCommand.SetArgs([]string{"--help"})
+
+	if err := helpCommand.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(helpOutput.String(), "connect") || !strings.Contains(helpOutput.String(), "--version") {
+		t.Fatalf("unexpected help output: %s", helpOutput.String())
+	}
+
+	var versionOutput bytes.Buffer
+	versionCommand := cli.NewRootCommand(cli.Dependencies{Stdout: &versionOutput, Stderr: &bytes.Buffer{}})
+	versionCommand.SetArgs([]string{"--version"})
+
+	if err := versionCommand.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if versionOutput.String() != version.Version+"\n" {
+		t.Fatalf("unexpected version flag output: %q", versionOutput.String())
+	}
+}

@@ -17,6 +17,7 @@ use App\Http\Controllers\Settings\SecurityController;
 use App\Http\Controllers\Settings\SqlPolicyCandidateResolutionController;
 use App\Http\Controllers\Settings\SqlPolicyRuleController;
 use App\Http\Controllers\Settings\SqlStatementPolicyController;
+use App\Http\Controllers\Settings\SystemStatusController;
 use App\Http\Controllers\SsoController;
 use App\Http\Controllers\UserInvitationController;
 use App\Http\Controllers\UserRoleController;
@@ -48,6 +49,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/', fn () => redirect()->route('application-settings.edit'))->name('admin-settings.index');
         Route::get('application', [ApplicationSettingsController::class, 'edit'])->name('application-settings.edit');
         Route::patch('application', [ApplicationSettingsController::class, 'update'])->name('application-settings.update');
+        Route::get('system-status', [SystemStatusController::class, 'show'])->name('system-status.show');
         Route::get('application-database', [ApplicationDatabaseMigrationController::class, 'edit'])
             ->name('application-database-migrations.edit');
         Route::post('application-database', [ApplicationDatabaseMigrationController::class, 'store'])

@@ -1093,8 +1093,8 @@ export default function QueryRequestCreate({
                                                     Statements run top to
                                                     bottom. Execution stops at
                                                     the first failure. Add the
-                                                    DELETE and INSERT as separate
-                                                    statements.
+                                                    DELETE and INSERT as
+                                                    separate statements.
                                                 </p>
                                             </div>
                                         </div>
@@ -1320,7 +1320,8 @@ export default function QueryRequestCreate({
                                                 />
                                                 <div className="border-t px-3 py-2">
                                                     <p className="mb-1 text-xs text-muted-foreground">
-                                                        {statement.sql.length.toLocaleString()} /{' '}
+                                                        {statement.sql.length.toLocaleString()}{' '}
+                                                        /{' '}
                                                         {MAX_SQL_STATEMENT_LENGTH.toLocaleString()}{' '}
                                                         characters
                                                     </p>
