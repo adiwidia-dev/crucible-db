@@ -2,7 +2,7 @@
 
 **Who sees it:** workspace administrators under **Manage → Administration → Application → System Status**.
 
-System Status is a read-only operational view. It shows the current Crucible DB application version and cached status snapshots for the application runtime, control database, Redis, Horizon, scheduler, native proxy, and generated Wayfinder route contracts.
+System Status is a read-only operational view. It shows the current Crucible DB application version and cached status snapshots for the application runtime, control database, Redis, Horizon, scheduler, and native proxy.
 
 ## How to read a status
 
@@ -24,7 +24,6 @@ The page never launches Docker commands, executes a fresh proxy request, or expo
 - **Horizon** reads its active master and supervisor state from Redis. It reports paused workers as degraded.
 - **Scheduler** is healthy only after its independent, recent heartbeat is observed. Running another command manually does not create that heartbeat.
 - **Native proxy** reuses the existing bounded readiness snapshot, including the reported proxy version and instance ID when available.
-- **Wayfinder** is a build-time integration, not a long-running service. Its card confirms that the generated route contract used by this page is present in the application build.
 
 ## Follow-up checks
 

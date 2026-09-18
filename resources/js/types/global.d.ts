@@ -1,3 +1,4 @@
+import type { NativeProxyStatusSnapshot } from '@/components/native-proxy/health-status';
 import type { Auth } from '@/types/auth';
 
 declare module 'react' {
@@ -13,6 +14,7 @@ declare module '@inertiajs/core' {
             name: string;
             auth: Auth;
             native_proxy_cli_download_url?: string;
+            native_proxy_status?: NativeProxyStatusSnapshot | null;
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

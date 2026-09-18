@@ -1,6 +1,5 @@
 import { Head, usePage } from '@inertiajs/react';
 import {
-    Activity,
     Bot,
     Database,
     HeartPulse,
@@ -35,7 +34,6 @@ type RuntimeStatus = ComponentStatus & {
         driver: string;
         php_version: string;
         version: string;
-        wayfinder_version: string;
     };
 };
 
@@ -53,18 +51,15 @@ const componentPresentation: Record<
 export default function SystemStatus({
     system_status: systemStatus,
     application_runtime: applicationRuntime,
-    wayfinder,
 }: {
     system_status: SystemStatusSnapshot;
     application_runtime: RuntimeStatus;
-    wayfinder: ComponentStatus;
 }) {
     const { auth } = usePage<{ auth: { user: { timezone?: string | null } } }>()
         .props;
     const timezone = auth.user.timezone ?? undefined;
     const statuses = [
         applicationRuntime,
-        wayfinder,
         ...Object.values(systemStatus.components),
     ];
     const hasIssue = statuses.some((component) =>
@@ -104,18 +99,6 @@ export default function SystemStatus({
                             ['Version', applicationRuntime.metadata.version],
                             ['Runtime', applicationRuntime.metadata.driver],
                             ['PHP', applicationRuntime.metadata.php_version],
-                        ]}
-                    />
-                    <StatusCard
-                        icon={Activity}
-                        title="Wayfinder"
-                        status={wayfinder}
-                        details={[
-                            [
-                                'Package',
-                                applicationRuntime.metadata.wayfinder_version,
-                            ],
-                            ['Role', 'Build-time route contracts'],
                         ]}
                     />
                     {Object.entries(systemStatus.components).map(

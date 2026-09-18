@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Services\NativeProxy\ProxyHealth;
-use Composer\InstalledVersions;
 use Illuminate\Contracts\Redis\Factory as RedisFactory;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -71,7 +70,7 @@ class SystemStatus
     }
 
     /**
-     * @return array{status: 'healthy', detail: string, metadata: array{driver: string, php_version: string, version: string, wayfinder_version: string}}
+     * @return array{status: 'healthy', detail: string, metadata: array{driver: string, php_version: string, version: string}}
      */
     public function applicationRuntime(): array
     {
@@ -82,25 +81,6 @@ class SystemStatus
                 'driver' => (string) config('octane.server'),
                 'php_version' => PHP_VERSION,
                 'version' => $this->applicationVersion(),
-                'wayfinder_version' => $this->installedPackageVersion('laravel/wayfinder'),
-            ],
-        ];
-    }
-
-    /**
-     * @return array{status: 'healthy'|'unhealthy', detail: string, metadata: array{version: string}}
-     */
-    public function wayfinderStatus(): array
-    {
-        $generatedRouteFile = resource_path('js/routes/system-status/index.ts');
-
-        return [
-            'status' => is_file($generatedRouteFile) ? 'healthy' : 'unhealthy',
-            'detail' => is_file($generatedRouteFile)
-                ? 'Generated route contracts are present in this application build.'
-                : 'The generated route contract for system status is missing from this application build.',
-            'metadata' => [
-                'version' => $this->installedPackageVersion('laravel/wayfinder'),
             ],
         ];
     }
@@ -253,14 +233,5 @@ class SystemStatus
         return is_array($package) && is_string($package['version'] ?? null)
             ? 'v'.$package['version']
             : 'Unknown';
-    }
-
-    private function installedPackageVersion(string $package): string
-    {
-        if (! class_exists(InstalledVersions::class)) {
-            return 'Unknown';
-        }
-
-        return InstalledVersions::getPrettyVersion($package) ?? 'Unknown';
     }
 }

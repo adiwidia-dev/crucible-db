@@ -16,7 +16,6 @@ class SystemStatusController extends Controller
         return Inertia::render('settings/admin/system-status', [
             'system_status' => $systemStatus->latest(),
             'application_runtime' => $systemStatus->applicationRuntime(),
-            'wayfinder' => $systemStatus->wayfinderStatus(),
         ]);
     }
 }

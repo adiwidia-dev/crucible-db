@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\SqlPolicyCandidate;
 use App\Services\ApplicationSettings;
+use App\Services\NativeProxy\NativeProxyStatus;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
 use Inertia\Middleware;
@@ -47,6 +48,9 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user()?->loadMissing('roles'),
             ],
             'native_proxy_cli_download_url' => config('native_proxy.cli_download_url'),
+            'native_proxy_status' => fn (): ?array => $request->user()
+                ? app(NativeProxyStatus::class)->for($request->user())
+                : null,
             'notification_summary' => fn (): array => [
                 'unread_count' => $request->user()?->unreadNotifications()->count() ?? 0,
                 'recent' => $request->user()

@@ -2,14 +2,12 @@
 
 namespace App\Services;
 
-use App\Enums\NativeProxyConnectionStatus;
 use App\Enums\QueryRequestStatus;
-use App\Models\NativeProxyConnection;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\SqlPolicyCandidate;
 use App\Models\User;
-use App\Services\NativeProxy\ProxyHealth;
+use App\Services\NativeProxy\NativeProxyStatus;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -40,12 +38,13 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class DashboardOverview
 {
-    public function __construct(private readonly ProxyHealth $proxyHealth) {}
+    public function __construct(private readonly NativeProxyStatus $nativeProxyStatus) {}
 
     /**
      * @return array{
      *     summary: array{pending_reviews: int, policy_reviews: int, scheduled: int, failed: int, active_sessions: int, native_proxy_connections: int, native_proxy_instances: int},
      *     native_proxy_health: array{status: 'disabled'|'healthy'|'unhealthy'|'version_mismatch', checked_at: string|null, proxy_id: string|null, version: string|null, message: string|null},
+     *     native_proxy_status: array{health: array{status: 'disabled'|'healthy'|'unhealthy'|'version_mismatch', checked_at: string|null, proxy_id: string|null, version: string|null, message: string|null}, connections: int, instances: int},
      *     pending_reviews: array<int, RequestQueueItem>,
      *     scheduled_requests: array<int, RequestQueueItem>,
      *     failed_requests: array<int, RequestQueueItem>,
@@ -82,10 +81,7 @@ class DashboardOverview
             ->whereNull('ended_at')
             ->where('expires_at', '>', now())
             ->orderBy('expires_at');
-        $visibleSessionIds = (clone $this->visibleSessions($user, $isAdmin, $reviewableConnectionIds))->select('id');
-        $activeNativeConnections = NativeProxyConnection::query()
-            ->whereIn('query_session_id', $visibleSessionIds)
-            ->whereIn('status', [NativeProxyConnectionStatus::Reserved, NativeProxyConnectionStatus::Active]);
+        $nativeProxyStatus = $this->nativeProxyStatus->for($user);
         $policyReviewCandidates = SqlPolicyCandidate::query()
             ->whereNull('resolution')
             ->whereHas('occurrences', fn (Builder $query) => $query->whereNotNull('review_requested_at'));
@@ -97,10 +93,11 @@ class DashboardOverview
                 'scheduled' => (clone $scheduledRequests)->count(),
                 'failed' => (clone $failedRequests)->count(),
                 'active_sessions' => (clone $expiringSessions)->count(),
-                'native_proxy_connections' => (clone $activeNativeConnections)->count(),
-                'native_proxy_instances' => (clone $activeNativeConnections)->distinct('proxy_instance_id')->count('proxy_instance_id'),
+                'native_proxy_connections' => $nativeProxyStatus['connections'],
+                'native_proxy_instances' => $nativeProxyStatus['instances'],
             ],
-            'native_proxy_health' => $this->proxyHealth->latest(),
+            'native_proxy_health' => $nativeProxyStatus['health'],
+            'native_proxy_status' => $nativeProxyStatus,
             'pending_reviews' => $this->requestQueue($pendingReviews),
             'scheduled_requests' => $this->requestQueue($scheduledRequests),
             'failed_requests' => $this->requestQueue($failedRequests),
