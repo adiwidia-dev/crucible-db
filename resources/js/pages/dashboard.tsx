@@ -366,6 +366,7 @@ export default function Dashboard({
             'failed_requests',
             'expiring_sessions',
             'native_proxy_health',
+            'native_proxy_status',
         ],
     });
 

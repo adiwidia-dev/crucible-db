@@ -32,7 +32,7 @@ Administration starts collapsed unless the current page is inside it. Its four s
 - **General** controls workspace identity, timezone, mail transport, and factory reset.
 - **Notification Policy** controls workspace delivery and event defaults.
 - **Database** shows the active control database and provides managed, verified migration and rollback workflows.
-- **System Status** provides read-only, cached health snapshots for the application runtime, Redis, Horizon, scheduler, native proxy, and generated Wayfinder contracts.
+- **System Status** provides read-only, cached health snapshots for the application runtime, control database, Redis, Horizon, scheduler, and native proxy.
 
 ### Governance
 

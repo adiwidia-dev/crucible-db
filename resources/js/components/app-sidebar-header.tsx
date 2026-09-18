@@ -12,7 +12,10 @@ import {
 import NotificationController from '@/actions/App/Http/Controllers/NotificationController';
 import { Breadcrumbs } from '@/components/breadcrumbs';
 import { NativeProxyHealthStatus } from '@/components/native-proxy/health-status';
-import type { NativeProxyHealthSnapshot } from '@/components/native-proxy/health-status';
+import type {
+    NativeProxyHealthSnapshot,
+    NativeProxyStatusSnapshot,
+} from '@/components/native-proxy/health-status';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -58,6 +61,7 @@ export function AppSidebarHeader({
         {
             auth: Auth;
             native_proxy_cli_download_url?: string;
+            native_proxy_status?: NativeProxyStatusSnapshot | null;
             notification_summary?: {
                 unread_count?: number;
                 recent?: NotificationPreview[];
@@ -67,6 +71,7 @@ export function AppSidebarHeader({
     const {
         auth,
         native_proxy_cli_download_url: cliDownloadUrl,
+        native_proxy_status: nativeProxyStatus,
         notification_summary: notificationSummary,
         native_proxy_health: nativeProxyHealth,
         summary,
@@ -74,12 +79,21 @@ export function AppSidebarHeader({
     const getInitials = useInitials();
     const unreadCount = notificationSummary?.unread_count ?? 0;
     const recentNotifications = notificationSummary?.recent ?? [];
+    const resolvedNativeProxyStatus =
+        nativeProxyStatus ??
+        (nativeProxyHealth && summary
+            ? {
+                  health: nativeProxyHealth,
+                  connections: summary.native_proxy_connections,
+                  instances: summary.native_proxy_instances,
+              }
+            : null);
 
     return (
-        <header className="flex h-13 shrink-0 items-center gap-3 border-b border-border bg-card px-4 sm:px-6 lg:px-8">
-            <div className="flex min-w-0 items-center gap-3">
+        <header className="flex h-13 shrink-0 items-center gap-2 border-b border-border bg-card px-3 sm:gap-3 sm:px-6 lg:px-8">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
                 <SidebarTrigger className="-ml-1 text-muted-foreground hover:text-foreground" />
-                <div className="h-4 w-px bg-border" />
+                <div className="h-4 w-px shrink-0 bg-border" />
                 {breadcrumbs.length > 0 ? (
                     <Breadcrumbs breadcrumbs={breadcrumbs} />
                 ) : (
@@ -88,15 +102,13 @@ export function AppSidebarHeader({
                     </span>
                 )}
             </div>
-            <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-                {page.component === 'dashboard' &&
-                    nativeProxyHealth &&
-                    nativeProxyHealth.status !== 'disabled' &&
-                    summary && (
+            <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+                {resolvedNativeProxyStatus &&
+                    resolvedNativeProxyStatus.health.status !== 'disabled' && (
                         <NativeProxyHealthStatus
-                            health={nativeProxyHealth}
-                            connections={summary.native_proxy_connections}
-                            instances={summary.native_proxy_instances}
+                            health={resolvedNativeProxyStatus.health}
+                            connections={resolvedNativeProxyStatus.connections}
+                            instances={resolvedNativeProxyStatus.instances}
                             timezone={auth.user?.timezone ?? 'UTC'}
                         />
                     )}
@@ -228,9 +240,9 @@ export function AppSidebarHeader({
                 </DropdownMenu>
 
                 {auth.user && (
-                    <div className="flex min-w-0 items-center gap-1 border-l border-border pl-2 sm:gap-1.5">
+                    <div className="flex shrink-0 items-center gap-1 border-l border-border pl-1.5 sm:gap-1.5 sm:pl-2">
                         <div
-                            className="flex min-w-0 items-center gap-2"
+                            className="flex shrink-0 items-center gap-2"
                             title={`${auth.user.name} · ${auth.user.email}`}
                         >
                             <Avatar className="size-8">
@@ -242,7 +254,7 @@ export function AppSidebarHeader({
                                     {getInitials(auth.user.name)}
                                 </AvatarFallback>
                             </Avatar>
-                            <span className="max-w-32 truncate text-sm font-medium text-foreground sm:max-w-40">
+                            <span className="hidden max-w-40 truncate text-sm font-medium text-foreground sm:inline">
                                 {auth.user.name}
                             </span>
                             <span className="sr-only">{auth.user.email}</span>

@@ -48,6 +48,76 @@ class DashboardTest extends TestCase
                 ->where('native_proxy_cli_download_url', 'https://downloads.example.com/crucible'));
     }
 
+    public function test_authenticated_pages_share_native_proxy_header_status(): void
+    {
+        config()->set('native_proxy.enabled', true);
+        config()->set('native_proxy.health_url', 'http://native-proxy:8081/readyz');
+        config()->set('native_proxy.expected_version', '0.2.8');
+
+        Http::fake([
+            'http://native-proxy:8081/readyz' => Http::response([
+                'proxy_id' => 'proxy-a',
+                'version' => '0.2.8',
+            ]),
+        ]);
+
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
+        $request = QueryRequest::factory()->queryAccess()->create();
+        $session = QuerySession::factory()->create([
+            'query_request_id' => $request->id,
+            'database_connection_id' => $request->database_connection_id,
+        ]);
+        NativeProxyConnection::factory()->active()->create([
+            'query_session_id' => $session->id,
+            'query_request_id' => $request->id,
+            'database_connection_id' => $request->database_connection_id,
+            'proxy_instance_id' => 'proxy-a',
+        ]);
+
+        app(ProxyHealth::class)->refresh();
+
+        $this->actingAs($admin)
+            ->get(route('connections.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('connections/index')
+                ->where('native_proxy_status.health.status', 'healthy')
+                ->where('native_proxy_status.health.version', '0.2.8')
+                ->where('native_proxy_status.connections', 1)
+                ->where('native_proxy_status.instances', 1)
+                ->missing('native_proxy_status.health.password')
+                ->missing('native_proxy_status.health.parameters')
+                ->missing('native_proxy_status.health.rows'));
+    }
+
+    public function test_shared_native_proxy_header_counts_only_sessions_visible_to_the_user(): void
+    {
+        $user = User::factory()->create();
+        $otherUser = User::factory()->create();
+
+        foreach ([$user, $otherUser] as $sessionUser) {
+            $request = QueryRequest::factory()->queryAccess()->create([
+                'requester_id' => $sessionUser->id,
+            ]);
+            $session = QuerySession::factory()->create([
+                'query_request_id' => $request->id,
+                'database_connection_id' => $request->database_connection_id,
+                'user_id' => $sessionUser->id,
+            ]);
+            NativeProxyConnection::factory()->active()->create([
+                'query_session_id' => $session->id,
+                'query_request_id' => $request->id,
+                'database_connection_id' => $request->database_connection_id,
+                'proxy_instance_id' => "proxy-{$sessionUser->id}",
+            ]);
+        }
+
+        $this->actingAs($user)
+            ->get(route('connections.index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('native_proxy_status.connections', 1)
+                ->where('native_proxy_status.instances', 1));
+    }
+
     public function test_dashboard_returns_operational_queues_visible_to_an_admin(): void
     {
         $admin = User::factory()
@@ -109,12 +179,12 @@ class DashboardTest extends TestCase
     {
         config()->set('native_proxy.enabled', true);
         config()->set('native_proxy.health_url', 'http://native-proxy:8081/readyz');
-        config()->set('native_proxy.expected_version', '0.2.7');
+        config()->set('native_proxy.expected_version', '0.2.8');
 
         Http::fake([
             'http://native-proxy:8081/readyz' => Http::response([
                 'proxy_id' => 'proxy-a',
-                'version' => '0.2.7',
+                'version' => '0.2.8',
             ]),
         ]);
 
@@ -139,13 +209,16 @@ class DashboardTest extends TestCase
                 ->where('summary.native_proxy_connections', 1)
                 ->where('summary.native_proxy_instances', 1)
                 ->where('native_proxy_health.status', 'healthy')
-                ->where('native_proxy_health.version', '0.2.7')
+                ->where('native_proxy_health.version', '0.2.8')
                 ->missing('native_proxy_health.password')
                 ->missing('native_proxy_health.parameters')
                 ->missing('native_proxy_health.rows')
-                ->reloadOnly(['summary', 'native_proxy_health'], fn (Assert $reload) => $reload
+                ->reloadOnly(['summary', 'native_proxy_health', 'native_proxy_status'], fn (Assert $reload) => $reload
                     ->where('summary.native_proxy_connections', 1)
-                    ->where('native_proxy_health.status', 'healthy')));
+                    ->where('native_proxy_health.status', 'healthy')
+                    ->where('native_proxy_status.health.status', 'healthy')
+                    ->where('native_proxy_status.connections', 1)
+                    ->where('native_proxy_status.instances', 1)));
     }
 
     public function test_dashboard_keeps_native_proxy_health_visible_before_the_first_health_check(): void

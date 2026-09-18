@@ -21,6 +21,12 @@ export type NativeProxyHealthSnapshot = {
     message: string | null;
 };
 
+export type NativeProxyStatusSnapshot = {
+    health: NativeProxyHealthSnapshot;
+    connections: number;
+    instances: number;
+};
+
 export function NativeProxyHealthStatus({
     health,
     connections,

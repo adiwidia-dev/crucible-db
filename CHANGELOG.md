@@ -4,6 +4,13 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-09-18
+
+### Fixed
+
+- Remove the build-time Wayfinder contract from System Status so production images do not report an unhealthy runtime component after generated TypeScript has already been compiled into frontend assets.
+- Keep Native Proxy health visible throughout the authenticated application and compact the mobile header by hiding redundant account text while retaining the avatar and actions.
+
 ## [0.2.7] - 2026-09-18
 
 ### Added
@@ -160,7 +167,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.7...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.4...v0.2.5
