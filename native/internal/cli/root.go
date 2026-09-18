@@ -83,6 +83,7 @@ func NewRootCommand(dependencies Dependencies) *cobra.Command {
 	}
 	root.SetOut(dependencies.Stdout)
 	root.SetErr(dependencies.Stderr)
+	root.SetVersionTemplate("{{.Version}}\n")
 	root.AddCommand(newConnectCommand(dependencies))
 	root.AddCommand(newCompletionCommand())
 	root.AddCommand(newVersionCommand())

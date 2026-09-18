@@ -64,9 +64,15 @@ The process exits with `2` for invalid flags, `3` when authorization is denied, 
 ### Other commands
 
 ```text
+crucible --help
+crucible connect --help
+crucible --version
 crucible version
 crucible completion bash|zsh|fish|powershell
 ```
+
+`--help` shows the available commands or the options for one command. Both
+`crucible --version` and `crucible version` print the installed CLI version.
 
 ## Client profiles
 

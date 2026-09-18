@@ -28,9 +28,13 @@ All four queues use Redis. Query execution is deliberately isolated so email or 
 Every minute, the scheduler runs:
 
 - `crucible:dispatch-due-query-requests` to dispatch eligible scheduled work;
-- `crucible:expire-query-sessions` to close expired access windows.
+- `crucible:expire-query-sessions` to close expired browser Query Access windows;
+- `crucible:expire-native-proxy-leases` to revoke expired native-client leases;
+- `crucible:check-native-proxy-health` to refresh the bounded native-proxy readiness snapshot and notify operators if its state changes;
+- `crucible:prune-native-proxy-state` to remove expired native-proxy state; and
+- an independent system-status heartbeat plus `crucible:check-system-status` to publish the cached administrator System Status snapshot.
 
-Both commands prevent overlap and use the single-server scheduler lock. The supplied Compose topology is single-node.
+These scheduled tasks prevent overlap and use the single-server scheduler lock. The supplied Compose topology is single-node.
 
 Application-database copy, activation, and rollback operations add a maintenance fence around these runtimes. The fence blocks normal web mutations, queued work, scheduled lifecycle mutations, and native-client control requests while the operation is in progress. It also waits for existing Query Access sessions, native leases/connections, and queued jobs to become idle before copying. The public `/health` endpoint and the administrator migration console remain available so an operator can verify and finalize the cutover.
 
@@ -53,7 +57,10 @@ Useful checks inside the production application container include:
 ```bash
 php artisan horizon:status
 php artisan schedule:list
+php artisan crucible:check-system-status
 ```
+
+The administrator [System Status](../admin-guide/system-status.md) page exposes the most recent bounded checks without initiating infrastructure probes during a browser request. It is diagnostic only: it cannot restart processes, clear queues, or control Docker.
 
 Horizon retains recent completed jobs for 60 minutes and failed jobs for seven days. Queue wait thresholds are 60 seconds for `queries`, `default`, and `notifications`, and 120 seconds for `mail`. Metrics require scheduled `horizon:snapshot`; the current Crucible scheduler does not schedule snapshots, so do not rely on historical Horizon metric graphs without adding that deliberate operational task.
 

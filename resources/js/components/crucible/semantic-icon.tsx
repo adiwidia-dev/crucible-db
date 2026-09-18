@@ -32,6 +32,7 @@ const statusTones: Record<string, SemanticTone> = {
     approved: 'info',
     cancelled: 'neutral',
     completed: 'success',
+    degraded: 'pending',
     disabled: 'neutral',
     draft: 'neutral',
     failed: 'danger',
@@ -54,6 +55,7 @@ const statusTones: Record<string, SemanticTone> = {
     single_execution: 'info',
     succeeded: 'success',
     unhealthy: 'danger',
+    unknown: 'neutral',
     version_mismatch: 'pending',
     write: 'write',
 };

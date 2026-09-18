@@ -25,7 +25,7 @@ class PreviewDeploymentPolicyRequest extends FormRequest
     {
         return [
             'statements' => ['required', 'array', 'min:1', 'max:50'],
-            'statements.*.sql' => ['required', 'string', 'max:20000'],
+            'statements.*.sql' => ['required', 'string', 'max:1000000'],
             'statements.*.database_connection_id' => ['required', 'integer', 'exists:database_connections,id'],
         ];
     }

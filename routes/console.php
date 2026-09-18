@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\ApplicationDatabaseMigrationFence;
+use App\Services\SystemStatus;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -8,6 +9,21 @@ use Illuminate\Support\Facades\Schedule;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Schedule::call(function (): void {
+    app(SystemStatus::class)->recordSchedulerHeartbeat();
+})
+    ->name('crucible:record-system-status-heartbeat')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->skip(fn (): bool => app(ApplicationDatabaseMigrationFence::class)->isActive());
+
+Schedule::command('crucible:check-system-status')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->skip(fn (): bool => app(ApplicationDatabaseMigrationFence::class)->isActive());
 
 Schedule::command('crucible:dispatch-due-query-requests')
     ->everyMinute()

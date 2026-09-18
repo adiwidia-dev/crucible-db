@@ -123,7 +123,9 @@ class InitialSetupTest extends TestCase
     {
         $this->post(route('setup.access.store'), [
             'setup_token' => self::SetupToken,
-        ])->assertRedirect();
+        ])->assertSessionHasNoErrors()
+            ->assertRedirect()
+            ->assertSessionHas('initial_setup.authorization');
     }
 
     public function test_initial_owner_can_skip_the_optional_connection_step(): void
