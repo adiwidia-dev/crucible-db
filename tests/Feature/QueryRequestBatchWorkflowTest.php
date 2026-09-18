@@ -73,6 +73,24 @@ class QueryRequestBatchWorkflowTest extends TestCase
         $this->assertSame('182.253.55.39', $queryRequest->execution_source_ip_address);
     }
 
+    public function test_single_execution_request_can_store_a_statement_larger_than_the_legacy_limit(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+        $sql = "INSERT INTO deployment_audit (payload) VALUES ('".str_repeat('x', 20001)."')";
+
+        $this->actingAs($admin)->post(route('query-requests.store'), [
+            'database_connection_id' => $connection->id,
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Large deployment batch',
+            'statements' => [['sql' => $sql]],
+        ])->assertSessionHasNoErrors();
+
+        $queryRequest = QueryRequest::query()->sole();
+
+        $this->assertSame($sql, $queryRequest->statements()->sole()->sql);
+    }
+
     public function test_deployment_batch_assigns_each_statement_to_its_target_and_requires_approval_when_any_target_requires_it(): void
     {
         $role = Role::factory()->developer()->create();

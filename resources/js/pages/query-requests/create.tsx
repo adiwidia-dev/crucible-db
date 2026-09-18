@@ -101,6 +101,8 @@ type StatementDraft = {
     databaseConnectionId: string;
 };
 
+const MAX_SQL_STATEMENT_LENGTH = 1_000_000;
+
 const SQL_STATEMENT_FAMILIES = [
     {
         key: 'sql_read_queries_enabled' as const,
@@ -1090,7 +1092,9 @@ export default function QueryRequestCreate({
                                                 <p className="mt-1 text-xs text-muted-foreground">
                                                     Statements run top to
                                                     bottom. Execution stops at
-                                                    the first failure.
+                                                    the first failure. Add the
+                                                    DELETE and INSERT as separate
+                                                    statements.
                                                 </p>
                                             </div>
                                         </div>
@@ -1315,6 +1319,11 @@ export default function QueryRequestCreate({
                                                     placeholder={`-- Statement ${index + 1}\nSELECT * FROM table_name`}
                                                 />
                                                 <div className="border-t px-3 py-2">
+                                                    <p className="mb-1 text-xs text-muted-foreground">
+                                                        {statement.sql.length.toLocaleString()} /{' '}
+                                                        {MAX_SQL_STATEMENT_LENGTH.toLocaleString()}{' '}
+                                                        characters
+                                                    </p>
                                                     <InputError
                                                         message={
                                                             errors[
@@ -1581,6 +1590,19 @@ export default function QueryRequestCreate({
                                         </Button>
                                     </div>
                                 </div>
+                                {Object.entries(errors)
+                                    .filter(([field]) =>
+                                        field.startsWith('statements.'),
+                                    )
+                                    .map(([field, message]) => (
+                                        <p
+                                            key={field}
+                                            role="alert"
+                                            className="border-t border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 sm:px-5 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200"
+                                        >
+                                            {message}
+                                        </p>
+                                    ))}
                                 {policyReviewEligibility.canRequest && (
                                     <p className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950 sm:px-5 dark:border-amber-900/70 dark:bg-amber-950/30 dark:text-amber-100">
                                         This batch cannot enter approval yet.

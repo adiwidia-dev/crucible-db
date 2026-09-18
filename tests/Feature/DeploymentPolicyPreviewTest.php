@@ -128,14 +128,18 @@ class DeploymentPolicyPreviewTest extends TestCase
 
     public function test_preview_requires_authentication_target_access_and_bounded_valid_input(): void
     {
+        $admin = $this->admin();
         $connection = DatabaseConnection::factory()->postgresql()->create();
         $input = ['statements' => [['sql' => 'SELECT 1', 'database_connection_id' => $connection->id]]];
         $this->postJson(route('query-requests.policy-preview'), $input)->assertUnauthorized();
         $developer = User::factory()->withRole(Role::factory()->developer()->create())->create();
         $this->actingAs($developer)->postJson(route('query-requests.policy-preview'), $input)->assertForbidden();
-        $this->actingAs($this->admin())->postJson(route('query-requests.policy-preview'), ['statements' => []])
+        $this->actingAs($admin)->postJson(route('query-requests.policy-preview'), ['statements' => []])
             ->assertUnprocessable()->assertJsonValidationErrors('statements');
         $input['statements'][0]['sql'] = str_repeat('x', 20001);
+        $this->actingAs($admin)->postJson(route('query-requests.policy-preview'), $input)
+            ->assertOk();
+        $input['statements'][0]['sql'] = str_repeat('x', 1000001);
         $this->postJson(route('query-requests.policy-preview'), $input)
             ->assertUnprocessable()->assertJsonValidationErrors('statements.0.sql');
         $connection->update(['is_active' => false]);
