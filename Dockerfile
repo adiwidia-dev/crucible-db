@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS node
+FROM node:25-bookworm-slim AS node
 
 FROM dunglas/frankenphp:1-php8.5 AS base
 
