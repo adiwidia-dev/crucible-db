@@ -107,6 +107,35 @@ class NativeProxyRevocationTest extends TestCase
         $this->assertNotNull($token->refresh()->revoked_at);
     }
 
+    public function test_admin_can_delete_a_cancelled_native_client_request_and_its_proxy_records(): void
+    {
+        [$owner, $session, $lease] = $this->activeLease();
+        $device = NativeProxyDeviceAuthorization::factory()->for($lease, 'lease')->create();
+        $token = NativeProxyToken::factory()->for($lease, 'lease')->for($device, 'deviceAuthorization')->create();
+        $attempt = NativeProxyAuthAttempt::factory()->for($lease, 'lease')->for($token, 'token')->for($device, 'deviceAuthorization')->create();
+        $proxyConnection = NativeProxyConnection::factory()->for($lease, 'lease')->create([
+            'query_session_id' => $session->id,
+            'query_request_id' => $session->query_request_id,
+            'user_id' => $owner->id,
+            'database_connection_id' => $session->database_connection_id,
+        ]);
+
+        app(QueryRequestWorkflow::class)->cancel($session->queryRequest, $owner, 'No longer needed.');
+
+        $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
+        $this->actingAs($admin)
+            ->delete(route('query-requests.destroy', $session->queryRequest))
+            ->assertRedirect(route('query-requests.index'));
+
+        $this->assertModelMissing($session->queryRequest);
+        $this->assertModelMissing($session);
+        $this->assertModelMissing($lease);
+        $this->assertModelMissing($device);
+        $this->assertModelMissing($token);
+        $this->assertModelMissing($attempt);
+        $this->assertModelMissing($proxyConnection);
+    }
+
     public function test_revocation_event_is_deferred_until_the_database_transaction_commits(): void
     {
         $event = new NativeProxyLeaseRevoked(['lease-1'], 'Policy changed.');
