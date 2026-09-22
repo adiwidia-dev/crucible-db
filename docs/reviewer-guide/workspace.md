@@ -8,7 +8,7 @@ Reviewer authority adds decisions to the normal user workspace; it does not expo
 
 ## Find requests awaiting review
 
-Use **Overview → Pending review** for the immediate queue. Use **Query Requests** when you need filters or historical context. Only requests within your reviewable connection scope appear as actionable.
+Use **Overview → Operational queue → Attention** for the immediate review queue. Review items are tagged clearly alongside failures and SQL policy work; select one to open its full request. Use **Query Requests** when you need filters or historical context. Only requests within your reviewable connection scope appear as actionable.
 
 ## Independence
 

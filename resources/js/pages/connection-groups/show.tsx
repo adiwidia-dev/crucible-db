@@ -96,7 +96,7 @@ export default function ConnectionGroupShow({
                     </dl>
                 </section>
 
-                <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                <section className="overflow-hidden rounded-lg border bg-card">
                     <div className="border-b px-4 py-3 sm:px-5">
                         <h2 className="text-base font-semibold">
                             Member connections
@@ -180,7 +180,7 @@ export default function ConnectionGroupShow({
                     )}
                 </section>
 
-                <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                <section className="overflow-hidden rounded-lg border bg-card">
                     <div className="border-b px-4 py-3 sm:px-5">
                         <h2 className="text-base font-semibold">
                             Roles using this group

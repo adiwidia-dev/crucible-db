@@ -4,9 +4,9 @@ Approval is a recorded decision on a specific request scope. It does not bypass 
 
 ## 1. Open pending work
 
-The reviewer dashboard presents requests that need an authorized decision.
+Open the **Attention** view in the Overview operational queue. Requests that need an authorized decision carry a **Review** tag and remain scoped to the connections you may review.
 
-![Pending review queue](../assets/screenshots/reviewer-overview.png){ .docs-screenshot }
+![Reviewer operational queue](../assets/screenshots/reviewer-overview.png){ .docs-screenshot }
 
 ## 2. Inspect the request
 

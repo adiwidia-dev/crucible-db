@@ -34,7 +34,22 @@ use Illuminate\Database\Eloquent\Builder;
  *     user: string,
  *     expires_at: string
  * }
- * @phpstan-type PolicyReviewQueueItem array{id:int,statement:string,driver:string,request_count:int,request_title:string|null,requester:string|null,requested_at:string|null}
+ * @phpstan-type PolicyReviewQueueItem array{id:int,statement:string,driver:'pgsql'|'mysql',request_count:int,request_title:string|null,requester:string|null,requested_at:string|null}
+ * @phpstan-type OperationalQueueItem array{
+ *     id: int,
+ *     type: 'active_session'|'failed_execution'|'pending_review'|'policy_review'|'scheduled_execution',
+ *     title: string,
+ *     connection: string|null,
+ *     actor: string|null,
+ *     timestamp: string|null,
+ *     detail: string|null,
+ *     related_title: string|null,
+ *     count: int|null,
+ *     driver: 'pgsql'|'mysql'|null,
+ *     request_kind: 'query_access'|'single_execution'|null,
+ *     query_type: 'read'|'write'|null,
+ *     requested_access_mode: 'none'|'read'|'write'|null
+ * }
  */
 class DashboardOverview
 {
@@ -45,11 +60,7 @@ class DashboardOverview
      *     summary: array{pending_reviews: int, policy_reviews: int, scheduled: int, failed: int, active_sessions: int, native_proxy_connections: int, native_proxy_instances: int},
      *     native_proxy_health: array{status: 'disabled'|'healthy'|'unhealthy'|'version_mismatch', checked_at: string|null, proxy_id: string|null, version: string|null, message: string|null},
      *     native_proxy_status: array{health: array{status: 'disabled'|'healthy'|'unhealthy'|'version_mismatch', checked_at: string|null, proxy_id: string|null, version: string|null, message: string|null}, connections: int, instances: int},
-     *     pending_reviews: array<int, RequestQueueItem>,
-     *     scheduled_requests: array<int, RequestQueueItem>,
-     *     failed_requests: array<int, RequestQueueItem>,
-     *     expiring_sessions: array<int, SessionQueueItem>,
-     *     policy_review_candidates: array<int, PolicyReviewQueueItem>
+     *     operational_queue: array<int, OperationalQueueItem>
      * }
      */
     public function for(User $user): array
@@ -86,25 +97,150 @@ class DashboardOverview
             ->whereNull('resolution')
             ->whereHas('occurrences', fn (Builder $query) => $query->whereNotNull('review_requested_at'));
 
+        $summary = [
+            'pending_reviews' => (clone $pendingReviews)->count(),
+            'policy_reviews' => $isAdmin ? (clone $policyReviewCandidates)->count() : 0,
+            'scheduled' => (clone $scheduledRequests)->count(),
+            'failed' => (clone $failedRequests)->count(),
+            'active_sessions' => (clone $expiringSessions)->count(),
+            'native_proxy_connections' => $nativeProxyStatus['connections'],
+            'native_proxy_instances' => $nativeProxyStatus['instances'],
+        ];
+
+        $pendingReviewItems = $this->requestQueue($pendingReviews);
+        $scheduledRequestItems = $this->requestQueue($scheduledRequests);
+        $failedRequestItems = $this->requestQueue($failedRequests);
+        $expiringSessionItems = $this->sessionQueue($expiringSessions);
+        $policyReviewItems = $isAdmin
+            ? $this->policyReviewQueue($policyReviewCandidates)
+            : [];
+
         return [
-            'summary' => [
-                'pending_reviews' => (clone $pendingReviews)->count(),
-                'policy_reviews' => $isAdmin ? (clone $policyReviewCandidates)->count() : 0,
-                'scheduled' => (clone $scheduledRequests)->count(),
-                'failed' => (clone $failedRequests)->count(),
-                'active_sessions' => (clone $expiringSessions)->count(),
-                'native_proxy_connections' => $nativeProxyStatus['connections'],
-                'native_proxy_instances' => $nativeProxyStatus['instances'],
-            ],
+            'summary' => $summary,
             'native_proxy_health' => $nativeProxyStatus['health'],
             'native_proxy_status' => $nativeProxyStatus,
-            'pending_reviews' => $this->requestQueue($pendingReviews),
-            'scheduled_requests' => $this->requestQueue($scheduledRequests),
-            'failed_requests' => $this->requestQueue($failedRequests),
-            'expiring_sessions' => $this->sessionQueue($expiringSessions),
-            'policy_review_candidates' => $isAdmin
-                ? $this->policyReviewQueue($policyReviewCandidates)
-                : [],
+            'operational_queue' => $this->operationalQueue(
+                failedRequests: $failedRequestItems,
+                pendingReviews: $pendingReviewItems,
+                policyReviews: $policyReviewItems,
+                activeSessions: $expiringSessionItems,
+                scheduledRequests: $scheduledRequestItems,
+            ),
+        ];
+    }
+
+    /**
+     * @param  array<int, RequestQueueItem>  $failedRequests
+     * @param  array<int, RequestQueueItem>  $pendingReviews
+     * @param  array<int, PolicyReviewQueueItem>  $policyReviews
+     * @param  array<int, SessionQueueItem>  $activeSessions
+     * @param  array<int, RequestQueueItem>  $scheduledRequests
+     * @return array<int, OperationalQueueItem>
+     */
+    private function operationalQueue(
+        array $failedRequests,
+        array $pendingReviews,
+        array $policyReviews,
+        array $activeSessions,
+        array $scheduledRequests,
+    ): array {
+        return [
+            ...array_map(
+                fn (array $request): array => $this->requestOperationalQueueItem($request, 'failed_execution'),
+                $failedRequests,
+            ),
+            ...array_map(
+                fn (array $request): array => $this->requestOperationalQueueItem($request, 'pending_review'),
+                $pendingReviews,
+            ),
+            ...array_map(
+                fn (array $review): array => $this->policyOperationalQueueItem($review),
+                $policyReviews,
+            ),
+            ...array_map(
+                fn (array $session): array => $this->sessionOperationalQueueItem($session),
+                $activeSessions,
+            ),
+            ...array_map(
+                fn (array $request): array => $this->requestOperationalQueueItem($request, 'scheduled_execution'),
+                $scheduledRequests,
+            ),
+        ];
+    }
+
+    /**
+     * @param  RequestQueueItem  $request
+     * @param  'failed_execution'|'pending_review'|'scheduled_execution'  $type
+     * @return OperationalQueueItem
+     */
+    private function requestOperationalQueueItem(array $request, string $type): array
+    {
+        $timestamp = match ($type) {
+            'failed_execution' => $request['completed_at'],
+            'pending_review' => $request['created_at'],
+            'scheduled_execution' => $request['scheduled_at'],
+        };
+
+        return [
+            'id' => $request['id'],
+            'type' => $type,
+            'title' => $request['title'],
+            'connection' => $request['connection'],
+            'actor' => $request['requester'],
+            'timestamp' => $timestamp,
+            'detail' => $request['last_error'],
+            'related_title' => null,
+            'count' => null,
+            'driver' => null,
+            'request_kind' => $request['request_kind'],
+            'query_type' => $request['query_type'],
+            'requested_access_mode' => $request['requested_access_mode'],
+        ];
+    }
+
+    /**
+     * @param  PolicyReviewQueueItem  $review
+     * @return OperationalQueueItem
+     */
+    private function policyOperationalQueueItem(array $review): array
+    {
+        return [
+            'id' => $review['id'],
+            'type' => 'policy_review',
+            'title' => $review['statement'],
+            'connection' => null,
+            'actor' => $review['requester'],
+            'timestamp' => $review['requested_at'],
+            'detail' => null,
+            'related_title' => $review['request_title'],
+            'count' => $review['request_count'],
+            'driver' => $review['driver'],
+            'request_kind' => null,
+            'query_type' => null,
+            'requested_access_mode' => null,
+        ];
+    }
+
+    /**
+     * @param  SessionQueueItem  $session
+     * @return OperationalQueueItem
+     */
+    private function sessionOperationalQueueItem(array $session): array
+    {
+        return [
+            'id' => $session['id'],
+            'type' => 'active_session',
+            'title' => $session['title'],
+            'connection' => $session['connection'],
+            'actor' => $session['user'],
+            'timestamp' => $session['expires_at'],
+            'detail' => null,
+            'related_title' => null,
+            'count' => null,
+            'driver' => null,
+            'request_kind' => null,
+            'query_type' => null,
+            'requested_access_mode' => null,
         ];
     }
 

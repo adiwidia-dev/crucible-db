@@ -52,12 +52,12 @@ class DashboardTest extends TestCase
     {
         config()->set('native_proxy.enabled', true);
         config()->set('native_proxy.health_url', 'http://native-proxy:8081/readyz');
-        config()->set('native_proxy.expected_version', '0.2.8');
+        config()->set('native_proxy.expected_version', '0.2.9');
 
         Http::fake([
             'http://native-proxy:8081/readyz' => Http::response([
                 'proxy_id' => 'proxy-a',
-                'version' => '0.2.8',
+                'version' => '0.2.9',
             ]),
         ]);
 
@@ -81,7 +81,7 @@ class DashboardTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('connections/index')
                 ->where('native_proxy_status.health.status', 'healthy')
-                ->where('native_proxy_status.health.version', '0.2.8')
+                ->where('native_proxy_status.health.version', '0.2.9')
                 ->where('native_proxy_status.connections', 1)
                 ->where('native_proxy_status.instances', 1)
                 ->missing('native_proxy_status.health.password')
@@ -118,7 +118,7 @@ class DashboardTest extends TestCase
                 ->where('native_proxy_status.instances', 1));
     }
 
-    public function test_dashboard_returns_operational_queues_visible_to_an_admin(): void
+    public function test_dashboard_returns_a_prioritized_operational_queue_visible_to_an_admin(): void
     {
         $admin = User::factory()
             ->withRole(Role::factory()->admin()->create())
@@ -166,12 +166,24 @@ class DashboardTest extends TestCase
                 ->where('summary.scheduled', 1)
                 ->where('summary.failed', 1)
                 ->where('summary.active_sessions', 1)
-                ->where('pending_reviews.0.id', $pendingReview->id)
-                ->where('scheduled_requests.0.id', $scheduledRequest->id)
-                ->where('failed_requests.0.id', $failedRequest->id)
-                ->where('pending_reviews.0.requested_access_mode', AccessMode::Write->value)
-                ->where('expiring_sessions.0.id', $session->id)
-                ->where('policy_review_candidates.0.id', $candidate->id)
+                ->has('operational_queue', 5)
+                ->where('operational_queue.0.id', $failedRequest->id)
+                ->where('operational_queue.0.type', 'failed_execution')
+                ->where('operational_queue.0.detail', 'Permission denied.')
+                ->where('operational_queue.1.id', $pendingReview->id)
+                ->where('operational_queue.1.type', 'pending_review')
+                ->where('operational_queue.1.requested_access_mode', AccessMode::Write->value)
+                ->where('operational_queue.2.id', $candidate->id)
+                ->where('operational_queue.2.type', 'policy_review')
+                ->where('operational_queue.3.id', $session->id)
+                ->where('operational_queue.3.type', 'active_session')
+                ->where('operational_queue.4.id', $scheduledRequest->id)
+                ->where('operational_queue.4.type', 'scheduled_execution')
+                ->missing('pending_reviews')
+                ->missing('scheduled_requests')
+                ->missing('failed_requests')
+                ->missing('expiring_sessions')
+                ->missing('policy_review_candidates')
                 ->where('policy_review_summary.pending_count', 1));
     }
 
@@ -179,12 +191,12 @@ class DashboardTest extends TestCase
     {
         config()->set('native_proxy.enabled', true);
         config()->set('native_proxy.health_url', 'http://native-proxy:8081/readyz');
-        config()->set('native_proxy.expected_version', '0.2.8');
+        config()->set('native_proxy.expected_version', '0.2.9');
 
         Http::fake([
             'http://native-proxy:8081/readyz' => Http::response([
                 'proxy_id' => 'proxy-a',
-                'version' => '0.2.8',
+                'version' => '0.2.9',
             ]),
         ]);
 
@@ -209,12 +221,13 @@ class DashboardTest extends TestCase
                 ->where('summary.native_proxy_connections', 1)
                 ->where('summary.native_proxy_instances', 1)
                 ->where('native_proxy_health.status', 'healthy')
-                ->where('native_proxy_health.version', '0.2.8')
+                ->where('native_proxy_health.version', '0.2.9')
                 ->missing('native_proxy_health.password')
                 ->missing('native_proxy_health.parameters')
                 ->missing('native_proxy_health.rows')
-                ->reloadOnly(['summary', 'native_proxy_health', 'native_proxy_status'], fn (Assert $reload) => $reload
+                ->reloadOnly(['summary', 'operational_queue', 'native_proxy_health', 'native_proxy_status'], fn (Assert $reload) => $reload
                     ->where('summary.native_proxy_connections', 1)
+                    ->has('operational_queue')
                     ->where('native_proxy_health.status', 'healthy')
                     ->where('native_proxy_status.health.status', 'healthy')
                     ->where('native_proxy_status.connections', 1)

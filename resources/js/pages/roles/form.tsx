@@ -367,7 +367,7 @@ export default function RoleForm({
                                 </CardContent>
                             </Card>
 
-                            <Card className="gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                            <Card className="gap-0 overflow-hidden rounded-lg border py-0">
                                 <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle>Database Policies</CardTitle>
                                     <CardDescription>

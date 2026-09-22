@@ -22,7 +22,7 @@ Changing statement policy can affect drafts, approved work, and active sessions 
 
 Developers can explicitly request review when a Deployment Batch is blocked only by structurally reviewable unsupported SQL. These requests appear in three places:
 
-- the administrator Overview queue and summary count;
+- the administrator Overview operational queue and **Attention** summary count;
 - the badge beside **SQL Policy** in administration navigation; and
 - the notification inbox, with optional email delivery controlled by workspace notification policy and each administrator's preferences.
 

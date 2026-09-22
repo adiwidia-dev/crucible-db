@@ -194,7 +194,7 @@ export default function RoleShow({ role, access_features: features }: Props) {
                     )}
                 </section>
 
-                <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                <section className="overflow-hidden rounded-lg border bg-card">
                     <div className="border-b px-4 py-3 sm:px-5">
                         <h2 className="text-base font-semibold">
                             Assigned people
@@ -237,7 +237,7 @@ export default function RoleShow({ role, access_features: features }: Props) {
                     )}
                 </section>
 
-                <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                <section className="overflow-hidden rounded-lg border bg-card">
                     <div className="border-b px-4 py-3 sm:px-5">
                         <h2 className="text-base font-semibold">
                             Connection group policies
@@ -301,7 +301,7 @@ export default function RoleShow({ role, access_features: features }: Props) {
                     )}
                 </section>
 
-                <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                <section className="overflow-hidden rounded-lg border bg-card">
                     <div className="border-b px-4 py-3 sm:px-5">
                         <h2 className="text-base font-semibold">
                             Direct connection policies

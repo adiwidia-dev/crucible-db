@@ -318,7 +318,7 @@ export default function ConnectionShow({
                     </div>
                 </section>
 
-                <section className="max-w-6xl overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                <section className="max-w-6xl overflow-hidden rounded-lg border bg-card">
                     <div className="border-b px-4 py-3 sm:px-5">
                         <div className="flex items-center gap-2">
                             <ShieldCheck className="size-4 text-muted-foreground" />

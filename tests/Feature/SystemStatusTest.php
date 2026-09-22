@@ -38,7 +38,7 @@ class SystemStatusTest extends TestCase
                 'redis' => ['status' => 'healthy', 'detail' => 'Redis is reachable.', 'metadata' => []],
                 'horizon' => ['status' => 'healthy', 'detail' => 'Horizon is active.', 'metadata' => ['masters' => 1, 'supervisors' => 4]],
                 'scheduler' => ['status' => 'healthy', 'detail' => 'Scheduler is active.', 'metadata' => ['last_heartbeat_at' => '2026-09-18T00:00:00+00:00']],
-                'native_proxy' => ['status' => 'healthy', 'detail' => 'Native proxy is ready.', 'metadata' => ['proxy_id' => 'proxy-1', 'version' => '0.2.8']],
+                'native_proxy' => ['status' => 'healthy', 'detail' => 'Native proxy is ready.', 'metadata' => ['proxy_id' => 'proxy-1', 'version' => '0.2.9']],
             ],
         ], now()->addMinute());
 
@@ -49,7 +49,7 @@ class SystemStatusTest extends TestCase
                 ->component('settings/admin/system-status')
                 ->where('system_status.checked_at', '2026-09-18T00:00:00+00:00')
                 ->where('system_status.components.horizon.metadata.supervisors', 4)
-                ->where('application_runtime.metadata.version', 'v0.2.8')
+                ->where('application_runtime.metadata.version', 'v0.2.9')
                 ->missing('wayfinder'));
     }
 
