@@ -1520,7 +1520,7 @@ export default function QueryRequestShow({
                 ) : (
                     <section
                         aria-labelledby="access-sessions-title"
-                        className="overflow-hidden border-y bg-card sm:rounded-lg sm:border"
+                        className="overflow-hidden rounded-lg border bg-card"
                     >
                         <div className="flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
                             <h2
@@ -1681,7 +1681,7 @@ export default function QueryRequestShow({
 
                 <section
                     aria-labelledby="execution-history-title"
-                    className="overflow-hidden border-y bg-card sm:rounded-lg sm:border"
+                    className="overflow-hidden rounded-lg border bg-card"
                 >
                     <div className="flex items-center justify-between border-b px-4 py-3 sm:px-5">
                         <h2

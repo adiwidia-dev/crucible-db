@@ -121,7 +121,7 @@ export default function ConnectionsIndex({
 
                 <section
                     aria-labelledby="connection-registry-title"
-                    className="min-w-0 overflow-hidden border-y bg-card sm:rounded-lg sm:border"
+                    className="min-w-0 overflow-hidden rounded-lg border bg-card"
                 >
                     <h2 id="connection-registry-title" className="sr-only">
                         Connection registry

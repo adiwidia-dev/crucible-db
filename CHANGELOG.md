@@ -4,6 +4,17 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-09-22
+
+### Changed
+
+- Consolidate the Overview dashboard into three operational summary groups and one prioritized, filterable queue for reviews, SQL policy reviews, failures, scheduled executions, and active Query Access sessions.
+- Give standalone data registries and table sections complete borders and rounded corners at phone widths as well as larger breakpoints.
+
+### Fixed
+
+- Keep the redesigned dashboard usable while long-running Octane workers still serve the previous Overview payload during a rolling deployment.
+
 ## [0.2.8] - 2026-09-18
 
 ### Fixed
@@ -167,7 +178,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.8...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.9...HEAD
+[0.2.9]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.5...v0.2.6

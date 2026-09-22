@@ -71,7 +71,7 @@ export default function QueryRequestsIndex({
                     }
                 />
 
-                <section className="overflow-hidden border-y bg-card sm:rounded-lg sm:border">
+                <section className="overflow-hidden rounded-lg border bg-card">
                     <QueryRequestFilters
                         action={index.url()}
                         clearHref={index.url()}
