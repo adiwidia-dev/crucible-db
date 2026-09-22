@@ -4,6 +4,12 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-09-22
+
+### Fixed
+
+- Allow administrators to delete cancelled Native Client Query Access requests by cascading their dependent native-proxy leases, connections, device authorizations, tokens, and authentication attempts.
+
 ## [0.2.9] - 2026-09-22
 
 ### Changed
@@ -178,7 +184,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.9...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.10...HEAD
+[0.2.10]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.6...v0.2.7
