@@ -51,7 +51,7 @@ class DeploymentStatementPolicy
      */
     public function assess(string $sql, DatabaseConnection $connection): array
     {
-        $statement = $this->queryGuard->validateStructure($sql);
+        $statement = $this->queryGuard->validateDeploymentStructure($sql, $connection->driver);
         $statementFamily = $this->queryGuard->statementFamily($statement);
 
         if ($statementFamily !== null) {

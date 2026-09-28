@@ -200,7 +200,7 @@ SQL;
         foreach ([
             'CREATE EXTENSION pg_trgm',
             'CREATE FUNCTION refresh_materialized_views() RETURNS void AS $$ SELECT 1; $$ LANGUAGE sql',
-            'CREATE TRIGGER audit_customer_update BEFORE UPDATE ON customers EXECUTE FUNCTION audit_customer_update()',
+            'CREATE TRIGGER audit_customer_update BEFORE UPDATE ON customers FOR EACH ROW EXECUTE FUNCTION audit_customer_update()',
             'VACUUM users',
             'DO $$ BEGIN PERFORM refresh_materialized_views(); END $$',
             'CALL refresh_materialized_views()',

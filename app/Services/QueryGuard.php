@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\DatabaseDriver;
 use App\Enums\QueryType;
 use App\Enums\SqlStatementFamily;
 use Illuminate\Validation\ValidationException;
@@ -9,6 +10,8 @@ use Illuminate\Validation\ValidationException;
 class QueryGuard
 {
     private const EmergencyFallbackBlockedSqlPattern = '/\\b(grant|revoke|create\\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\\s+data\\s+wrapper|server|publication|subscription)|alter\\s+(?:user|role|database|system|function|procedure|trigger|rule)|drop\\s+(?:user|role|database|extension|function|procedure|trigger|rule|foreign\\s+data\\s+wrapper|server|publication|subscription)|copy|load\\s+data|load_file|into\\s+outfile|vacuum|analyze|reindex|cluster|checkpoint|call|prepare|execute|deallocate|discard|lock|listen|notify|unlisten|reset)\\b/i';
+
+    private const ReviewablePostgreSqlCreateTriggerPattern = '/^\\s*create\\s+trigger\\s+(?:[a-z_][a-z0-9_$]*\\.)?[a-z_][a-z0-9_$]*\\s+before\\s+update\\s+on\\s+(?:[a-z_][a-z0-9_$]*\\.)?[a-z_][a-z0-9_$]*\\s+for\\s+each\\s+row\\s+execute\\s+function\\s+(?:[a-z_][a-z0-9_$]*\\.)?[a-z_][a-z0-9_$]*\\s*\\(\\s*\\)\\s*$/i';
 
     public function __construct(private readonly ApplicationSettings $settings) {}
 
@@ -54,6 +57,25 @@ class QueryGuard
      */
     public function validateStructure(string $sql): string
     {
+        return $this->validateStructuralSafety($sql, false);
+    }
+
+    /**
+     * Validate deployment SQL while allowing the narrowly reviewable PostgreSQL
+     * trigger form to reach exact-statement policy review.
+     *
+     * @throws ValidationException
+     */
+    public function validateDeploymentStructure(string $sql, DatabaseDriver $driver): string
+    {
+        return $this->validateStructuralSafety($sql, $driver === DatabaseDriver::PostgreSql);
+    }
+
+    /**
+     * @throws ValidationException
+     */
+    private function validateStructuralSafety(string $sql, bool $allowsReviewablePostgreSqlTrigger): string
+    {
         $normalized = $this->normalize($sql);
 
         if ($normalized === '') {
@@ -80,7 +102,10 @@ class QueryGuard
 
         if (
             preg_match('/^do\\b/i', ltrim($executableSql)) === 1
-            || preg_match(self::EmergencyFallbackBlockedSqlPattern, $executableSql) === 1
+            || (
+                ! ($allowsReviewablePostgreSqlTrigger && $this->isReviewablePostgreSqlCreateTrigger($executableSql))
+                && preg_match(self::EmergencyFallbackBlockedSqlPattern, $executableSql) === 1
+            )
         ) {
             throw ValidationException::withMessages([
                 'sql' => 'Administrative, file, security-management, and procedural SQL statements are blocked.',
@@ -241,6 +266,11 @@ class QueryGuard
 
         return preg_match('/\\bon\\s+conflict\\b[\\s\\S]*\\bdo\\s+update\\b/i', $executableSql) === 1
             || preg_match('/\\bon\\s+duplicate\\s+key\\s+update\\b/i', $executableSql) === 1;
+    }
+
+    private function isReviewablePostgreSqlCreateTrigger(string $sql): bool
+    {
+        return preg_match(self::ReviewablePostgreSqlCreateTriggerPattern, $sql) === 1;
     }
 
     private function executableSql(string $sql): string

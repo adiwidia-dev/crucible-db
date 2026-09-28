@@ -37,6 +37,10 @@ MySQL executable comments, including versioned forms such as `/*! ... */`, and o
 
 Emergency fallback only applies to one otherwise unsupported Deployment Batch statement. It treats that statement as write access, creates a warning, and keeps all permission, approval, and audit requirements. It never applies to Query Access.
 
+## PostgreSQL trigger policy candidates
+
+A narrowly scoped PostgreSQL `CREATE TRIGGER` form can be recorded as an **exact-only** Deployment Batch policy candidate: unquoted trigger, table, and function names; `BEFORE UPDATE`; `FOR EACH ROW`; and `EXECUTE FUNCTION function_name()`. It remains blocked until an administrator allows that exact statement through SQL Policy. It is not eligible for Emergency fallback, reusable-shape approval, Query Access, or Native client execution. Other trigger forms and all function or procedural SQL remain permanently blocked.
+
 ## Query Access boundary
 
 Each browser Query Access execution accepts exactly one SQL statement. Native client sessions apply the same family classification, effective role policy, session level, and permanent prohibitions to every executable PostgreSQL or MySQL protocol statement. Read-only sessions block data-changing SQL. Read + write sessions remain subject to current Query Access policy and all permanent SQL prohibitions.

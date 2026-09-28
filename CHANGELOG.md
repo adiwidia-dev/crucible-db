@@ -4,6 +4,16 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-09-28
+
+### Added
+
+- Allow the narrow PostgreSQL `CREATE TRIGGER … BEFORE UPDATE … FOR EACH ROW EXECUTE FUNCTION function_name()` form to enter Deployment Batch SQL Policy review as an exact-only candidate.
+
+### Security
+
+- Keep the trigger candidate PostgreSQL-only, exact-only, and unavailable to Emergency SQL fallback, reusable policy shapes, Query Access, and Native client execution; other trigger, function, and procedural SQL remains permanently blocked.
+
 ## [0.2.10] - 2026-09-22
 
 ### Fixed
@@ -184,7 +194,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.10...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.11...HEAD
+[0.2.11]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.7...v0.2.8
