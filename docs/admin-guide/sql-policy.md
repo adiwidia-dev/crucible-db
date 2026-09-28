@@ -14,6 +14,8 @@ There is no separate all-families override. Every enabled family shown on this p
 
 Emergency fallback is a separately enabled Deployment Batch exception for one otherwise unsupported statement. It is classified as write, warned in preflight, approval-controlled, and audited. It never applies to Query Access and never permits permanently prohibited SQL categories.
 
+The restricted PostgreSQL `CREATE TRIGGER … BEFORE UPDATE … FOR EACH ROW EXECUTE FUNCTION function_name()` form is instead a reviewable **exact-only** candidate. It cannot use Emergency fallback or a reusable shape rule, and it remains blocked until an administrator explicitly allows the submitted statement.
+
 ![Emergency SQL fallback and policy enforcement](../assets/screenshots/admin-emergency-fallback.png){ .docs-screenshot }
 
 Changing statement policy can affect drafts, approved work, and active sessions at the next server-side check. Review currently prepared work before tightening or expanding policy.

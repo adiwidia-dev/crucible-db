@@ -37,6 +37,10 @@ It never applies to Query Access sessions.
 !!! danger "Emergency fallback is not break-glass access"
     It does not permit administrative, file-access, security-management, procedural, transaction-control, multi-statement, or `EXPLAIN ANALYZE` SQL. Those categories remain blocked even when fallback is enabled.
 
+### Restricted PostgreSQL triggers
+
+The supported candidate exception is intentionally narrower than Emergency fallback: an unquoted `CREATE TRIGGER` with `BEFORE UPDATE`, `FOR EACH ROW`, and `EXECUTE FUNCTION function_name()` may be submitted in a Deployment Batch for exact-statement policy review. It is write access and remains blocked until an administrator creates an exact allow rule. No reusable shape is offered, and Query Access and Native client execution continue to block it. All other trigger, function, and procedural statements remain permanently blocked.
+
 ## Review policy changes deliberately
 
 When changing SQL policy, consider active drafts, approved batches, and sessions. New checks occur when work is submitted or executed, so a policy change can appropriately block previously prepared work. Use the audit trail to explain the decision.

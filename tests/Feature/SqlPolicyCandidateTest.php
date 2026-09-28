@@ -129,6 +129,71 @@ class SqlPolicyCandidateTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_postgresql_update_trigger_becomes_an_exact_only_policy_candidate(): void
+    {
+        Notification::fake();
+        $this->disableFallback();
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->postgresql()->create();
+        $sql = 'CREATE TRIGGER update_telegram_send_logs_updated_at BEFORE UPDATE ON telegram_send_logs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column ()';
+        $queryRequest = $this->deploymentRequest($admin, $connection, [$sql]);
+
+        $report = app(DeploymentPreflight::class)->evaluate($queryRequest);
+        $candidate = SqlPolicyCandidate::query()->sole();
+
+        $this->assertSame('blocked', $report['status']->value);
+        $this->assertSame('unsupported_sql_policy', $report['statements'][0]['messages'][0]['code']);
+        $this->assertFalse($report['statements'][0]['messages'][0]['shape_available']);
+        $this->assertNull($candidate->shape_signature);
+
+        $this->actingAs($admin)
+            ->post(route('sql-policy-candidates.resolve', $candidate), [
+                'action' => 'allow',
+                'match_type' => 'exact',
+                'scope_type' => 'workspace',
+                'scope_id' => null,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            'custom_exact',
+            app(DeploymentStatementPolicy::class)->inspect($sql, $connection)['source'],
+        );
+
+        try {
+            app(DeploymentStatementPolicy::class)->inspect(
+                'CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION update_updated_at_column ()',
+                $connection,
+            );
+            $this->fail('A trigger policy rule must not allow a different exact statement.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'This SQL statement is not supported by the governed SQL policy.',
+                $exception->errors()['sql'][0],
+            );
+        }
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_other_postgresql_trigger_forms_remain_permanently_blocked(): void
+    {
+        Notification::fake();
+        $this->disableFallback();
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->postgresql()->create();
+        $queryRequest = $this->deploymentRequest($admin, $connection, [
+            'CREATE TRIGGER insert_telegram_send_logs BEFORE INSERT ON telegram_send_logs FOR EACH ROW EXECUTE FUNCTION update_updated_at_column ()',
+        ]);
+
+        $report = app(DeploymentPreflight::class)->evaluate($queryRequest);
+
+        $this->assertSame('blocked', $report['status']->value);
+        $this->assertSame('invalid_sql', $report['statements'][0]['messages'][0]['code']);
+        $this->assertDatabaseCount('sql_policy_candidates', 0);
+        Notification::assertNothingSent();
+    }
+
     public function test_postgresql_upsert_is_a_built_in_statement_and_does_not_create_a_policy_candidate(): void
     {
         Notification::fake();
