@@ -4,6 +4,17 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-09-29
+
+### Changed
+
+- Update the development and production frontend build stages to Node.js 26, refresh immutable Docker GitHub Actions pins, and update the Passkeys, Wayfinder, and globals dependencies.
+- Upgrade the static-analysis toolchain to ESLint 10 with supported React and import plugins, and run TypeScript 7 type checks beside the TypeScript 6 API runtime required by TypeScript-ESLint.
+
+### Fixed
+
+- Keep Deployment Batch execution-history pagination at the table after navigation instead of returning the browser to the top of a long detail page.
+
 ## [0.2.11] - 2026-09-28
 
 ### Added
@@ -194,7 +205,7 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.11...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.12...HEAD
 [0.2.11]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.8...v0.2.9

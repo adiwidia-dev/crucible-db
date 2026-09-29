@@ -4,9 +4,15 @@ import type { Paginated } from '@/lib/crucible';
 
 type Props = {
     pagination: Pick<Paginated<unknown>, 'from' | 'to' | 'total' | 'links'>;
+    anchor?: string;
+    preserveState?: boolean;
 };
 
-export function Pagination({ pagination }: Props) {
+export function Pagination({
+    pagination,
+    anchor,
+    preserveState = false,
+}: Props) {
     if (pagination.links.length <= 3) {
         return null;
     }
@@ -36,8 +42,11 @@ export function Pagination({ pagination }: Props) {
                     >
                         {link.url ? (
                             <Link
-                                href={link.url}
+                                href={
+                                    anchor ? `${link.url}#${anchor}` : link.url
+                                }
                                 preserveScroll
+                                preserveState={preserveState}
                                 aria-label={link.label.replace(
                                     /&laquo;|&raquo;/g,
                                     '',
