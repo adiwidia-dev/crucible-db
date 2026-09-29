@@ -1680,6 +1680,7 @@ export default function QueryRequestShow({
                 )}
 
                 <section
+                    id="execution-history"
                     aria-labelledby="execution-history-title"
                     className="overflow-hidden rounded-lg border bg-card"
                 >
@@ -1876,7 +1877,11 @@ export default function QueryRequestShow({
                             </tbody>
                         </table>
                     </div>
-                    <Pagination pagination={query_request.executions} />
+                    <Pagination
+                        pagination={query_request.executions}
+                        anchor="execution-history"
+                        preserveState
+                    />
                 </section>
 
                 {query_request.reviews.length > 0 && (
