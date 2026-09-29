@@ -52,12 +52,12 @@ class DashboardTest extends TestCase
     {
         config()->set('native_proxy.enabled', true);
         config()->set('native_proxy.health_url', 'http://native-proxy:8081/readyz');
-        config()->set('native_proxy.expected_version', '0.2.11');
+        config()->set('native_proxy.expected_version', '0.2.12');
 
         Http::fake([
             'http://native-proxy:8081/readyz' => Http::response([
                 'proxy_id' => 'proxy-a',
-                'version' => '0.2.11',
+                'version' => '0.2.12',
             ]),
         ]);
 
@@ -81,7 +81,7 @@ class DashboardTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('connections/index')
                 ->where('native_proxy_status.health.status', 'healthy')
-                ->where('native_proxy_status.health.version', '0.2.11')
+                ->where('native_proxy_status.health.version', '0.2.12')
                 ->where('native_proxy_status.connections', 1)
                 ->where('native_proxy_status.instances', 1)
                 ->missing('native_proxy_status.health.password')
@@ -191,12 +191,12 @@ class DashboardTest extends TestCase
     {
         config()->set('native_proxy.enabled', true);
         config()->set('native_proxy.health_url', 'http://native-proxy:8081/readyz');
-        config()->set('native_proxy.expected_version', '0.2.11');
+        config()->set('native_proxy.expected_version', '0.2.12');
 
         Http::fake([
             'http://native-proxy:8081/readyz' => Http::response([
                 'proxy_id' => 'proxy-a',
-                'version' => '0.2.11',
+                'version' => '0.2.12',
             ]),
         ]);
 
@@ -221,7 +221,7 @@ class DashboardTest extends TestCase
                 ->where('summary.native_proxy_connections', 1)
                 ->where('summary.native_proxy_instances', 1)
                 ->where('native_proxy_health.status', 'healthy')
-                ->where('native_proxy_health.version', '0.2.11')
+                ->where('native_proxy_health.version', '0.2.12')
                 ->missing('native_proxy_health.password')
                 ->missing('native_proxy_health.parameters')
                 ->missing('native_proxy_health.rows')
