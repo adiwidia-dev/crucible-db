@@ -14,6 +14,7 @@ use App\Http\Controllers\QueryReviewController;
 use App\Http\Controllers\QuerySessionController;
 use App\Http\Controllers\QuerySessionQueryController;
 use App\Http\Controllers\QuerySessionQueryExportController;
+use App\Http\Controllers\QuerySessionQueryResultController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\SsoController;
 use App\Http\Controllers\UserInvitationController;
@@ -125,6 +126,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('query-sessions.queries.store');
     Route::get('query-session-queries/{query_session_query}/export', QuerySessionQueryExportController::class)
         ->name('query-session-queries.export');
+    Route::get('query-session-queries/{query_session_query}/results', QuerySessionQueryResultController::class)
+        ->name('query-session-queries.results');
     Route::post('query-sessions/{query_session}/end', [QuerySessionController::class, 'end'])
         ->name('query-sessions.end');
     Route::post('query-sessions/{query_session}/native-proxy/credentials', [LeaseController::class, 'store'])

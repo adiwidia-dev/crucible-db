@@ -34,6 +34,7 @@ class QueryRequestWorkflow
         private readonly DeploymentStatementPolicy $deploymentStatementPolicy,
         private readonly NotificationDispatcher $notificationDispatcher,
         private readonly SqlPolicyReviewWorkflow $sqlPolicyReviewWorkflow,
+        private readonly QueryResultSnapshotStore $resultSnapshotStore,
         private readonly LeaseWorkflow $nativeProxyLeaseWorkflow,
         private readonly ApplicationSettings $applicationSettings,
     ) {}
@@ -762,6 +763,7 @@ class QueryRequestWorkflow
         }, attempts: 3);
 
         $this->notificationDispatcher->requestCancelled($cancelledRequest, $actor);
+        $this->resultSnapshotStore->forgetForQueryRequest($cancelledRequest);
         $this->nativeProxyLeaseWorkflow->revokeForQueryRequest(
             $cancelledRequest,
             $actor,

@@ -1,7 +1,17 @@
 import type { EditorView } from '@codemirror/view';
-import { Form, Head, Link, router, useForm, usePage } from '@inertiajs/react';
+import {
+    Form,
+    Head,
+    Link,
+    router,
+    useForm,
+    useHttp,
+    usePage,
+} from '@inertiajs/react';
 import {
     ArrowLeft,
+    ChevronLeft,
+    ChevronRight,
     Clock3,
     Database,
     Download,
@@ -48,6 +58,7 @@ import type {
     QueryType,
 } from '@/lib/crucible';
 import { show as queryRequestShow } from '@/routes/query-requests';
+import { results as querySessionQueryResults } from '@/routes/query-session-queries';
 import { show as querySessionShow } from '@/routes/query-sessions';
 import type { Auth } from '@/types';
 
@@ -60,6 +71,7 @@ type SessionQuery = {
     row_count: number | null;
     result_truncated: boolean;
     sample_rows?: Array<Record<string, unknown>> | null;
+    result_page?: ResultPage | null;
     error_message: string | null;
     created_at: string | null;
     connection: {
@@ -67,6 +79,18 @@ type SessionQuery = {
         name: string;
         driver: DatabaseDriver;
     } | null;
+};
+
+type ResultPage = {
+    data: Array<Record<string, unknown>>;
+    meta: {
+        current_page: number;
+        from: number | null;
+        last_page: number;
+        per_page: number;
+        to: number | null;
+        total: number;
+    };
 };
 
 type QuerySession = {
@@ -153,7 +177,17 @@ function remainingLabel(seconds: number): string {
     return `${minutes}:${remainder.toString().padStart(2, '0')}`;
 }
 
-function ResultTable({ rows }: { rows: Array<Record<string, unknown>> }) {
+function ResultTable({
+    rows,
+    resultPage,
+    loading,
+    onPageChange,
+}: {
+    rows: Array<Record<string, unknown>>;
+    resultPage: ResultPage | null;
+    loading: boolean;
+    onPageChange: (page: number) => void;
+}) {
     const columns = Array.from(
         rows.reduce((set, row) => {
             Object.keys(row).forEach((key) => set.add(key));
@@ -171,39 +205,87 @@ function ResultTable({ rows }: { rows: Array<Record<string, unknown>> }) {
     }
 
     return (
-        <div className="h-full overflow-auto">
-            <table className="w-full min-w-max text-sm">
-                <thead>
-                    <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
-                        {columns.map((column, index) => (
-                            <th
-                                key={column}
-                                className={`py-3 pr-4 font-medium ${
-                                    index === 0 ? 'pl-4 sm:pl-6' : ''
-                                }`}
-                            >
-                                {column}
-                            </th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((row, index) => (
-                        <tr key={index} className="border-b last:border-0">
-                            {columns.map((column, columnIndex) => (
-                                <td
+        <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+            <div className="min-h-0 overflow-auto">
+                <table className="w-full min-w-max text-sm">
+                    <thead>
+                        <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground uppercase">
+                            {columns.map((column, index) => (
+                                <th
                                     key={column}
-                                    className={`max-w-80 truncate py-3.5 pr-4 font-mono text-xs ${
-                                        columnIndex === 0 ? 'pl-4 sm:pl-6' : ''
+                                    className={`py-3 pr-4 font-medium ${
+                                        index === 0 ? 'pl-4 sm:pl-6' : ''
                                     }`}
                                 >
-                                    {String(row[column] ?? '')}
-                                </td>
+                                    {column}
+                                </th>
                             ))}
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {rows.map((row, index) => (
+                            <tr key={index} className="border-b last:border-0">
+                                {columns.map((column, columnIndex) => (
+                                    <td
+                                        key={column}
+                                        className={`max-w-80 truncate py-3.5 pr-4 font-mono text-xs ${
+                                            columnIndex === 0
+                                                ? 'pl-4 sm:pl-6'
+                                                : ''
+                                        }`}
+                                    >
+                                        {String(row[column] ?? '')}
+                                    </td>
+                                ))}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            {resultPage !== null && resultPage.meta.last_page > 1 && (
+                <div className="flex items-center justify-between gap-3 border-t px-4 py-2.5 sm:px-6">
+                    <span className="text-xs text-muted-foreground">
+                        Showing {resultPage.meta.from}–{resultPage.meta.to} of{' '}
+                        {resultPage.meta.total} rows
+                    </span>
+                    <div className="flex items-center gap-1">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label="Previous result page"
+                            disabled={
+                                loading || resultPage.meta.current_page === 1
+                            }
+                            onClick={() =>
+                                onPageChange(resultPage.meta.current_page - 1)
+                            }
+                        >
+                            <ChevronLeft />
+                        </Button>
+                        <span className="min-w-16 text-center font-mono text-xs text-muted-foreground">
+                            {resultPage.meta.current_page} /{' '}
+                            {resultPage.meta.last_page}
+                        </span>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label="Next result page"
+                            disabled={
+                                loading ||
+                                resultPage.meta.current_page ===
+                                    resultPage.meta.last_page
+                            }
+                            onClick={() =>
+                                onPageChange(resultPage.meta.current_page + 1)
+                            }
+                        >
+                            <ChevronRight />
+                        </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -283,7 +365,21 @@ export default function QuerySessionShow({
     const [schemaSearch, setSchemaSearch] = useState('');
     const [editorView, setEditorView] = useState<EditorView | null>(null);
     const [selectedSql, setSelectedSql] = useState('');
-    const latestRows = session.latest_query?.sample_rows ?? [];
+    const [loadedResultPage, setLoadedResultPage] = useState<{
+        queryId: number;
+        resultPage: ResultPage;
+    } | null>(null);
+    const { get: getResultPage, processing: resultPageLoading } = useHttp<
+        Record<string, never>,
+        ResultPage
+    >({});
+    const resultPage =
+        loadedResultPage !== null &&
+        loadedResultPage.queryId === session.latest_query?.id
+            ? loadedResultPage.resultPage
+            : (session.latest_query?.result_page ?? null);
+    const latestRows =
+        resultPage?.data ?? session.latest_query?.sample_rows ?? [];
     const defaultSql = useMemo(
         () => session.latest_query?.sql ?? '',
         [session.latest_query?.sql],
@@ -323,6 +419,29 @@ export default function QuerySessionShow({
     function updateSql(value: string): void {
         setSelectedSql('');
         setData('sql', value);
+    }
+
+    function loadResultPage(page: number): void {
+        const latestQuery = session.latest_query;
+
+        if (latestQuery === null || resultPage === null) {
+            return;
+        }
+
+        void getResultPage(
+            querySessionQueryResults(latestQuery.id, {
+                query: { page },
+            }).url,
+        ).then((nextResultPage) => {
+            if (nextResultPage === undefined) {
+                return;
+            }
+
+            setLoadedResultPage({
+                queryId: latestQuery.id,
+                resultPage: nextResultPage,
+            });
+        });
     }
 
     function insertSnippet(snippet: string): void {
@@ -658,26 +777,35 @@ export default function QuerySessionShow({
                                                     .duration_ms ?? 0}{' '}
                                                 ms
                                             </span>
-                                            {latestRows.length > 0 && (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    asChild
-                                                >
-                                                    <a
-                                                        href={QuerySessionQueryExportController.url(
-                                                            session.latest_query
-                                                                .id,
-                                                        )}
+                                            {resultPage !== null &&
+                                                isSessionActive && (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        asChild
                                                     >
-                                                        <Download />
-                                                        Export CSV
-                                                    </a>
-                                                </Button>
-                                            )}
+                                                        <a
+                                                            href={QuerySessionQueryExportController.url(
+                                                                session
+                                                                    .latest_query
+                                                                    .id,
+                                                            )}
+                                                        >
+                                                            <Download />
+                                                            Export CSV
+                                                        </a>
+                                                    </Button>
+                                                )}
                                         </div>
                                     )}
                                 </div>
+                                {resultPage !== null && (
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                        {session.latest_query?.result_truncated
+                                            ? `Showing the first ${resultPage.meta.total.toLocaleString()} rows. The interactive result limit was reached.`
+                                            : `All ${resultPage.meta.total.toLocaleString()} returned rows are available until this session ends.`}
+                                    </p>
+                                )}
                             </CardHeader>
                             <CardContent className="min-h-0 overflow-hidden p-0">
                                 {session.latest_query?.error_message ? (
@@ -687,7 +815,12 @@ export default function QuerySessionShow({
                                         </div>
                                     </div>
                                 ) : (
-                                    <ResultTable rows={latestRows} />
+                                    <ResultTable
+                                        rows={latestRows}
+                                        resultPage={resultPage}
+                                        loading={resultPageLoading}
+                                        onPageChange={loadResultPage}
+                                    />
                                 )}
                             </CardContent>
                         </Card>

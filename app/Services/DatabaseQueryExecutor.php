@@ -13,14 +13,16 @@ use Pdo\Mysql;
 
 class DatabaseQueryExecutor
 {
-    private const int ResultRowLimit = 1000;
+    private const int ResultRowLimit = 5000;
+
+    private const int ResultByteLimit = 26_214_400;
 
     private const int SampleRowLimit = 25;
 
     public function __construct(private DatabaseTlsMaterializer $tlsMaterializer) {}
 
     /**
-     * @return array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_truncated?:bool}
+     * @return array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_rows:array<int, array<string, mixed>>, result_byte_count:int, result_truncated?:bool}
      */
     public function execute(DatabaseConnection $databaseConnection, string $sql, QueryType $queryType): array
     {
@@ -50,6 +52,8 @@ class DatabaseQueryExecutor
             return [
                 'row_count' => $affected,
                 'sample_rows' => [],
+                'result_rows' => [],
+                'result_byte_count' => 0,
                 'result_truncated' => false,
             ];
         } finally {
@@ -60,7 +64,7 @@ class DatabaseQueryExecutor
     }
 
     /**
-     * @return array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_truncated:bool}
+     * @return array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_rows:array<int, array<string, mixed>>, result_byte_count:int, result_truncated:bool}
      */
     private function executeReadOnly(ConnectionInterface $connection, DatabaseDriver $driver, string $sql): array
     {
@@ -81,6 +85,8 @@ class DatabaseQueryExecutor
 
             $rowCount = 0;
             $sampleRows = [];
+            $resultRows = [];
+            $resultByteCount = 0;
             $resultTruncated = false;
             $rows = $connection->cursor($sql);
 
@@ -91,16 +97,29 @@ class DatabaseQueryExecutor
                     break;
                 }
 
+                $resultRow = json_decode(json_encode($row, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR);
+                $resultRowByteCount = strlen(json_encode($resultRow, JSON_THROW_ON_ERROR));
+
+                if ($resultByteCount + $resultRowByteCount > self::ResultByteLimit) {
+                    $resultTruncated = true;
+
+                    break;
+                }
+
                 $rowCount++;
+                $resultRows[] = $resultRow;
+                $resultByteCount += $resultRowByteCount;
 
                 if (count($sampleRows) < self::SampleRowLimit) {
-                    $sampleRows[] = json_decode(json_encode($row, JSON_THROW_ON_ERROR), true, 512, JSON_THROW_ON_ERROR);
+                    $sampleRows[] = $resultRow;
                 }
             }
 
             return [
                 'row_count' => $rowCount,
                 'sample_rows' => $sampleRows,
+                'result_rows' => $resultRows,
+                'result_byte_count' => $resultByteCount,
                 'result_truncated' => $resultTruncated,
             ];
         } finally {

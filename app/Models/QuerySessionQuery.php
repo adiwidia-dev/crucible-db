@@ -8,6 +8,7 @@ use Database\Factories\QuerySessionQueryFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -87,6 +88,14 @@ class QuerySessionQuery extends Model
     public function databaseConnection(): BelongsTo
     {
         return $this->belongsTo(DatabaseConnection::class);
+    }
+
+    /**
+     * @return HasOne<QueryResultSnapshot, $this>
+     */
+    public function resultSnapshot(): HasOne
+    {
+        return $this->hasOne(QueryResultSnapshot::class);
     }
 
     /**
