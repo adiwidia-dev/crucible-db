@@ -62,6 +62,31 @@ class SsoController extends Controller
         return $configurator->redirect($authProvider);
     }
 
+    public function passwordConfirmationRedirect(Request $request, AuthProvider $authProvider, SsoProviderConfigurator $configurator): SymfonyRedirectResponse
+    {
+        abort_unless($authProvider->is_enabled, 404);
+
+        $user = $request->user();
+
+        abort_unless($user instanceof User, 403);
+
+        $identity = $user->identities()
+            ->where('auth_provider_id', $authProvider->id)
+            ->where('provider', $authProvider->provider->value)
+            ->first();
+
+        abort_unless($identity instanceof UserIdentity, 404);
+
+        $request->session()->forget('sso.invitation');
+        $request->session()->put('sso.password_confirmation', [
+            'user_id' => $user->id,
+            'user_identity_id' => $identity->id,
+            'auth_provider_id' => $authProvider->id,
+        ]);
+
+        return $configurator->redirect($authProvider);
+    }
+
     public function callback(
         Request $request,
         AuthProvider $authProvider,
@@ -79,6 +104,18 @@ class SsoController extends Controller
                 $identityVerifier,
                 $auditLogger,
                 $testContext,
+            );
+        }
+
+        $passwordConfirmationContext = $request->session()->pull('sso.password_confirmation');
+
+        if (is_array($passwordConfirmationContext)) {
+            return $this->completePasswordConfirmation(
+                $request,
+                $authProvider,
+                $configurator,
+                $auditLogger,
+                $passwordConfirmationContext,
             );
         }
 
@@ -167,6 +204,61 @@ class SsoController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>  $passwordConfirmationContext
+     */
+    private function completePasswordConfirmation(
+        Request $request,
+        AuthProvider $authProvider,
+        SsoProviderConfigurator $configurator,
+        AuditLogger $auditLogger,
+        array $passwordConfirmationContext,
+    ): RedirectResponse {
+        $user = $request->user();
+
+        abort_unless(
+            $user instanceof User
+                && ($passwordConfirmationContext['user_id'] ?? null) === $user->id
+                && ($passwordConfirmationContext['auth_provider_id'] ?? null) === $authProvider->id,
+            403,
+        );
+
+        try {
+            $providerUser = $configurator->driver($authProvider)->user();
+        } catch (InvalidStateException) {
+            return $this->rejectPasswordConfirmation($request, $auditLogger, $authProvider, $user, 'invalid_state', 'SSO session expired. Please try again.');
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return $this->rejectPasswordConfirmation($request, $auditLogger, $authProvider, $user, 'provider_error', 'SSO confirmation failed. Please try again.');
+        }
+
+        $identity = $user->identities()
+            ->whereKey($passwordConfirmationContext['user_identity_id'] ?? null)
+            ->where('auth_provider_id', $authProvider->id)
+            ->where('provider', $authProvider->provider->value)
+            ->first();
+
+        if (! $identity instanceof UserIdentity || ! hash_equals($identity->provider_user_id, (string) $providerUser->getId())) {
+            return $this->rejectPasswordConfirmation($request, $auditLogger, $authProvider, $user, 'identity_mismatch', 'This SSO account does not match your Crucible account.');
+        }
+
+        $identity->update([
+            'email' => Str::lower((string) $providerUser->getEmail()),
+            'name' => $providerUser->getName(),
+            'avatar' => $providerUser->getAvatar(),
+        ]);
+
+        $request->session()->passwordConfirmed();
+
+        $auditLogger->log('auth_provider.password_confirmed', $user, $identity, [
+            'auth_provider_id' => $authProvider->id,
+            'provider' => $authProvider->provider->value,
+        ], $request);
+
+        return redirect()->intended(route('security.edit'));
+    }
+
+    /**
      * @param  array<string, mixed>  $testContext
      */
     private function completeConfigurationTest(
@@ -242,6 +334,25 @@ class SsoController extends Controller
         Inertia::flash('toast', ['type' => 'error', 'message' => $message]);
 
         return redirect()->route('auth-providers.edit', $authProvider);
+    }
+
+    private function rejectPasswordConfirmation(
+        Request $request,
+        AuditLogger $auditLogger,
+        AuthProvider $authProvider,
+        User $user,
+        string $reason,
+        string $message,
+    ): RedirectResponse {
+        $auditLogger->log('auth_provider.password_confirmation_rejected', $user, $authProvider, [
+            'auth_provider_id' => $authProvider->id,
+            'provider' => $authProvider->provider->value,
+            'reason' => $reason,
+        ], $request);
+
+        Inertia::flash('toast', ['type' => 'error', 'message' => $message]);
+
+        return redirect()->route('security.edit');
     }
 
     private function loginLinkedIdentity(Request $request, UserIdentity $identity, AuthProvider $authProvider, SocialiteUser $providerUser, AuditLogger $auditLogger): RedirectResponse

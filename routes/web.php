@@ -76,6 +76,10 @@ Route::get('auth-providers/{auth_provider}/callback', [SsoController::class, 'ca
     ->middleware('throttle:12,1')
     ->name('auth-providers.callback');
 
+Route::get('auth-providers/{auth_provider}/confirm-password', [SsoController::class, 'passwordConfirmationRedirect'])
+    ->middleware(['auth', 'verified', 'throttle:6,1'])
+    ->name('auth-providers.password-confirmation.redirect');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 

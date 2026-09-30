@@ -6,6 +6,7 @@ use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Models\AuthProvider;
 use App\Models\User;
+use App\Models\UserIdentity;
 use App\Services\ApplicationSettings;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -122,7 +123,28 @@ class FortifyServiceProvider extends ServiceProvider
 
         Fortify::twoFactorChallengeView(fn () => Inertia::render('auth/two-factor-challenge'));
 
-        Fortify::confirmPasswordView(fn () => Inertia::render('auth/confirm-password'));
+        Fortify::confirmPasswordView(function (Request $request) {
+            $user = $request->user();
+
+            return Inertia::render('auth/confirm-password', [
+                'ssoConfirmationProviders' => $user instanceof User
+                    ? $user->identities()
+                        ->with('authProvider')
+                        ->whereNotNull('auth_provider_id')
+                        ->get()
+                        ->filter(fn (UserIdentity $identity): bool => $identity->authProvider?->is_enabled ?? false)
+                        ->unique('auth_provider_id')
+                        ->map(fn (UserIdentity $identity): array => [
+                            'id' => $identity->authProvider->id,
+                            'provider' => $identity->authProvider->provider->value,
+                            'name' => $identity->authProvider->name,
+                            'redirect_url' => route('auth-providers.password-confirmation.redirect', $identity->authProvider),
+                        ])
+                        ->values()
+                        ->all()
+                    : [],
+            ]);
+        });
     }
 
     /**

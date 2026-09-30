@@ -56,6 +56,56 @@ class SecurityTest extends TestCase
         $response->assertOk();
     }
 
+    public function test_password_confirmation_handoff_returns_to_security_settings()
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->get(route('security.password-confirmation.create'))
+            ->assertRedirect(route('password.confirm'));
+
+        $this->assertSame(route('security.edit'), session('url.intended'));
+
+        $this->post(route('password.confirm.store'), ['password' => 'password'])
+            ->assertRedirect(route('security.edit'));
+    }
+
+    public function test_recovery_codes_require_password_confirmation_and_return_codes_after_confirmation()
+    {
+        $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
+
+        Features::twoFactorAuthentication([
+            'confirm' => true,
+            'confirmPassword' => true,
+        ]);
+
+        $user = User::factory()->withTwoFactor()->create();
+
+        $this->actingAs($user)
+            ->getJson(route('two-factor.recovery-codes'))
+            ->assertStatus(423)
+            ->assertExactJson(['message' => 'Password confirmation required.']);
+
+        $this->withSession(['auth.password_confirmed_at' => time()])
+            ->getJson(route('two-factor.recovery-codes'))
+            ->assertOk()
+            ->assertExactJson(['recovery-code-1']);
+    }
+
+    public function test_passkey_registration_requires_password_confirmation()
+    {
+        $this->skipUnlessFortifyHas(Features::passkeys());
+
+        Features::passkeys(['confirmPassword' => true]);
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->getJson(route('passkey.registration-options'))
+            ->assertStatus(423)
+            ->assertExactJson(['message' => 'Password confirmation required.']);
+    }
+
     public function test_security_page_renders_without_two_factor_when_feature_is_disabled()
     {
         $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());

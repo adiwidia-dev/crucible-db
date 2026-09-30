@@ -72,6 +72,92 @@ class SsoAuthenticationTest extends TestCase
         ]);
     }
 
+    public function test_linked_sso_identity_can_confirm_a_password_protected_action(): void
+    {
+        $provider = AuthProvider::factory()->google()->create();
+        $user = User::factory()->create(['email' => 'person@example.com']);
+        $user->identities()->create([
+            'auth_provider_id' => $provider->id,
+            'provider' => AuthProviderType::Google->value,
+            'provider_user_id' => 'google-123',
+            'email' => $user->email,
+        ]);
+
+        Socialite::fake('google', SocialiteUser::fake([
+            'id' => 'google-123',
+            'email' => $user->email,
+            'email_verified' => true,
+        ]));
+
+        $this->actingAs($user)
+            ->withSession(['url.intended' => route('security.edit')])
+            ->get(route('auth-providers.password-confirmation.redirect', $provider))
+            ->assertRedirect('https://socialite.fake/google/authorize');
+
+        $this->get(route('auth-providers.callback', $provider))
+            ->assertRedirect(route('security.edit'))
+            ->assertSessionHas('auth.password_confirmed_at');
+
+        $this->assertAuthenticatedAs($user);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'auth_provider.password_confirmed',
+            'actor_id' => $user->id,
+        ]);
+    }
+
+    public function test_confirm_password_screen_lists_the_users_linked_sso_provider(): void
+    {
+        $provider = AuthProvider::factory()->google()->create();
+        $user = User::factory()->create();
+        $user->identities()->create([
+            'auth_provider_id' => $provider->id,
+            'provider' => AuthProviderType::Google->value,
+            'provider_user_id' => 'google-123',
+            'email' => $user->email,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('password.confirm'))
+            ->assertInertia(fn ($page) => $page
+                ->component('auth/confirm-password')
+                ->has('ssoConfirmationProviders', 1)
+                ->where('ssoConfirmationProviders.0.id', $provider->id)
+                ->where('ssoConfirmationProviders.0.redirect_url', route('auth-providers.password-confirmation.redirect', $provider)),
+            );
+    }
+
+    public function test_different_sso_identity_cannot_confirm_a_password_protected_action(): void
+    {
+        $provider = AuthProvider::factory()->google()->create();
+        $user = User::factory()->create(['email' => 'person@example.com']);
+        $user->identities()->create([
+            'auth_provider_id' => $provider->id,
+            'provider' => AuthProviderType::Google->value,
+            'provider_user_id' => 'google-123',
+            'email' => $user->email,
+        ]);
+
+        Socialite::fake('google', SocialiteUser::fake([
+            'id' => 'different-google-account',
+            'email' => 'different@example.com',
+            'email_verified' => true,
+        ]));
+
+        $this->actingAs($user)
+            ->get(route('auth-providers.password-confirmation.redirect', $provider))
+            ->assertRedirect('https://socialite.fake/google/authorize');
+
+        $this->get(route('auth-providers.callback', $provider))
+            ->assertRedirect(route('security.edit'))
+            ->assertSessionMissing('auth.password_confirmed_at');
+
+        $this->assertAuthenticatedAs($user);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'auth_provider.password_confirmation_rejected',
+            'actor_id' => $user->id,
+        ]);
+    }
+
     public function test_unlinked_identity_requires_an_invitation(): void
     {
         $provider = AuthProvider::factory()->google()->create();
