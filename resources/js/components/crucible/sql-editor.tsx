@@ -8,7 +8,7 @@ import { Decoration, EditorView } from '@codemirror/view';
 import type { DecorationSet } from '@codemirror/view';
 import CodeMirror from '@uiw/react-codemirror';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 export type SchemaColumn = {
     name: string;
@@ -30,6 +30,7 @@ type Props = {
     minHeight?: string;
     readOnly?: boolean;
     placeholder?: string;
+    autoFocus?: boolean;
     onEditorReady?: (view: EditorView) => void;
     onSelectionChange?: (selection: string) => void;
     onRunShortcut?: () => void;
@@ -167,10 +168,28 @@ export function SqlEditor({
     minHeight = '18rem',
     readOnly = false,
     placeholder = 'select * from table_name',
+    autoFocus = false,
     onEditorReady,
     onSelectionChange,
     onRunShortcut,
 }: Props) {
+    const editorViewRef = useRef<EditorView | null>(null);
+
+    useEffect(() => {
+        if (autoFocus) {
+            editorViewRef.current?.focus();
+        }
+    }, [autoFocus]);
+
+    function handleEditorReady(view: EditorView): void {
+        editorViewRef.current = view;
+        onEditorReady?.(view);
+
+        if (autoFocus) {
+            view.focus();
+        }
+    }
+
     function handleKeyDownCapture(
         event: ReactKeyboardEvent<HTMLDivElement>,
     ): void {
@@ -242,7 +261,7 @@ export function SqlEditor({
             placeholder={placeholder}
             indentWithTab={false}
             onChange={onChange}
-            onCreateEditor={(view) => onEditorReady?.(view)}
+            onCreateEditor={handleEditorReady}
             onKeyDownCapture={handleKeyDownCapture}
         />
     );
