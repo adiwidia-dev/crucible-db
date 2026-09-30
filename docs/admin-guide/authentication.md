@@ -16,6 +16,8 @@ Open **SSO Providers** to configure Google, GitHub, or Microsoft provider detail
 
 Provider configuration is invitation-gated: an SSO identity must match an invited account. Enabling a provider does not create public registration.
 
+After a user has linked an identity, that same enabled provider can confirm protected account actions, including the user's first passkey registration. This confirmation does not create or reset a local password.
+
 Allowed-domain restrictions are enforced after the provider returns a trusted email identity. Google requires a verified email claim, GitHub uses a verified email from the configured scope, and Microsoft uses the trusted directory principal email. Provider errors return to the login page without linking an identity.
 
 Use **Test** on a provider before enabling it as the only login path. Testing validates the redirect and callback configuration without attaching the administrator's identity to a normal login.

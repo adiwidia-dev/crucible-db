@@ -878,7 +878,7 @@ class QueryRequestWorkflow
                 $replacementQueryRequest = QueryRequest::query()
                     ->with(['databaseConnection', 'accessConnections', 'statements.databaseConnection'])
                     ->lockForUpdate()
-                    ->find($data['replacement_query_request_id']);
+                    ->find($data['replacement_query_request_id'] ?? null);
 
                 if ($replacementQueryRequest === null
                     || $replacementQueryRequest->id === $lockedQueryRequest->id

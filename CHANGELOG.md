@@ -4,6 +4,23 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-09-30
+
+### Added
+
+- Retain encrypted browser Query Access result snapshots while a session remains active, with 100-row pages, full-result CSV export, and bounded capture of up to 5,000 rows or 25 MiB.
+- Let a linked SSO identity confirm protected account actions, so SSO-only users can register their first passkey without first creating a local password.
+- Add explicit failure resolution records for failed Deployment Batches, including linked replacements and operational notes, so resolved failures leave the live queue without losing execution history.
+
+### Changed
+
+- Show the Operational queue in latest activity order, including ready-to-run Deployment Batches, instead of grouping work by priority.
+- Make multi-statement Deployment Batch editing faster with inline insertion, direct move controls, and focused editors after insertion or reordering.
+
+### Fixed
+
+- Restore two-factor recovery-code retrieval after protected confirmation and route passkey registration through the available confirmation methods.
+
 ## [0.2.12] - 2026-09-29
 
 ### Changed
@@ -205,7 +222,7 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.12...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.13...HEAD
 [0.2.11]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.8...v0.2.9

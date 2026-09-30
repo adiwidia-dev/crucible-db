@@ -20,9 +20,10 @@ Prepare:
 1. Open **Work → Query requests → New request**.
 2. Select **Deployment Batch**.
 3. Add a title that states the intended outcome.
-4. Add one statement row at a time. Choose its connection, then enter exactly one SQL statement.
-5. Review the preflight report for each statement.
-6. Choose **Submit for review** when the batch is ready, or [save it as a draft](deployment-drafts.md) when it is not.
+4. Add one statement row at a time. Use **Add below** to insert the next row after the statement it follows, choose its connection, then enter exactly one SQL statement.
+5. Use the arrow controls to move a statement one position at a time. The moved editor remains focused so you can continue working without finding it again.
+6. Review the preflight report for each statement.
+7. Choose **Submit for review** when the batch is ready, or [save it as a draft](deployment-drafts.md) when it is not.
 
 ## Read the preflight report
 
@@ -54,3 +55,5 @@ Where recorded rows exist, use **Export CSV** from the execution result. The exp
 ## Cancel or retry
 
 Eligible work can be cancelled with a reason. A failed request may offer a linked retry. Write-impacting retry work receives fresh policy and approval evaluation.
+
+When a failure has been handled outside a retry, an authorized user can record its resolution, optionally link the replacement Deployment Batch, and add an operational note. The failed batch leaves the live Operational queue, while its execution history and resolution record remain available for audit.

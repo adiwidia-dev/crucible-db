@@ -4,13 +4,13 @@ import {
     ArrowUp,
     CalendarClock,
     Check,
+    CirclePlus,
     CircleCheck,
     CircleX,
     Clock3,
     FileCode2,
     FileSearch,
     KeyRound,
-    Plus,
     ShieldAlert,
     Sparkles,
     Terminal,
@@ -333,18 +333,18 @@ export default function QueryRequestCreate({
     const [statements, setStatements] = useState<StatementDraft[]>(() =>
         initialStatements(query_request, defaultConnectionId),
     );
-    const [insertedStatementKey, setInsertedStatementKey] = useState<
+    const [focusedStatementKey, setFocusedStatementKey] = useState<
         string | null
     >(null);
 
     useEffect(() => {
-        if (insertedStatementKey === null) {
+        if (focusedStatementKey === null) {
             return;
         }
 
         const animationFrame = window.requestAnimationFrame(() => {
             const statementElement = document.querySelector<HTMLElement>(
-                `[data-statement-key="${insertedStatementKey}"]`,
+                `[data-statement-key="${focusedStatementKey}"]`,
             );
 
             statementElement?.scrollIntoView({
@@ -354,11 +354,11 @@ export default function QueryRequestCreate({
                     : 'smooth',
                 block: 'center',
             });
-            setInsertedStatementKey(null);
+            setFocusedStatementKey(null);
         });
 
         return () => window.cancelAnimationFrame(animationFrame);
-    }, [insertedStatementKey]);
+    }, [focusedStatementKey]);
 
     const policyPreviews = useDeploymentPolicyPreview(
         statements.map((statement) => ({
@@ -577,7 +577,7 @@ export default function QueryRequestCreate({
     function insertStatementAfter(index: number): void {
         const insertedStatementKey = `statement-${Date.now()}-${index}`;
 
-        setInsertedStatementKey(insertedStatementKey);
+        setFocusedStatementKey(insertedStatementKey);
         setStatements((current) => {
             const precedingStatement = current[index];
             const insertedStatement = {
@@ -604,13 +604,19 @@ export default function QueryRequestCreate({
     }
 
     function moveStatement(index: number, direction: -1 | 1): void {
+        const target = index + direction;
+        const movedStatementKey = statements[index]?.key;
+
+        if (
+            target < 0 ||
+            target >= statements.length ||
+            movedStatementKey === undefined
+        ) {
+            return;
+        }
+
+        setFocusedStatementKey(movedStatementKey);
         setStatements((current) => {
-            const target = index + direction;
-
-            if (target < 0 || target >= current.length) {
-                return current;
-            }
-
             const reordered = [...current];
             [reordered[index], reordered[target]] = [
                 reordered[target],
@@ -1358,7 +1364,7 @@ export default function QueryRequestCreate({
                                                         }
                                                         autoFocus={
                                                             statement.key ===
-                                                            insertedStatementKey
+                                                            focusedStatementKey
                                                         }
                                                         minHeight="13rem"
                                                         placeholder={`-- Statement ${index + 1}\nSELECT * FROM table_name`}
@@ -1380,7 +1386,7 @@ export default function QueryRequestCreate({
                                                     </div>
                                                 </section>
                                                 {statements.length < 50 ? (
-                                                    <div className="relative flex h-10 items-center justify-center">
+                                                    <div className="relative flex h-8 items-center justify-center">
                                                         <div
                                                             aria-hidden="true"
                                                             className="absolute inset-x-0 border-t"
@@ -1389,15 +1395,15 @@ export default function QueryRequestCreate({
                                                             type="button"
                                                             variant="outline"
                                                             size="sm"
-                                                            className="relative h-7 bg-card px-2.5 text-xs shadow-none"
+                                                            className="relative z-10 h-7 border-primary/35 bg-background px-3 text-sm font-medium text-primary shadow-none hover:border-primary/60 hover:bg-primary/5 hover:text-primary"
                                                             onClick={() =>
                                                                 insertStatementAfter(
                                                                     index,
                                                                 )
                                                             }
                                                         >
-                                                            <Plus />
-                                                            Insert statement
+                                                            <CirclePlus />
+                                                            Add below
                                                         </Button>
                                                     </div>
                                                 ) : null}

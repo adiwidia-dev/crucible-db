@@ -421,10 +421,13 @@ class QueryRequestController extends Controller
 
     public function resolveFailure(ResolveFailedQueryRequestRequest $request, QueryRequest $queryRequest, QueryRequestWorkflow $workflow): RedirectResponse
     {
+        /** @var array{resolution: string, note?: string|null, replacement_query_request_id?: int|null} $data */
+        $data = $request->validated();
+
         $resolvedQueryRequest = $workflow->resolveFailure(
             $queryRequest,
             $request->user(),
-            $request->validated(),
+            $data,
         );
 
         Inertia::flash('toast', [
@@ -572,7 +575,7 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return Collection<int, array{id: int, title: string, status: string}>
+     * @return Collection<int, array{id: int, title: string, status: 'approved'|'cancelled'|'completed'|'draft'|'failed'|'pending_review'|'rejected'|'running'|'scheduled'}>
      */
     private function replacementCandidates(QueryRequest $failedQueryRequest, User $user): Collection
     {
@@ -590,7 +593,7 @@ class QueryRequestController extends Controller
             ->map(fn (QueryRequest $candidate): array => [
                 'id' => $candidate->id,
                 'title' => $candidate->title,
-                'status' => $candidate->status->value,
+                'status' => (string) $candidate->status->value,
             ])
             ->values();
     }

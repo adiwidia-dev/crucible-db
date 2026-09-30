@@ -132,7 +132,7 @@ class FortifyServiceProvider extends ServiceProvider
                         ->with('authProvider')
                         ->whereNotNull('auth_provider_id')
                         ->get()
-                        ->filter(fn (UserIdentity $identity): bool => $identity->authProvider?->is_enabled ?? false)
+                        ->filter(fn (UserIdentity $identity): bool => $identity->authProvider->is_enabled)
                         ->unique('auth_provider_id')
                         ->map(fn (UserIdentity $identity): array => [
                             'id' => $identity->authProvider->id,

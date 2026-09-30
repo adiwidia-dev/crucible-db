@@ -122,7 +122,7 @@ class QuerySessionWorkflow
     }
 
     /**
-     * @return array{query:QuerySessionQuery, result:array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_rows?:array<int, array<string, mixed>>, result_byte_count?:int, result_truncated?:bool}|null}
+     * @return array{query:QuerySessionQuery, result:array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_rows:array<int, array<string, mixed>>, result_byte_count:int, result_truncated?:bool}|null}
      *
      * @throws ValidationException
      */
@@ -187,8 +187,8 @@ class QuerySessionWorkflow
             ])->save();
 
             if ($queryType === QueryType::Read) {
-                $resultRows = $result['result_rows'] ?? $result['sample_rows'];
-                $resultByteCount = $result['result_byte_count'] ?? strlen(json_encode($resultRows, JSON_THROW_ON_ERROR));
+                $resultRows = $result['result_rows'];
+                $resultByteCount = $result['result_byte_count'];
 
                 $this->resultSnapshotStore->store(
                     $sessionQuery,

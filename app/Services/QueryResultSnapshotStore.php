@@ -41,7 +41,7 @@ class QueryResultSnapshotStore
             return null;
         }
 
-        $rows = $snapshot->rows ?? [];
+        $rows = $snapshot->rows;
         $total = count($rows);
         $lastPage = max(1, (int) ceil($total / self::PageSize));
         $currentPage = min(max($page, 1), $lastPage);
@@ -69,7 +69,7 @@ class QueryResultSnapshotStore
             ->where('expires_at', '>', now())
             ->first();
 
-        return $snapshot?->rows ?? [];
+        return $snapshot === null ? $querySessionQuery->sample_rows : $snapshot->rows;
     }
 
     public function forgetForSession(QuerySession $querySession): void

@@ -569,8 +569,8 @@ export default function Dashboard({
                                 Operational queue
                             </h2>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Current work ordered by priority. Select an item
-                                to open its workflow.
+                                Latest queue activity first. Select an item to
+                                open its workflow.
                             </p>
                         </div>
                         <div
