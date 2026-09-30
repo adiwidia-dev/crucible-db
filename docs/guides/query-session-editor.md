@@ -37,7 +37,9 @@ Without a selection, the shortcut runs the whole editor and therefore requires e
 
 ## Results and history
 
-Each execution is retained in the session query history. The result panel shows status, connection, row count, truncation marker, duration, rows, or a database error. **Export CSV** is available only for a successful recorded result with rows; it does not expose connection credentials.
+Each execution is retained in the session query history. For a successful browser query, Crucible retains an encrypted temporary result snapshot while the session remains active. The result panel shows 100 rows per page, status, connection, total row count, truncation marker, duration, rows, or a database error. You can page through captured results and use **Export CSV** for the complete captured result; it does not expose connection credentials.
+
+To protect the control plane, capture stops at 5,000 rows or 25 MiB. When either limit is reached, the result count indicates truncation. Ended, cancelled, or expired sessions remove their temporary result snapshots.
 
 The Schema panel searches discovered tables and columns for the active connection. Selecting a table or column inserts a safe identifier snippet into the editor; it does not execute SQL.
 

@@ -1404,6 +1404,10 @@ SQL;
                     'sample_rows' => [
                         ['value' => 1],
                     ],
+                    'result_rows' => [
+                        ['value' => 1],
+                    ],
+                    'result_byte_count' => 11,
                 ];
             }
         });

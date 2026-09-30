@@ -14,6 +14,7 @@ use App\Http\Controllers\QueryReviewController;
 use App\Http\Controllers\QuerySessionController;
 use App\Http\Controllers\QuerySessionQueryController;
 use App\Http\Controllers\QuerySessionQueryExportController;
+use App\Http\Controllers\QuerySessionQueryResultController;
 use App\Http\Controllers\SetupController;
 use App\Http\Controllers\SsoController;
 use App\Http\Controllers\UserInvitationController;
@@ -76,6 +77,10 @@ Route::get('auth-providers/{auth_provider}/callback', [SsoController::class, 'ca
     ->middleware('throttle:12,1')
     ->name('auth-providers.callback');
 
+Route::get('auth-providers/{auth_provider}/confirm-password', [SsoController::class, 'passwordConfirmationRedirect'])
+    ->middleware(['auth', 'verified', 'throttle:6,1'])
+    ->name('auth-providers.password-confirmation.redirect');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
@@ -107,6 +112,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('query-requests.cancel');
     Route::post('query-requests/{query_request}/retry', [QueryRequestController::class, 'retry'])
         ->name('query-requests.retry');
+    Route::post('query-requests/{query_request}/resolve-failure', [QueryRequestController::class, 'resolveFailure'])
+        ->name('query-requests.resolve-failure');
     Route::post('query-requests/{query_request}/subscription', [NotificationSubscriptionController::class, 'storeQueryRequest'])
         ->name('query-requests.subscription.store');
     Route::delete('query-requests/{query_request}/subscription', [NotificationSubscriptionController::class, 'destroyQueryRequest'])
@@ -119,6 +126,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('query-sessions.queries.store');
     Route::get('query-session-queries/{query_session_query}/export', QuerySessionQueryExportController::class)
         ->name('query-session-queries.export');
+    Route::get('query-session-queries/{query_session_query}/results', QuerySessionQueryResultController::class)
+        ->name('query-session-queries.results');
     Route::post('query-sessions/{query_session}/end', [QuerySessionController::class, 'end'])
         ->name('query-sessions.end');
     Route::post('query-sessions/{query_session}/native-proxy/credentials', [LeaseController::class, 'store'])

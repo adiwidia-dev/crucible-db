@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\AccessMode;
 use App\Enums\AccessTransport;
+use App\Enums\FailureResolution;
 use App\Enums\PreflightStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
@@ -29,6 +30,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $execution_source_ip_address
  * @property int|null $cancelled_by_id
  * @property int|null $retry_of_id
+ * @property int|null $failure_resolved_by_id
+ * @property int|null $replacement_query_request_id
  * @property string $title
  * @property string|null $description
  * @property string $sql
@@ -51,6 +54,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $cancellation_reason
  * @property array<string, mixed>|null $result_summary
  * @property string|null $last_error
+ * @property Carbon|null $failure_resolved_at
+ * @property FailureResolution|null $failure_resolution
+ * @property string|null $failure_resolution_note
  * @property-read bool $has_write_execution
  * @property-read User $requester
  * @property-read User|null $approvedBy
@@ -58,6 +64,8 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $cancelledBy
  * @property-read QueryRequest|null $retryOf
  * @property-read Collection<int, QueryRequest> $retries
+ * @property-read User|null $failureResolvedBy
+ * @property-read QueryRequest|null $replacementQueryRequest
  * @property-read DatabaseConnection $databaseConnection
  * @property-read Collection<int, DatabaseConnection> $accessConnections
  * @property-read QueryExecution|null $latestExecution
@@ -65,7 +73,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, SqlPolicyCandidateOccurrence> $sqlPolicyCandidateOccurrences
  * @property-read QuerySession|null $latestSession
  */
-#[Fillable(['requester_id', 'database_connection_id', 'approved_by_id', 'dispatched_by_id', 'execution_source_ip_address', 'cancelled_by_id', 'retry_of_id', 'title', 'description', 'sql', 'query_type', 'request_kind', 'access_transport', 'requested_access_mode', 'status', 'requires_approval', 'preflight_status', 'preflight_report', 'preflight_checked_at', 'scheduled_at', 'access_duration_minutes', 'approved_at', 'dispatched_at', 'completed_at', 'cancelled_at', 'cancellation_reason', 'result_summary', 'last_error'])]
+#[Fillable(['requester_id', 'database_connection_id', 'approved_by_id', 'dispatched_by_id', 'execution_source_ip_address', 'cancelled_by_id', 'retry_of_id', 'failure_resolved_by_id', 'replacement_query_request_id', 'title', 'description', 'sql', 'query_type', 'request_kind', 'access_transport', 'requested_access_mode', 'status', 'requires_approval', 'preflight_status', 'preflight_report', 'preflight_checked_at', 'scheduled_at', 'access_duration_minutes', 'approved_at', 'dispatched_at', 'completed_at', 'cancelled_at', 'cancellation_reason', 'result_summary', 'last_error', 'failure_resolved_at', 'failure_resolution', 'failure_resolution_note'])]
 class QueryRequest extends Model
 {
     /** @use HasFactory<QueryRequestFactory> */
@@ -78,7 +86,7 @@ class QueryRequest extends Model
     ];
 
     /**
-     * @return array{query_type: class-string<QueryType>, request_kind: class-string<QueryRequestKind>, access_transport: class-string<AccessTransport>, requested_access_mode: class-string<AccessMode>, status: class-string<QueryRequestStatus>, revision: 'integer', requires_approval: 'boolean', preflight_status: class-string<PreflightStatus>, preflight_report: 'array', preflight_checked_at: 'datetime', scheduled_at: 'datetime', access_duration_minutes: 'integer', approved_at: 'datetime', dispatched_at: 'datetime', completed_at: 'datetime', cancelled_at: 'datetime', result_summary: 'array'}
+     * @return array{query_type: class-string<QueryType>, request_kind: class-string<QueryRequestKind>, access_transport: class-string<AccessTransport>, requested_access_mode: class-string<AccessMode>, status: class-string<QueryRequestStatus>, revision: 'integer', requires_approval: 'boolean', preflight_status: class-string<PreflightStatus>, preflight_report: 'array', preflight_checked_at: 'datetime', scheduled_at: 'datetime', access_duration_minutes: 'integer', approved_at: 'datetime', dispatched_at: 'datetime', completed_at: 'datetime', cancelled_at: 'datetime', failure_resolved_at: 'datetime', failure_resolution: class-string<FailureResolution>, result_summary: 'array'}
      */
     protected function casts(): array
     {
@@ -99,6 +107,8 @@ class QueryRequest extends Model
             'dispatched_at' => 'datetime',
             'completed_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'failure_resolved_at' => 'datetime',
+            'failure_resolution' => FailureResolution::class,
             'result_summary' => 'array',
         ];
     }
@@ -136,6 +146,14 @@ class QueryRequest extends Model
     }
 
     /**
+     * @return BelongsTo<User, $this>
+     */
+    public function failureResolvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'failure_resolved_by_id');
+    }
+
+    /**
      * @return BelongsTo<QueryRequest, $this>
      */
     public function retryOf(): BelongsTo
@@ -149,6 +167,14 @@ class QueryRequest extends Model
     public function retries(): HasMany
     {
         return $this->hasMany(self::class, 'retry_of_id')->latest();
+    }
+
+    /**
+     * @return BelongsTo<QueryRequest, $this>
+     */
+    public function replacementQueryRequest(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'replacement_query_request_id');
     }
 
     /**

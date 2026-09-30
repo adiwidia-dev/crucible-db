@@ -9,6 +9,7 @@ use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Services\DatabaseSchemaBrowser;
 use App\Services\QueryRequestWorkflow;
+use App\Services\QueryResultSnapshotStore;
 use App\Services\QuerySessionWorkflow;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
@@ -27,7 +28,7 @@ class QuerySessionController extends Controller
         return redirect()->route('query-sessions.show', $session);
     }
 
-    public function show(QuerySession $querySession, DatabaseSchemaBrowser $schemaBrowser): Response
+    public function show(QuerySession $querySession, DatabaseSchemaBrowser $schemaBrowser, QueryResultSnapshotStore $resultSnapshotStore): Response
     {
         Gate::authorize('view', $querySession);
 
@@ -87,6 +88,9 @@ class QuerySessionController extends Controller
                     'row_count' => $latestQuery->row_count,
                     'result_truncated' => $latestQuery->result_truncated,
                     'sample_rows' => $latestQuery->sample_rows,
+                    'result_page' => $querySession->isActive()
+                        ? $resultSnapshotStore->page($latestQuery, 1)
+                        : null,
                     'error_message' => $latestQuery->error_message,
                     'created_at' => $latestQuery->created_at?->toIso8601String(),
                 ] : null,

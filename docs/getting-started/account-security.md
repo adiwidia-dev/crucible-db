@@ -8,7 +8,7 @@ Crucible DB is invitation-only. An administrator invites you, assigns your roles
 
 1. Open the workspace URL supplied by your administrator.
 2. Sign in with a passkey when available, enter your email and password, or choose an enabled invited SSO provider.
-3. Complete two-factor authentication when prompted.
+3. Complete two-factor authentication when prompted for email-and-password sign-in. An SSO sign-in is verified by the selected provider instead.
 
 The login page does not reveal whether an uninvited email address belongs to a workspace account.
 
@@ -39,7 +39,7 @@ Enter the six-digit code from the configured authenticator. If the authenticator
 
 ![Two-factor authentication challenge](../assets/screenshots/two-factor-challenge.png){ .docs-screenshot }
 
-Protected account actions may ask for recent confirmation. Use a registered passkey or the current password when the confirmation page appears.
+Protected account actions may ask for recent confirmation. Use a registered passkey, the current password, or a linked SSO provider when the confirmation page appears. This lets an SSO-only user confirm their first passkey registration without first creating a local password.
 
 ## Protect your account
 

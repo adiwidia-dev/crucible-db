@@ -20,9 +20,9 @@ When Native client access is enabled, the header shows a status icon immediately
 
 ## Operational queue
 
-One prioritized queue brings the current work together. Each row is tagged as **Failed**, **Review**, **Policy**, **Scheduled**, or **Session**, with its access level or query type where relevant. Failed executions appear first, followed by approval work, SQL policy review, live sessions, and scheduled executions.
+One queue brings the current work together. Each row is tagged as **Failed**, **Review**, **Policy**, **Ready**, **Scheduled**, or **Session**, with its access level or query type where relevant. Items are ordered by the latest activity that put them into their current state, such as a request, approval, failure, policy-review request, or session start.
 
-Use **All**, **Attention**, **Scheduled**, and **Live** to narrow the queue without leaving Overview. Select an item to open the exact request, SQL policy candidate, or Query Access session workflow. The dashboard shows the ten highest-priority items in the selected view; use Query Requests or SQL Policy for the full history.
+Use **All**, **Attention**, **Ready**, **Scheduled**, and **Live** to narrow the queue without leaving Overview. Select an item to open the exact request, SQL policy candidate, or Query Access session workflow. The dashboard shows the ten most recent items in the selected view; use Query Requests or SQL Policy for the full history.
 
 ## Create new work
 

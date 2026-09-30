@@ -1,9 +1,11 @@
+import { router } from '@inertiajs/react';
 import { usePasskeyRegister } from '@laravel/passkeys/react';
 import { useState } from 'react';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { create as createPasswordConfirmation } from '@/routes/security/password-confirmation';
 
 type Props = {
     onSuccess: () => void;
@@ -38,6 +40,11 @@ export default function PasskeyRegistration({ onSuccess }: Props) {
             setName('');
             setShowForm(false);
             onSuccess();
+        },
+        onError: (passkeyError) => {
+            if (passkeyError.message === 'Password confirmation required.') {
+                router.visit(createPasswordConfirmation());
+            }
         },
     });
 

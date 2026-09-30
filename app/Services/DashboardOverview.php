@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
@@ -22,6 +23,7 @@ use Illuminate\Database\Eloquent\Builder;
  *     connection: string,
  *     requester: string,
  *     scheduled_at: string|null,
+ *     approved_at: string|null,
  *     created_at: string|null,
  *     completed_at: string|null,
  *     last_error: string|null
@@ -32,12 +34,13 @@ use Illuminate\Database\Eloquent\Builder;
  *     title: string,
  *     connection: string,
  *     user: string,
+ *     started_at: string,
  *     expires_at: string
  * }
  * @phpstan-type PolicyReviewQueueItem array{id:int,statement:string,driver:'pgsql'|'mysql',request_count:int,request_title:string|null,requester:string|null,requested_at:string|null}
  * @phpstan-type OperationalQueueItem array{
  *     id: int,
- *     type: 'active_session'|'failed_execution'|'pending_review'|'policy_review'|'scheduled_execution',
+ *     type: 'active_session'|'failed_execution'|'pending_review'|'policy_review'|'ready_execution'|'scheduled_execution',
  *     title: string,
  *     connection: string|null,
  *     actor: string|null,
@@ -53,11 +56,13 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class DashboardOverview
 {
+    private const OPERATIONAL_QUEUE_ITEM_LIMIT = 10;
+
     public function __construct(private readonly NativeProxyStatus $nativeProxyStatus) {}
 
     /**
      * @return array{
-     *     summary: array{pending_reviews: int, policy_reviews: int, scheduled: int, failed: int, active_sessions: int, native_proxy_connections: int, native_proxy_instances: int},
+     *     summary: array{pending_reviews: int, policy_reviews: int, ready: int, scheduled: int, failed: int, active_sessions: int, native_proxy_connections: int, native_proxy_instances: int},
      *     native_proxy_health: array{status: 'disabled'|'healthy'|'unhealthy'|'version_mismatch', checked_at: string|null, proxy_id: string|null, version: string|null, message: string|null},
      *     native_proxy_status: array{health: array{status: 'disabled'|'healthy'|'unhealthy'|'version_mismatch', checked_at: string|null, proxy_id: string|null, version: string|null, message: string|null}, connections: int, instances: int},
      *     operational_queue: array<int, OperationalQueueItem>
@@ -80,18 +85,24 @@ class DashboardOverview
 
         $pendingReviews = $this->reviewableRequests($user, $isAdmin, $reviewableConnectionIds)
             ->where('status', QueryRequestStatus::PendingReview)
-            ->oldest('created_at');
+            ->latest('created_at');
         $scheduledRequests = $this->visibleRequests($user, $isAdmin, $visibleConnectionIds)
             ->where('status', QueryRequestStatus::Scheduled)
             ->whereNotNull('scheduled_at')
-            ->orderBy('scheduled_at');
+            ->latest('approved_at');
+        $readyRequests = $this->visibleRequests($user, $isAdmin, $visibleConnectionIds)
+            ->where('request_kind', QueryRequestKind::SingleExecution)
+            ->where('status', QueryRequestStatus::Approved)
+            ->whereNull('dispatched_at')
+            ->latest('approved_at');
         $failedRequests = $this->visibleRequests($user, $isAdmin, $visibleConnectionIds)
             ->where('status', QueryRequestStatus::Failed)
+            ->whereNull('failure_resolved_at')
             ->latest('completed_at');
         $expiringSessions = $this->visibleSessions($user, $isAdmin, $reviewableConnectionIds)
             ->whereNull('ended_at')
             ->where('expires_at', '>', now())
-            ->orderBy('expires_at');
+            ->latest('started_at');
         $nativeProxyStatus = $this->nativeProxyStatus->for($user);
         $policyReviewCandidates = SqlPolicyCandidate::query()
             ->whereNull('resolution')
@@ -100,6 +111,7 @@ class DashboardOverview
         $summary = [
             'pending_reviews' => (clone $pendingReviews)->count(),
             'policy_reviews' => $isAdmin ? (clone $policyReviewCandidates)->count() : 0,
+            'ready' => (clone $readyRequests)->count(),
             'scheduled' => (clone $scheduledRequests)->count(),
             'failed' => (clone $failedRequests)->count(),
             'active_sessions' => (clone $expiringSessions)->count(),
@@ -108,6 +120,7 @@ class DashboardOverview
         ];
 
         $pendingReviewItems = $this->requestQueue($pendingReviews);
+        $readyRequestItems = $this->requestQueue($readyRequests);
         $scheduledRequestItems = $this->requestQueue($scheduledRequests);
         $failedRequestItems = $this->requestQueue($failedRequests);
         $expiringSessionItems = $this->sessionQueue($expiringSessions);
@@ -123,6 +136,7 @@ class DashboardOverview
                 failedRequests: $failedRequestItems,
                 pendingReviews: $pendingReviewItems,
                 policyReviews: $policyReviewItems,
+                readyRequests: $readyRequestItems,
                 activeSessions: $expiringSessionItems,
                 scheduledRequests: $scheduledRequestItems,
             ),
@@ -133,6 +147,7 @@ class DashboardOverview
      * @param  array<int, RequestQueueItem>  $failedRequests
      * @param  array<int, RequestQueueItem>  $pendingReviews
      * @param  array<int, PolicyReviewQueueItem>  $policyReviews
+     * @param  array<int, RequestQueueItem>  $readyRequests
      * @param  array<int, SessionQueueItem>  $activeSessions
      * @param  array<int, RequestQueueItem>  $scheduledRequests
      * @return array<int, OperationalQueueItem>
@@ -141,36 +156,66 @@ class DashboardOverview
         array $failedRequests,
         array $pendingReviews,
         array $policyReviews,
+        array $readyRequests,
         array $activeSessions,
         array $scheduledRequests,
     ): array {
-        return [
+        /** @var array<int, array{item: OperationalQueueItem, queued_at: string|null}> $queue */
+        $queue = [
             ...array_map(
-                fn (array $request): array => $this->requestOperationalQueueItem($request, 'failed_execution'),
+                fn (array $request): array => [
+                    'item' => $this->requestOperationalQueueItem($request, 'failed_execution'),
+                    'queued_at' => $request['completed_at'],
+                ],
                 $failedRequests,
             ),
             ...array_map(
-                fn (array $request): array => $this->requestOperationalQueueItem($request, 'pending_review'),
+                fn (array $request): array => [
+                    'item' => $this->requestOperationalQueueItem($request, 'pending_review'),
+                    'queued_at' => $request['created_at'],
+                ],
                 $pendingReviews,
             ),
             ...array_map(
-                fn (array $review): array => $this->policyOperationalQueueItem($review),
+                fn (array $review): array => [
+                    'item' => $this->policyOperationalQueueItem($review),
+                    'queued_at' => $review['requested_at'],
+                ],
                 $policyReviews,
             ),
             ...array_map(
-                fn (array $session): array => $this->sessionOperationalQueueItem($session),
+                fn (array $request): array => [
+                    'item' => $this->requestOperationalQueueItem($request, 'ready_execution'),
+                    'queued_at' => $request['approved_at'],
+                ],
+                $readyRequests,
+            ),
+            ...array_map(
+                fn (array $session): array => [
+                    'item' => $this->sessionOperationalQueueItem($session),
+                    'queued_at' => $session['started_at'],
+                ],
                 $activeSessions,
             ),
             ...array_map(
-                fn (array $request): array => $this->requestOperationalQueueItem($request, 'scheduled_execution'),
+                fn (array $request): array => [
+                    'item' => $this->requestOperationalQueueItem($request, 'scheduled_execution'),
+                    'queued_at' => $request['approved_at'] ?? $request['created_at'],
+                ],
                 $scheduledRequests,
             ),
         ];
+
+        return collect($queue)
+            ->sortByDesc('queued_at')
+            ->pluck('item')
+            ->values()
+            ->all();
     }
 
     /**
      * @param  RequestQueueItem  $request
-     * @param  'failed_execution'|'pending_review'|'scheduled_execution'  $type
+     * @param  'failed_execution'|'pending_review'|'ready_execution'|'scheduled_execution'  $type
      * @return OperationalQueueItem
      */
     private function requestOperationalQueueItem(array $request, string $type): array
@@ -178,6 +223,7 @@ class DashboardOverview
         $timestamp = match ($type) {
             'failed_execution' => $request['completed_at'],
             'pending_review' => $request['created_at'],
+            'ready_execution' => $request['approved_at'],
             'scheduled_execution' => $request['scheduled_at'],
         };
 
@@ -312,7 +358,7 @@ class DashboardOverview
                 'databaseConnection:id,name,driver',
                 'requester:id,name',
             ])
-            ->limit(5)
+            ->limit(self::OPERATIONAL_QUEUE_ITEM_LIMIT)
             ->get([
                 'id',
                 'requester_id',
@@ -323,6 +369,7 @@ class DashboardOverview
                 'request_kind',
                 'requested_access_mode',
                 'scheduled_at',
+                'approved_at',
                 'created_at',
                 'completed_at',
                 'last_error',
@@ -346,12 +393,13 @@ class DashboardOverview
                 'databaseConnection:id,name',
                 'user:id,name',
             ])
-            ->limit(5)
+            ->limit(self::OPERATIONAL_QUEUE_ITEM_LIMIT)
             ->get([
                 'id',
                 'query_request_id',
                 'user_id',
                 'database_connection_id',
+                'started_at',
                 'expires_at',
             ])
             ->map(fn (QuerySession $querySession) => $this->sessionQueueItem($querySession))
@@ -373,7 +421,7 @@ class DashboardOverview
                     ->latest('review_requested_at'),
             ])
             ->latest('last_seen_at')
-            ->limit(5)
+            ->limit(self::OPERATIONAL_QUEUE_ITEM_LIMIT)
             ->get()
             ->map(function (SqlPolicyCandidate $candidate): array {
                 $latestOccurrence = $candidate->occurrences->first();
@@ -407,6 +455,7 @@ class DashboardOverview
             'requested_access_mode' => $queryRequest->requested_access_mode?->value,
             'requester' => $queryRequest->requester->name,
             'scheduled_at' => $this->dateString($queryRequest->scheduled_at),
+            'approved_at' => $this->dateString($queryRequest->approved_at),
             'created_at' => $this->dateString($queryRequest->created_at),
             'completed_at' => $this->dateString($queryRequest->completed_at),
             'last_error' => $queryRequest->last_error,
@@ -426,6 +475,7 @@ class DashboardOverview
             'title' => $querySession->queryRequest->title,
             'connection' => $querySession->databaseConnection->name,
             'user' => $querySession->user->name,
+            'started_at' => $querySession->started_at->toIso8601String(),
             'expires_at' => $querySession->expires_at->toIso8601String(),
         ];
     }

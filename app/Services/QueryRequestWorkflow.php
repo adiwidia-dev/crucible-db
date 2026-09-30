@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccessMode;
 use App\Enums\AccessTransport;
 use App\Enums\ExecutionStatus;
+use App\Enums\FailureResolution;
 use App\Enums\PreflightStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
@@ -33,6 +34,7 @@ class QueryRequestWorkflow
         private readonly DeploymentStatementPolicy $deploymentStatementPolicy,
         private readonly NotificationDispatcher $notificationDispatcher,
         private readonly SqlPolicyReviewWorkflow $sqlPolicyReviewWorkflow,
+        private readonly QueryResultSnapshotStore $resultSnapshotStore,
         private readonly LeaseWorkflow $nativeProxyLeaseWorkflow,
         private readonly ApplicationSettings $applicationSettings,
     ) {}
@@ -761,6 +763,7 @@ class QueryRequestWorkflow
         }, attempts: 3);
 
         $this->notificationDispatcher->requestCancelled($cancelledRequest, $actor);
+        $this->resultSnapshotStore->forgetForQueryRequest($cancelledRequest);
         $this->nativeProxyLeaseWorkflow->revokeForQueryRequest(
             $cancelledRequest,
             $actor,
@@ -839,6 +842,73 @@ class QueryRequestWorkflow
         }
 
         return $retriedRequest;
+    }
+
+    /**
+     * Record how a failed deployment batch was handled without altering its execution history.
+     *
+     * @param  array{resolution: string, note?: string|null, replacement_query_request_id?: int|null}  $data
+     *
+     * @throws ValidationException
+     */
+    public function resolveFailure(QueryRequest $queryRequest, User $actor, array $data): QueryRequest
+    {
+        return DB::transaction(function () use ($queryRequest, $actor, $data): QueryRequest {
+            $lockedQueryRequest = QueryRequest::query()
+                ->lockForUpdate()
+                ->findOrFail($queryRequest->id);
+
+            if ($lockedQueryRequest->request_kind !== QueryRequestKind::SingleExecution
+                || $lockedQueryRequest->status !== QueryRequestStatus::Failed) {
+                throw ValidationException::withMessages([
+                    'query_request' => 'Only failed deployment batches can be resolved.',
+                ]);
+            }
+
+            if ($lockedQueryRequest->failure_resolved_at !== null) {
+                throw ValidationException::withMessages([
+                    'query_request' => 'This failed deployment batch has already been resolved.',
+                ]);
+            }
+
+            $resolution = FailureResolution::from($data['resolution']);
+            $replacementQueryRequest = null;
+
+            if ($resolution === FailureResolution::Replaced) {
+                $replacementQueryRequest = QueryRequest::query()
+                    ->with(['databaseConnection', 'accessConnections', 'statements.databaseConnection'])
+                    ->lockForUpdate()
+                    ->find($data['replacement_query_request_id'] ?? null);
+
+                if ($replacementQueryRequest === null
+                    || $replacementQueryRequest->id === $lockedQueryRequest->id
+                    || $replacementQueryRequest->request_kind !== QueryRequestKind::SingleExecution
+                    || $replacementQueryRequest->database_connection_id !== $lockedQueryRequest->database_connection_id
+                    || $replacementQueryRequest->status === QueryRequestStatus::Failed
+                    || ! $actor->can('view', $replacementQueryRequest)) {
+                    throw ValidationException::withMessages([
+                        'replacement_query_request_id' => 'Choose a visible, non-failed deployment batch for the same database target.',
+                    ]);
+                }
+            }
+
+            $resolvedAt = now();
+            $lockedQueryRequest->forceFill([
+                'failure_resolved_by_id' => $actor->id,
+                'failure_resolved_at' => $resolvedAt,
+                'failure_resolution' => $resolution,
+                'failure_resolution_note' => $data['note'] ?? null,
+                'replacement_query_request_id' => $replacementQueryRequest?->id,
+            ])->save();
+
+            $this->auditLogger->log('query_request.failure_resolved', $actor, $lockedQueryRequest, [
+                'resolution' => $resolution->value,
+                'note' => $data['note'] ?? null,
+                'replacement_query_request_id' => $replacementQueryRequest?->id,
+            ]);
+
+            return $lockedQueryRequest->refresh();
+        }, attempts: 3);
     }
 
     private function retryFromPosition(QueryRequest $queryRequest): int

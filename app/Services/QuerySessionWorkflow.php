@@ -27,6 +27,7 @@ class QuerySessionWorkflow
         private readonly AuditLogger $auditLogger,
         private readonly QueryGuard $queryGuard,
         private readonly DatabaseQueryExecutor $executor,
+        private readonly QueryResultSnapshotStore $resultSnapshotStore,
         private readonly NotificationDispatcher $notificationDispatcher,
         private readonly LeaseWorkflow $nativeProxyLeaseWorkflow,
         private readonly ApplicationSettings $applicationSettings,
@@ -121,7 +122,7 @@ class QuerySessionWorkflow
     }
 
     /**
-     * @return array{query:QuerySessionQuery, result:array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_truncated?:bool}|null}
+     * @return array{query:QuerySessionQuery, result:array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_rows:array<int, array<string, mixed>>, result_byte_count:int, result_truncated?:bool}|null}
      *
      * @throws ValidationException
      */
@@ -184,6 +185,18 @@ class QuerySessionWorkflow
                 'result_truncated' => $result['result_truncated'] ?? false,
                 'sample_rows' => $result['sample_rows'],
             ])->save();
+
+            if ($queryType === QueryType::Read) {
+                $resultRows = $result['result_rows'];
+                $resultByteCount = $result['result_byte_count'];
+
+                $this->resultSnapshotStore->store(
+                    $sessionQuery,
+                    $resultRows,
+                    $resultByteCount,
+                    $querySession->expires_at,
+                );
+            }
 
             QueryExecution::query()->create([
                 'query_request_id' => $querySession->query_request_id,

@@ -8,6 +8,7 @@ use App\Services\ApplicationDatabaseMigrationFence;
 use App\Services\AuditLogger;
 use App\Services\NativeProxy\LeaseWorkflow;
 use App\Services\NotificationDispatcher;
+use App\Services\QueryResultSnapshotStore;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -20,22 +21,25 @@ class ExpireQuerySessions extends Command
         AuditLogger $auditLogger,
         NotificationDispatcher $notificationDispatcher,
         LeaseWorkflow $leaseWorkflow,
+        QueryResultSnapshotStore $resultSnapshotStore,
         ApplicationDatabaseMigrationFence $fence,
     ): int {
         $count = 0;
 
-        $ran = $fence->runScheduledMutation(function () use ($auditLogger, $leaseWorkflow, $notificationDispatcher, &$count): void {
+        $ran = $fence->runScheduledMutation(function () use ($auditLogger, $leaseWorkflow, $notificationDispatcher, $resultSnapshotStore, &$count): void {
             QuerySession::query()
                 ->with('queryRequest')
                 ->whereNull('ended_at')
                 ->where('expires_at', '<=', now())
                 ->orderBy('expires_at')
-                ->each(function (QuerySession $querySession) use ($auditLogger, $notificationDispatcher, $leaseWorkflow, &$count): void {
+                ->each(function (QuerySession $querySession) use ($auditLogger, $notificationDispatcher, $leaseWorkflow, $resultSnapshotStore, &$count): void {
                     $endedAt = now();
 
                     $querySession->forceFill([
                         'ended_at' => $endedAt,
                     ])->save();
+
+                    $resultSnapshotStore->forgetForSession($querySession);
 
                     if ($querySession->queryRequest->status === QueryRequestStatus::Running) {
                         $querySession->queryRequest->forceFill([

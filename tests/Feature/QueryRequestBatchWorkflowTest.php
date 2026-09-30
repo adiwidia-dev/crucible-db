@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\ExecutionStatus;
+use App\Enums\FailureResolution;
 use App\Enums\PreflightStatus;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
@@ -1069,6 +1070,69 @@ class QueryRequestBatchWorkflowTest extends TestCase
             'action' => 'query_request.retry_created',
             'auditable_id' => $retryRequest->id,
         ]);
+    }
+
+    public function test_failed_deployment_batch_can_be_resolved_with_a_replacement_batch(): void
+    {
+        $requester = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+        $failedQueryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Failed,
+            'completed_at' => now()->subMinute(),
+        ]);
+        $replacementQueryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Approved,
+        ]);
+
+        $this->actingAs($requester)
+            ->from(route('query-requests.show', $failedQueryRequest))
+            ->post(route('query-requests.resolve-failure', $failedQueryRequest), [
+                'resolution' => FailureResolution::Replaced->value,
+                'replacement_query_request_id' => $replacementQueryRequest->id,
+                'note' => 'A corrected deployment batch was created.',
+            ])
+            ->assertRedirect(route('query-requests.show', $failedQueryRequest));
+
+        $failedQueryRequest->refresh();
+
+        $this->assertSame(QueryRequestStatus::Failed, $failedQueryRequest->status);
+        $this->assertSame(FailureResolution::Replaced, $failedQueryRequest->failure_resolution);
+        $this->assertSame($replacementQueryRequest->id, $failedQueryRequest->replacement_query_request_id);
+        $this->assertSame($requester->id, $failedQueryRequest->failure_resolved_by_id);
+        $this->assertNotNull($failedQueryRequest->failure_resolved_at);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'query_request.failure_resolved',
+            'auditable_id' => $failedQueryRequest->id,
+        ]);
+    }
+
+    public function test_failed_deployment_batch_cannot_be_resolved_with_a_batch_from_another_target(): void
+    {
+        $requester = $this->adminUser();
+        $failedQueryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'status' => QueryRequestStatus::Failed,
+            'completed_at' => now()->subMinute(),
+        ]);
+        $replacementQueryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'status' => QueryRequestStatus::Approved,
+        ]);
+
+        $this->actingAs($requester)
+            ->from(route('query-requests.show', $failedQueryRequest))
+            ->post(route('query-requests.resolve-failure', $failedQueryRequest), [
+                'resolution' => FailureResolution::Replaced->value,
+                'replacement_query_request_id' => $replacementQueryRequest->id,
+            ])
+            ->assertRedirect(route('query-requests.show', $failedQueryRequest))
+            ->assertSessionHasErrors('replacement_query_request_id');
+
+        $this->assertNull($failedQueryRequest->fresh()->failure_resolved_at);
     }
 
     public function test_completed_query_access_request_creates_a_linked_request_with_the_same_targets(): void

@@ -4,13 +4,13 @@ import {
     ArrowUp,
     CalendarClock,
     Check,
+    CirclePlus,
     CircleCheck,
     CircleX,
     Clock3,
     FileCode2,
     FileSearch,
     KeyRound,
-    Plus,
     ShieldAlert,
     Sparkles,
     Terminal,
@@ -18,7 +18,7 @@ import {
     TriangleAlert,
     X,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { format } from 'sql-formatter';
 import QueryRequestController from '@/actions/App/Http/Controllers/QueryRequestController';
 import {
@@ -333,6 +333,33 @@ export default function QueryRequestCreate({
     const [statements, setStatements] = useState<StatementDraft[]>(() =>
         initialStatements(query_request, defaultConnectionId),
     );
+    const [focusedStatementKey, setFocusedStatementKey] = useState<
+        string | null
+    >(null);
+
+    useEffect(() => {
+        if (focusedStatementKey === null) {
+            return;
+        }
+
+        const animationFrame = window.requestAnimationFrame(() => {
+            const statementElement = document.querySelector<HTMLElement>(
+                `[data-statement-key="${focusedStatementKey}"]`,
+            );
+
+            statementElement?.scrollIntoView({
+                behavior: window.matchMedia('(prefers-reduced-motion: reduce)')
+                    .matches
+                    ? 'auto'
+                    : 'smooth',
+                block: 'center',
+            });
+            setFocusedStatementKey(null);
+        });
+
+        return () => window.cancelAnimationFrame(animationFrame);
+    }, [focusedStatementKey]);
+
     const policyPreviews = useDeploymentPolicyPreview(
         statements.map((statement) => ({
             sql: statement.sql,
@@ -547,16 +574,27 @@ export default function QueryRequestCreate({
         );
     }
 
-    function addStatement(): void {
-        setStatements((current) => [
-            ...current,
-            {
-                key: `statement-${Date.now()}-${current.length}`,
+    function insertStatementAfter(index: number): void {
+        const insertedStatementKey = `statement-${Date.now()}-${index}`;
+
+        setFocusedStatementKey(insertedStatementKey);
+        setStatements((current) => {
+            const precedingStatement = current[index];
+            const insertedStatement = {
+                key: insertedStatementKey,
                 sql: '',
                 databaseConnectionId:
-                    current.at(-1)?.databaseConnectionId ?? defaultConnectionId,
-            },
-        ]);
+                    precedingStatement?.databaseConnectionId ??
+                    current.at(-1)?.databaseConnectionId ??
+                    defaultConnectionId,
+            };
+
+            return [
+                ...current.slice(0, index + 1),
+                insertedStatement,
+                ...current.slice(index + 1),
+            ];
+        });
     }
 
     function removeStatement(index: number): void {
@@ -566,13 +604,19 @@ export default function QueryRequestCreate({
     }
 
     function moveStatement(index: number, direction: -1 | 1): void {
+        const target = index + direction;
+        const movedStatementKey = statements[index]?.key;
+
+        if (
+            target < 0 ||
+            target >= statements.length ||
+            movedStatementKey === undefined
+        ) {
+            return;
+        }
+
+        setFocusedStatementKey(movedStatementKey);
         setStatements((current) => {
-            const target = index + direction;
-
-            if (target < 0 || target >= current.length) {
-                return current;
-            }
-
             const reordered = [...current];
             [reordered[index], reordered[target]] = [
                 reordered[target],
@@ -1184,167 +1228,187 @@ export default function QueryRequestCreate({
                                             </div>
                                         </section>
                                         {statements.map((statement, index) => (
-                                            <section
-                                                key={statement.key}
-                                                className="overflow-hidden border bg-background sm:rounded-md"
-                                            >
-                                                <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
-                                                    <div className="flex items-center gap-2 text-sm font-medium">
-                                                        <span className="flex size-6 items-center justify-center rounded-full border bg-background font-mono text-xs">
-                                                            {index + 1}
-                                                        </span>
-                                                        <span>
-                                                            Statement{' '}
-                                                            {index + 1}
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            aria-label="Move statement up"
-                                                            disabled={
-                                                                index === 0
-                                                            }
-                                                            onClick={() =>
-                                                                moveStatement(
-                                                                    index,
-                                                                    -1,
-                                                                )
-                                                            }
-                                                        >
-                                                            <ArrowUp />
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            aria-label="Move statement down"
-                                                            disabled={
-                                                                index ===
-                                                                statements.length -
+                                            <Fragment key={statement.key}>
+                                                <section
+                                                    data-statement-key={
+                                                        statement.key
+                                                    }
+                                                    className="overflow-hidden border bg-background sm:rounded-md"
+                                                >
+                                                    <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-3 py-2">
+                                                        <div className="flex items-center gap-2 text-sm font-medium">
+                                                            <span className="flex size-6 items-center justify-center rounded-full border bg-background font-mono text-xs">
+                                                                {index + 1}
+                                                            </span>
+                                                            <span>
+                                                                Statement{' '}
+                                                                {index + 1}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                aria-label="Move statement up"
+                                                                disabled={
+                                                                    index === 0
+                                                                }
+                                                                onClick={() =>
+                                                                    moveStatement(
+                                                                        index,
+                                                                        -1,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <ArrowUp />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                aria-label="Move statement down"
+                                                                disabled={
+                                                                    index ===
+                                                                    statements.length -
+                                                                        1
+                                                                }
+                                                                onClick={() =>
+                                                                    moveStatement(
+                                                                        index,
+                                                                        1,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <ArrowDown />
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() =>
+                                                                    formatStatement(
+                                                                        index,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Sparkles />
+                                                                Format
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                aria-label="Remove statement"
+                                                                disabled={
+                                                                    statements.length ===
                                                                     1
-                                                            }
-                                                            onClick={() =>
-                                                                moveStatement(
-                                                                    index,
-                                                                    1,
-                                                                )
-                                                            }
-                                                        >
-                                                            <ArrowDown />
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                formatStatement(
-                                                                    index,
-                                                                )
-                                                            }
-                                                        >
-                                                            <Sparkles />
-                                                            Format
-                                                        </Button>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            aria-label="Remove statement"
-                                                            disabled={
-                                                                statements.length ===
-                                                                1
-                                                            }
-                                                            onClick={() =>
-                                                                removeStatement(
-                                                                    index,
-                                                                )
-                                                            }
-                                                        >
-                                                            <Trash2 />
-                                                        </Button>
+                                                                }
+                                                                onClick={() =>
+                                                                    removeStatement(
+                                                                        index,
+                                                                    )
+                                                                }
+                                                            >
+                                                                <Trash2 />
+                                                            </Button>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                <input
-                                                    type="hidden"
-                                                    name={`statements[${index}][sql]`}
-                                                    value={statement.sql}
-                                                />
-                                                <div className="border-b px-3 py-3">
-                                                    <ConnectionCombobox
-                                                        connections={
-                                                            connections
-                                                        }
-                                                        name={`statements[${index}][database_connection_id]`}
-                                                        label="Target connection"
-                                                        description="This statement runs on the selected target."
-                                                        value={
-                                                            statement.databaseConnectionId
-                                                        }
-                                                        onValueChange={(
-                                                            value,
-                                                        ) =>
-                                                            updateStatementConnection(
-                                                                index,
+                                                    <input
+                                                        type="hidden"
+                                                        name={`statements[${index}][sql]`}
+                                                        value={statement.sql}
+                                                    />
+                                                    <div className="border-b px-3 py-3">
+                                                        <ConnectionCombobox
+                                                            connections={
+                                                                connections
+                                                            }
+                                                            name={`statements[${index}][database_connection_id]`}
+                                                            label="Target connection"
+                                                            description="This statement runs on the selected target."
+                                                            value={
+                                                                statement.databaseConnectionId
+                                                            }
+                                                            onValueChange={(
                                                                 value,
+                                                            ) =>
+                                                                updateStatementConnection(
+                                                                    index,
+                                                                    value,
+                                                                )
+                                                            }
+                                                            error={
+                                                                errors[
+                                                                    `statements.${index}.database_connection_id`
+                                                                ]
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <SqlEditor
+                                                        value={statement.sql}
+                                                        onChange={(sql) =>
+                                                            updateStatement(
+                                                                index,
+                                                                sql,
                                                             )
                                                         }
-                                                        error={
-                                                            errors[
-                                                                `statements.${index}.database_connection_id`
-                                                            ]
+                                                        driver={
+                                                            connections.find(
+                                                                (connection) =>
+                                                                    String(
+                                                                        connection.id,
+                                                                    ) ===
+                                                                    statement.databaseConnectionId,
+                                                            )?.driver
                                                         }
-                                                    />
-                                                </div>
-                                                <SqlEditor
-                                                    value={statement.sql}
-                                                    onChange={(sql) =>
-                                                        updateStatement(
-                                                            index,
-                                                            sql,
-                                                        )
-                                                    }
-                                                    driver={
-                                                        connections.find(
-                                                            (connection) =>
-                                                                String(
-                                                                    connection.id,
-                                                                ) ===
-                                                                statement.databaseConnectionId,
-                                                        )?.driver
-                                                    }
-                                                    minHeight="13rem"
-                                                    placeholder={`-- Statement ${index + 1}\nSELECT * FROM table_name`}
-                                                />
-                                                <div className="border-t px-3 py-2">
-                                                    <p className="mb-1 text-xs text-muted-foreground">
-                                                        {statement.sql.length.toLocaleString()}{' '}
-                                                        /{' '}
-                                                        {MAX_SQL_STATEMENT_LENGTH.toLocaleString()}{' '}
-                                                        characters
-                                                    </p>
-                                                    <InputError
-                                                        message={
-                                                            errors[
-                                                                `statements.${index}.sql`
-                                                            ]
+                                                        autoFocus={
+                                                            statement.key ===
+                                                            focusedStatementKey
                                                         }
+                                                        minHeight="13rem"
+                                                        placeholder={`-- Statement ${index + 1}\nSELECT * FROM table_name`}
                                                     />
-                                                </div>
-                                            </section>
+                                                    <div className="border-t px-3 py-2">
+                                                        <p className="mb-1 text-xs text-muted-foreground">
+                                                            {statement.sql.length.toLocaleString()}{' '}
+                                                            /{' '}
+                                                            {MAX_SQL_STATEMENT_LENGTH.toLocaleString()}{' '}
+                                                            characters
+                                                        </p>
+                                                        <InputError
+                                                            message={
+                                                                errors[
+                                                                    `statements.${index}.sql`
+                                                                ]
+                                                            }
+                                                        />
+                                                    </div>
+                                                </section>
+                                                {statements.length < 50 ? (
+                                                    <div className="relative flex h-8 items-center justify-center">
+                                                        <div
+                                                            aria-hidden="true"
+                                                            className="absolute inset-x-0 border-t"
+                                                        />
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="relative z-10 h-7 border-primary/35 bg-background px-3 text-sm font-medium text-primary shadow-none hover:border-primary/60 hover:bg-primary/5 hover:text-primary"
+                                                            onClick={() =>
+                                                                insertStatementAfter(
+                                                                    index,
+                                                                )
+                                                            }
+                                                        >
+                                                            <CirclePlus />
+                                                            Add below
+                                                        </Button>
+                                                    </div>
+                                                ) : null}
+                                            </Fragment>
                                         ))}
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            className="self-start border-dashed"
-                                            onClick={addStatement}
-                                            disabled={statements.length >= 50}
-                                        >
-                                            <Plus />
-                                            Add statement
-                                        </Button>
                                     </div>
                                 </section>
                             ) : (

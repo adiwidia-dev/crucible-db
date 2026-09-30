@@ -1,5 +1,6 @@
-import { useHttp } from '@inertiajs/react';
+import { router, useHttp } from '@inertiajs/react';
 import { useCallback, useState } from 'react';
+import { create as createPasswordConfirmation } from '@/routes/security/password-confirmation';
 import { qrCode, recoveryCodes, secretKey } from '@/routes/two-factor';
 
 export type UseTwoFactorAuthReturn = {
@@ -74,11 +75,23 @@ export const useTwoFactorAuth = (): UseTwoFactorAuthReturn => {
     }, [submit]);
 
     const fetchRecoveryCodes = useCallback(async (): Promise<void> => {
+        let passwordConfirmationRequired = false;
+
         try {
             setErrors([]);
-            const codes = (await submit(recoveryCodes())) as string[];
+            const codes = (await submit(recoveryCodes(), {
+                onHttpException: (response) => {
+                    passwordConfirmationRequired = response.status === 423;
+                },
+            })) as string[];
             setRecoveryCodesList(codes);
         } catch {
+            if (passwordConfirmationRequired) {
+                router.visit(createPasswordConfirmation());
+
+                return;
+            }
+
             setErrors((prev) => [...prev, 'Failed to fetch recovery codes']);
             setRecoveryCodesList([]);
         }
