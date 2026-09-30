@@ -131,6 +131,12 @@ class DashboardTest extends TestCase
         $scheduledRequest = QueryRequest::factory()->scheduled()->create([
             'requester_id' => $requester->id,
         ]);
+        $readyRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'status' => QueryRequestStatus::Approved,
+            'approved_at' => now()->subMinute(),
+            'dispatched_at' => null,
+        ]);
         $failedRequest = QueryRequest::factory()->create([
             'requester_id' => $requester->id,
             'status' => QueryRequestStatus::Failed,
@@ -163,10 +169,11 @@ class DashboardTest extends TestCase
                 ->component('dashboard')
                 ->where('summary.pending_reviews', 1)
                 ->where('summary.policy_reviews', 1)
+                ->where('summary.ready', 1)
                 ->where('summary.scheduled', 1)
                 ->where('summary.failed', 1)
                 ->where('summary.active_sessions', 1)
-                ->has('operational_queue', 5)
+                ->has('operational_queue', 6)
                 ->where('operational_queue.0.id', $failedRequest->id)
                 ->where('operational_queue.0.type', 'failed_execution')
                 ->where('operational_queue.0.detail', 'Permission denied.')
@@ -175,16 +182,42 @@ class DashboardTest extends TestCase
                 ->where('operational_queue.1.requested_access_mode', AccessMode::Write->value)
                 ->where('operational_queue.2.id', $candidate->id)
                 ->where('operational_queue.2.type', 'policy_review')
-                ->where('operational_queue.3.id', $session->id)
-                ->where('operational_queue.3.type', 'active_session')
-                ->where('operational_queue.4.id', $scheduledRequest->id)
-                ->where('operational_queue.4.type', 'scheduled_execution')
+                ->where('operational_queue.3.id', $readyRequest->id)
+                ->where('operational_queue.3.type', 'ready_execution')
+                ->where('operational_queue.4.id', $session->id)
+                ->where('operational_queue.4.type', 'active_session')
+                ->where('operational_queue.5.id', $scheduledRequest->id)
+                ->where('operational_queue.5.type', 'scheduled_execution')
                 ->missing('pending_reviews')
                 ->missing('scheduled_requests')
                 ->missing('failed_requests')
                 ->missing('expiring_sessions')
                 ->missing('policy_review_candidates')
                 ->where('policy_review_summary.pending_count', 1));
+    }
+
+    public function test_dashboard_excludes_resolved_failed_deployment_batches_from_the_operational_queue(): void
+    {
+        $admin = User::factory()
+            ->withRole(Role::factory()->admin()->create())
+            ->create();
+        $failedRequest = QueryRequest::factory()->create([
+            'status' => QueryRequestStatus::Failed,
+            'completed_at' => now(),
+            'failure_resolved_by_id' => $admin->id,
+            'failure_resolved_at' => now(),
+            'failure_resolution' => 'investigated',
+            'failure_resolution_note' => 'The target already contains the intended schema change.',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.failed', 0)
+                ->where('operational_queue', []));
+
+        $this->assertSame(QueryRequestStatus::Failed, $failedRequest->fresh()->status);
     }
 
     public function test_dashboard_surfaces_cached_native_proxy_health_without_secrets_or_statement_data(): void

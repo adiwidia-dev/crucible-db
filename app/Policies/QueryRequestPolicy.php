@@ -118,6 +118,16 @@ class QueryRequestPolicy
             || $queryRequest->dispatched_by_id === $user->id;
     }
 
+    public function resolveFailure(User $user, QueryRequest $queryRequest): bool
+    {
+        return $queryRequest->request_kind === QueryRequestKind::SingleExecution
+            && $queryRequest->status === QueryRequestStatus::Failed
+            && $queryRequest->failure_resolved_at === null
+            && ($user->isAdmin()
+                || $queryRequest->requester_id === $user->id
+                || $queryRequest->dispatched_by_id === $user->id);
+    }
+
     /**
      * @return Collection<int, DatabaseConnection>
      */

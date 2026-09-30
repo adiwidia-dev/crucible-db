@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Enums\AccessTransport;
 use App\Enums\DatabaseDriver;
 use App\Enums\ExecutionStatus;
+use App\Enums\FailureResolution;
 use App\Enums\QueryRequestKind;
 use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
 use App\Http\Requests\CancelQueryRequestRequest;
+use App\Http\Requests\ResolveFailedQueryRequestRequest;
 use App\Http\Requests\RetryQueryRequestRequest;
 use App\Http\Requests\StoreQueryRequestRequest;
 use App\Http\Requests\UpdateQueryRequestRequest;
@@ -25,6 +27,7 @@ use App\Services\DeploymentPolicyPreview;
 use App\Services\QueryRequestWorkflow;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -145,10 +148,12 @@ class QueryRequestController extends Controller
             'requester',
             'approvedBy',
             'cancelledBy',
+            'failureResolvedBy',
             'databaseConnection',
             'accessConnections',
             'retryOf',
             'retries',
+            'replacementQueryRequest',
             'reviews.reviewer',
             'statements.databaseConnection',
             'sqlPolicyCandidateOccurrences.candidate',
@@ -209,6 +214,10 @@ class QueryRequestController extends Controller
             ->when(! request()->user()->isAdmin(), fn ($query) => $query->where('user_id', request()->user()->id))
             ->latest('started_at')
             ->first();
+        $canResolveFailure = request()->user()->can('resolveFailure', $queryRequest);
+        $replacementCandidates = $canResolveFailure
+            ? $this->replacementCandidates($queryRequest, request()->user())
+            : collect();
 
         return Inertia::render('query-requests/show', [
             'query_request' => [
@@ -265,6 +274,17 @@ class QueryRequestController extends Controller
                 'cancelled_at' => $queryRequest->cancelled_at?->toIso8601String(),
                 'cancellation_reason' => $queryRequest->cancellation_reason,
                 'last_error' => $queryRequest->last_error,
+                'failure_resolution' => $queryRequest->failure_resolved_at ? [
+                    'resolution' => $queryRequest->failure_resolution?->value,
+                    'note' => $queryRequest->failure_resolution_note,
+                    'resolved_at' => $queryRequest->failure_resolved_at->toIso8601String(),
+                    'resolved_by' => $queryRequest->failureResolvedBy?->name,
+                    'replacement_query_request' => $queryRequest->replacementQueryRequest ? [
+                        'id' => $queryRequest->replacementQueryRequest->id,
+                        'title' => $queryRequest->replacementQueryRequest->title,
+                        'status' => $queryRequest->replacementQueryRequest->status->value,
+                    ] : null,
+                ] : null,
                 'result_summary' => $queryRequest->result_summary,
                 'preflight' => $this->preflightSummary($queryRequest),
                 'policy_review' => $this->policyReviewSummary($queryRequest),
@@ -318,6 +338,8 @@ class QueryRequestController extends Controller
             'can_dispatch' => request()->user()->can('dispatch', $queryRequest),
             'can_cancel' => request()->user()->can('cancel', $queryRequest),
             'can_retry' => request()->user()->can('retry', $queryRequest),
+            'can_resolve_failure' => $canResolveFailure,
+            'replacement_candidates' => $replacementCandidates,
             'retry_strategy' => $this->retryStrategy($queryRequest),
             'can_start_session' => $activeSession === null && request()->user()->can('startSession', $queryRequest),
             'can_delete' => request()->user()->can('delete', $queryRequest),
@@ -392,6 +414,24 @@ class QueryRequestController extends Controller
         Inertia::flash('toast', [
             'type' => 'success',
             'message' => 'Read-only retry queued from the failed statement.',
+        ]);
+
+        return back();
+    }
+
+    public function resolveFailure(ResolveFailedQueryRequestRequest $request, QueryRequest $queryRequest, QueryRequestWorkflow $workflow): RedirectResponse
+    {
+        $resolvedQueryRequest = $workflow->resolveFailure(
+            $queryRequest,
+            $request->user(),
+            $request->validated(),
+        );
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => $resolvedQueryRequest->failure_resolution === FailureResolution::Replaced
+                ? 'Failure resolved and linked to its replacement deployment batch.'
+                : 'Failure resolution recorded. The batch remains in execution history.',
         ]);
 
         return back();
@@ -529,6 +569,30 @@ class QueryRequestController extends Controller
         return $queryRequest->query_type === QueryType::Read
             ? 'resume_read_only'
             : 'create_retry_request';
+    }
+
+    /**
+     * @return Collection<int, array{id: int, title: string, status: string}>
+     */
+    private function replacementCandidates(QueryRequest $failedQueryRequest, User $user): Collection
+    {
+        return QueryRequest::query()
+            ->with(['databaseConnection', 'accessConnections', 'statements.databaseConnection'])
+            ->where('request_kind', QueryRequestKind::SingleExecution)
+            ->where('database_connection_id', $failedQueryRequest->database_connection_id)
+            ->where('status', '!=', QueryRequestStatus::Failed)
+            ->whereKeyNot($failedQueryRequest->id)
+            ->where('created_at', '>=', $failedQueryRequest->completed_at ?? $failedQueryRequest->created_at)
+            ->latest()
+            ->limit(50)
+            ->get()
+            ->filter(fn (QueryRequest $candidate): bool => $user->can('view', $candidate))
+            ->map(fn (QueryRequest $candidate): array => [
+                'id' => $candidate->id,
+                'title' => $candidate->title,
+                'status' => $candidate->status->value,
+            ])
+            ->values();
     }
 
     public function edit(QueryRequest $queryRequest, ApplicationSettings $settings, DeploymentPolicyPreview $preview): Response

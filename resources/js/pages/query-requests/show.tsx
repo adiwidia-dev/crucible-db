@@ -128,6 +128,17 @@ type QueryRequest = {
     cancelled_at: string | null;
     cancellation_reason: string | null;
     last_error: string | null;
+    failure_resolution: {
+        resolution: 'replaced' | 'investigated' | 'not_applicable';
+        note: string | null;
+        resolved_at: string;
+        resolved_by: string | null;
+        replacement_query_request: {
+            id: number;
+            title: string;
+            status: QueryRequestStatus;
+        } | null;
+    } | null;
     result_summary: Record<string, unknown> | null;
     preflight: {
         status:
@@ -206,6 +217,12 @@ type Props = {
     can_dispatch: boolean;
     can_cancel: boolean;
     can_retry: boolean;
+    can_resolve_failure: boolean;
+    replacement_candidates: Array<{
+        id: number;
+        title: string;
+        status: QueryRequestStatus;
+    }>;
     retry_strategy:
         'resume_read_only' | 'create_retry_request' | 'renew_access' | null;
     can_start_session: boolean;
@@ -327,6 +344,8 @@ export default function QueryRequestShow({
     can_dispatch,
     can_cancel,
     can_retry,
+    can_resolve_failure,
+    replacement_candidates,
     retry_strategy,
     can_start_session,
     can_delete,
@@ -367,6 +386,11 @@ export default function QueryRequestShow({
         [],
     );
     const [isPreflightExpanded, setIsPreflightExpanded] = useState(false);
+    const [isFailureResolutionDialogOpen, setIsFailureResolutionDialogOpen] =
+        useState(false);
+    const [failureResolution, setFailureResolution] = useState<
+        'replaced' | 'investigated' | 'not_applicable'
+    >('replaced');
     const executionToastStorageKey = `query-request:${query_request.id}:awaiting-execution`;
     const [awaitingExecution, setAwaitingExecution] = useState(
         () =>
@@ -479,30 +503,32 @@ export default function QueryRequestShow({
         query_request.request_kind,
     ]);
     const actionSummary =
-        query_request.status === 'cancelled' ||
-        (can_retry && retry_strategy === 'renew_access')
-            ? null
-            : can_review
-              ? 'Review is required before this request can proceed.'
-              : approvedAfterSchedule
-                ? `Scheduled for ${scheduledAtLabel}. It was approved after the planned time and will not run automatically.`
-                : query_request.active_session
-                  ? isNativeClientAccess
-                      ? 'A native client session is active.'
-                      : 'A Query Access session is active.'
-                  : can_start_session
-                    ? 'This approved request is ready to start a session.'
-                    : can_dispatch
-                      ? 'This approved batch is ready for ordered execution.'
-                      : can_retry && retry_strategy === 'resume_read_only'
-                        ? 'Execution stopped. Retry from the failed read-only statement.'
-                        : can_retry
-                          ? 'Create a linked retry request for fresh approval.'
-                          : query_request.status === 'failed'
-                            ? 'Execution stopped. Review the failed statement below.'
-                            : query_request.status === 'completed'
-                              ? 'This request has completed.'
-                              : 'No action is currently available.';
+        query_request.failure_resolution !== null
+            ? 'The failure is resolved and remains in the execution history.'
+            : query_request.status === 'cancelled' ||
+                (can_retry && retry_strategy === 'renew_access')
+              ? null
+              : can_review
+                ? 'Review is required before this request can proceed.'
+                : approvedAfterSchedule
+                  ? `Scheduled for ${scheduledAtLabel}. It was approved after the planned time and will not run automatically.`
+                  : query_request.active_session
+                    ? isNativeClientAccess
+                        ? 'A native client session is active.'
+                        : 'A Query Access session is active.'
+                    : can_start_session
+                      ? 'This approved request is ready to start a session.'
+                      : can_dispatch
+                        ? 'This approved batch is ready for ordered execution.'
+                        : can_retry && retry_strategy === 'resume_read_only'
+                          ? 'Execution stopped. Retry from the failed read-only statement.'
+                          : can_retry
+                            ? 'Create a linked retry request for fresh approval.'
+                            : query_request.status === 'failed'
+                              ? 'Execution stopped. Review the failed statement below.'
+                              : query_request.status === 'completed'
+                                ? 'This request has completed.'
+                                : 'No action is currently available.';
 
     function toggleExecutionSql(executionId: number): void {
         setExpandedExecutionIds((current) =>
@@ -804,6 +830,198 @@ export default function QueryRequestShow({
                                                 )}
                                             </Form>
                                         </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
+                            )}
+                            {can_resolve_failure && (
+                                <Dialog
+                                    open={isFailureResolutionDialogOpen}
+                                    onOpenChange={
+                                        setIsFailureResolutionDialogOpen
+                                    }
+                                >
+                                    <DialogTrigger asChild>
+                                        <Button variant="outline" size="sm">
+                                            <CircleCheck />
+                                            Resolve failure
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>
+                                                Resolve this failure?
+                                            </DialogTitle>
+                                            <DialogDescription>
+                                                This records how the failed
+                                                deployment was handled and
+                                                removes it from the live
+                                                operational queue. Its execution
+                                                history remains unchanged.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <Form
+                                            {...QueryRequestController.resolveFailure.form(
+                                                query_request.id,
+                                            )}
+                                            options={{ preserveScroll: true }}
+                                            onSuccess={() =>
+                                                setIsFailureResolutionDialogOpen(
+                                                    false,
+                                                )
+                                            }
+                                            className="grid gap-4"
+                                        >
+                                            {({ processing, errors }) => (
+                                                <>
+                                                    <div className="grid gap-2">
+                                                        <Label htmlFor="failure-resolution">
+                                                            Resolution
+                                                        </Label>
+                                                        <select
+                                                            id="failure-resolution"
+                                                            name="resolution"
+                                                            value={
+                                                                failureResolution
+                                                            }
+                                                            onChange={(event) =>
+                                                                setFailureResolution(
+                                                                    event.target
+                                                                        .value as
+                                                                        | 'replaced'
+                                                                        | 'investigated'
+                                                                        | 'not_applicable',
+                                                                )
+                                                            }
+                                                            className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                                        >
+                                                            <option value="replaced">
+                                                                Replaced by a
+                                                                new deployment
+                                                            </option>
+                                                            <option value="investigated">
+                                                                Investigated —
+                                                                no retry needed
+                                                            </option>
+                                                            <option value="not_applicable">
+                                                                Not applicable
+                                                            </option>
+                                                        </select>
+                                                        <InputError
+                                                            message={
+                                                                errors.resolution
+                                                            }
+                                                        />
+                                                    </div>
+                                                    {failureResolution ===
+                                                        'replaced' && (
+                                                        <div className="grid gap-2">
+                                                            <Label htmlFor="replacement-query-request">
+                                                                Replacement
+                                                                deployment batch
+                                                            </Label>
+                                                            <select
+                                                                id="replacement-query-request"
+                                                                name="replacement_query_request_id"
+                                                                required
+                                                                defaultValue=""
+                                                                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                                            >
+                                                                <option
+                                                                    value=""
+                                                                    disabled
+                                                                >
+                                                                    Select the
+                                                                    new
+                                                                    deployment
+                                                                    batch
+                                                                </option>
+                                                                {replacement_candidates.map(
+                                                                    (
+                                                                        candidate,
+                                                                    ) => (
+                                                                        <option
+                                                                            key={
+                                                                                candidate.id
+                                                                            }
+                                                                            value={
+                                                                                candidate.id
+                                                                            }
+                                                                        >
+                                                                            #
+                                                                            {
+                                                                                candidate.id
+                                                                            }{' '}
+                                                                            —{' '}
+                                                                            {
+                                                                                candidate.title
+                                                                            }
+                                                                        </option>
+                                                                    ),
+                                                                )}
+                                                            </select>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Only recent,
+                                                                visible batches
+                                                                for this
+                                                                database target
+                                                                are listed.
+                                                            </p>
+                                                            <InputError
+                                                                message={
+                                                                    errors.replacement_query_request_id
+                                                                }
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    <div className="grid gap-2">
+                                                        <Label htmlFor="failure-resolution-note">
+                                                            Notes
+                                                            {failureResolution !==
+                                                                'replaced' &&
+                                                                ' (required)'}
+                                                        </Label>
+                                                        <textarea
+                                                            id="failure-resolution-note"
+                                                            name="note"
+                                                            rows={3}
+                                                            required={
+                                                                failureResolution !==
+                                                                'replaced'
+                                                            }
+                                                            className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                                            placeholder="Record why this failure no longer needs action."
+                                                        />
+                                                        <InputError
+                                                            message={
+                                                                errors.note
+                                                            }
+                                                        />
+                                                        <InputError
+                                                            message={
+                                                                errors.query_request
+                                                            }
+                                                        />
+                                                    </div>
+                                                    <DialogFooter>
+                                                        <DialogClose asChild>
+                                                            <Button variant="outline">
+                                                                Cancel
+                                                            </Button>
+                                                        </DialogClose>
+                                                        <Button
+                                                            disabled={
+                                                                processing
+                                                            }
+                                                        >
+                                                            <CircleCheck />
+                                                            {processing
+                                                                ? 'Recording...'
+                                                                : 'Record resolution'}
+                                                        </Button>
+                                                    </DialogFooter>
+                                                </>
+                                            )}
+                                        </Form>
                                     </DialogContent>
                                 </Dialog>
                             )}
@@ -1149,6 +1367,52 @@ export default function QueryRequestShow({
                             )}
                     </div>
                 </section>
+
+                {query_request.failure_resolution && (
+                    <section className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-4 sm:p-5 dark:border-emerald-900/70 dark:bg-emerald-950/20">
+                        <div className="flex gap-3">
+                            <CircleCheck className="mt-0.5 size-5 shrink-0 text-emerald-700 dark:text-emerald-400" />
+                            <div className="min-w-0 space-y-1 text-sm">
+                                <h2 className="font-semibold">
+                                    Failure resolved
+                                </h2>
+                                <p className="text-muted-foreground">
+                                    {query_request.failure_resolution
+                                        .resolution === 'replaced'
+                                        ? 'Replaced by a new deployment batch.'
+                                        : query_request.failure_resolution
+                                                .resolution === 'investigated'
+                                          ? 'Investigated; no retry was needed.'
+                                          : 'Marked as not applicable.'}{' '}
+                                    {query_request.failure_resolution
+                                        .resolved_by &&
+                                        `Recorded by ${query_request.failure_resolution.resolved_by} on ${formatDate(query_request.failure_resolution.resolved_at, userTimezone)}.`}
+                                </p>
+                                {query_request.failure_resolution.note && (
+                                    <p>
+                                        {query_request.failure_resolution.note}
+                                    </p>
+                                )}
+                                {query_request.failure_resolution
+                                    .replacement_query_request && (
+                                    <Link
+                                        className="inline-flex font-medium text-primary underline underline-offset-4"
+                                        href={QueryRequestController.show(
+                                            query_request.failure_resolution
+                                                .replacement_query_request.id,
+                                        )}
+                                    >
+                                        View replacement batch #{' '}
+                                        {
+                                            query_request.failure_resolution
+                                                .replacement_query_request.id
+                                        }
+                                    </Link>
+                                )}
+                            </div>
+                        </div>
+                    </section>
+                )}
 
                 {query_request.request_kind === 'single_execution' &&
                     query_request.policy_review && (

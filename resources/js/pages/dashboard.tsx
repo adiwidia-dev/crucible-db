@@ -8,6 +8,7 @@ import {
     FileSearch,
     KeyRound,
     Plus,
+    Send,
     Wifi,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -44,9 +45,10 @@ type OperationalQueueType =
     | 'failed_execution'
     | 'pending_review'
     | 'policy_review'
+    | 'ready_execution'
     | 'scheduled_execution';
 
-type QueueFilter = 'all' | 'attention' | 'live' | 'scheduled';
+type QueueFilter = 'all' | 'attention' | 'live' | 'ready' | 'scheduled';
 
 type OperationalQueueItem = {
     id: number;
@@ -68,6 +70,7 @@ type DashboardProps = {
     summary: {
         pending_reviews: number;
         policy_reviews: number;
+        ready: number;
         scheduled: number;
         failed: number;
         active_sessions: number;
@@ -114,6 +117,13 @@ const queuePresentation: Record<OperationalQueueType, QueuePresentation> = {
         tone: 'success',
         status: 'active',
         filter: 'live',
+    },
+    ready_execution: {
+        label: 'Ready',
+        icon: Send,
+        tone: 'info',
+        status: 'approved',
+        filter: 'ready',
     },
     scheduled_execution: {
         label: 'Scheduled',
@@ -211,7 +221,7 @@ function QueueEmptyState({ filter }: { filter: QueueFilter }) {
     const copy = {
         all: {
             title: 'No operational work is waiting.',
-            detail: 'Reviews, failures, scheduled work, and live access will appear here.',
+            detail: 'Reviews, ready batches, failures, scheduled work, and live access will appear here.',
         },
         attention: {
             title: 'Nothing needs attention.',
@@ -220,6 +230,10 @@ function QueueEmptyState({ filter }: { filter: QueueFilter }) {
         scheduled: {
             title: 'No executions are scheduled.',
             detail: 'Approved work with a future execution time will appear here.',
+        },
+        ready: {
+            title: 'No deployment batches are ready to run.',
+            detail: 'Approved deployment batches appear here until they are dispatched.',
         },
         live: {
             title: 'No query-access sessions are active.',
@@ -371,7 +385,10 @@ export default function Dashboard({
     }, []);
 
     const attentionCount =
-        summary.pending_reviews + summary.policy_reviews + summary.failed;
+        summary.pending_reviews +
+        summary.policy_reviews +
+        summary.failed +
+        summary.ready;
     const queueFilterOptions: Array<{
         value: QueueFilter;
         label: string;
@@ -386,6 +403,11 @@ export default function Dashboard({
             value: 'attention',
             label: 'Attention',
             count: attentionCount,
+        },
+        {
+            value: 'ready',
+            label: 'Ready',
+            count: summary.ready,
         },
         {
             value: 'scheduled',
@@ -465,6 +487,18 @@ export default function Dashboard({
                             className="font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden"
                         >
                             Failed {summary.failed}
+                        </Link>
+                        <Link
+                            href={queryRequestsIndex({
+                                query: {
+                                    status: 'approved',
+                                    request_kind: 'single_execution',
+                                },
+                            })}
+                            prefetch
+                            className="font-medium text-primary hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-hidden"
+                        >
+                            Ready {summary.ready}
                         </Link>
                     </SummaryGroup>
 

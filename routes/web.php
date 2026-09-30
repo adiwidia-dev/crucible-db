@@ -111,6 +111,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('query-requests.cancel');
     Route::post('query-requests/{query_request}/retry', [QueryRequestController::class, 'retry'])
         ->name('query-requests.retry');
+    Route::post('query-requests/{query_request}/resolve-failure', [QueryRequestController::class, 'resolveFailure'])
+        ->name('query-requests.resolve-failure');
     Route::post('query-requests/{query_request}/subscription', [NotificationSubscriptionController::class, 'storeQueryRequest'])
         ->name('query-requests.subscription.store');
     Route::delete('query-requests/{query_request}/subscription', [NotificationSubscriptionController::class, 'destroyQueryRequest'])
