@@ -11,6 +11,7 @@ use App\Enums\QueryRequestStatus;
 use App\Enums\QueryType;
 use Database\Factories\QueryRequestFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -256,6 +257,93 @@ class QueryRequest extends Model
     public function notificationSubscriptions(): MorphMany
     {
         return $this->morphMany(NotificationSubscription::class, 'subscribable');
+    }
+
+    /**
+     * @param  Builder<QueryRequest>  $query
+     * @return Builder<QueryRequest>
+     */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        $visibleConnectionIds = collect($user->accessibleDatabaseConnectionIds())
+            ->merge($user->reviewableDatabaseConnectionIds())
+            ->unique()
+            ->values()
+            ->all();
+
+        return $query->where(function (Builder $requests) use ($user, $visibleConnectionIds): void {
+            $requests->where('requester_id', $user->id)
+                ->orWhere(fn (Builder $visibleRequests) => $visibleRequests->whereAllTargetsIn($visibleConnectionIds));
+        });
+    }
+
+    /**
+     * @param  Builder<QueryRequest>  $query
+     * @return Builder<QueryRequest>
+     */
+    public function scopeReviewableBy(Builder $query, User $user): Builder
+    {
+        $query->where('requester_id', '!=', $user->id);
+
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        return $query->whereAllTargetsIn($user->reviewableDatabaseConnectionIds());
+    }
+
+    /**
+     * @param  Builder<QueryRequest>  $query
+     * @param  array<int, int>  $connectionIds
+     * @return Builder<QueryRequest>
+     */
+    public function scopeWhereAllTargetsIn(Builder $query, array $connectionIds): Builder
+    {
+        if ($connectionIds === []) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query->where(function (Builder $requests) use ($connectionIds): void {
+            $requests->where(function (Builder $queryAccessRequests) use ($connectionIds): void {
+                $queryAccessRequests
+                    ->where('request_kind', QueryRequestKind::QueryAccess->value)
+                    ->where(function (Builder $targets) use ($connectionIds): void {
+                        $targets->where(function (Builder $scopedTargets) use ($connectionIds): void {
+                            $scopedTargets
+                                ->has('accessConnections')
+                                ->whereDoesntHave(
+                                    'accessConnections',
+                                    fn (Builder $connections) => $connections->whereNotIn('database_connections.id', $connectionIds),
+                                );
+                        })->orWhere(function (Builder $legacyTarget) use ($connectionIds): void {
+                            $legacyTarget
+                                ->doesntHave('accessConnections')
+                                ->whereIn('query_requests.database_connection_id', $connectionIds);
+                        });
+                    });
+            })->orWhere(function (Builder $deploymentRequests) use ($connectionIds): void {
+                $deploymentRequests
+                    ->where('request_kind', QueryRequestKind::SingleExecution->value)
+                    ->where(function (Builder $targets) use ($connectionIds): void {
+                        $targets->where(function (Builder $statementTargets) use ($connectionIds): void {
+                            $statementTargets
+                                ->has('statements')
+                                ->whereDoesntHave(
+                                    'statements',
+                                    fn (Builder $statements) => $statements->whereNotIn('query_request_statements.database_connection_id', $connectionIds),
+                                );
+                        })->orWhere(function (Builder $legacyTarget) use ($connectionIds): void {
+                            $legacyTarget
+                                ->doesntHave('statements')
+                                ->whereIn('query_requests.database_connection_id', $connectionIds);
+                        });
+                    });
+            });
+        });
     }
 
     public function isTerminal(): bool

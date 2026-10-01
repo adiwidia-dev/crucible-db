@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\ApplicationSetting;
+use App\Models\ConnectionGroup;
 use App\Models\DatabaseConnection;
 use App\Models\NativeProxyLease;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\Role;
+use App\Models\RoleConnectionGroupPolicy;
 use App\Models\User;
 use App\Notifications\OperationalNotification;
 use App\Services\NotificationDispatcher;
@@ -208,6 +210,34 @@ class NotificationDeliveryTest extends TestCase
 
         Notification::assertSentTo($operator, OperationalNotification::class, function (OperationalNotification $notification): bool {
             return $notification->toArray($this)['event'] === 'native_proxy.health_changed';
+        });
+    }
+
+    public function test_request_submission_notifies_reviewers_authorized_by_a_connection_group(): void
+    {
+        Notification::fake();
+
+        $role = Role::factory()->developer()->create();
+        $reviewer = User::factory()->withRole($role)->create();
+        $requester = User::factory()->create();
+        $connection = DatabaseConnection::factory()->create();
+        $group = ConnectionGroup::factory()->create();
+        $group->databaseConnections()->sync([$connection->id]);
+        RoleConnectionGroupPolicy::factory()->create([
+            'role_id' => $role->id,
+            'connection_group_id' => $group->id,
+            'can_review' => true,
+        ]);
+        $request = QueryRequest::factory()->queryAccess()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+        ]);
+        $request->accessConnections()->sync([$connection->id]);
+
+        app(NotificationDispatcher::class)->requestSubmitted($request);
+
+        Notification::assertSentTo($reviewer, OperationalNotification::class, function (OperationalNotification $notification): bool {
+            return $notification->toArray($this)['event'] === 'query_request.review_required';
         });
     }
 

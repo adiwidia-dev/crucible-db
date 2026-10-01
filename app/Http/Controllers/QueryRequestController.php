@@ -40,32 +40,33 @@ class QueryRequestController extends Controller
 
         $user = request()->user();
         $query = QueryRequest::query()
-            ->with(['requester', 'databaseConnection', 'latestExecution', 'latestSession'])
+            ->with([
+                'requester',
+                'databaseConnection',
+                'accessConnections',
+                'statements.databaseConnection',
+                'latestExecution',
+                'latestSession',
+            ])
             ->withExists([
                 'executions as has_write_execution' => fn (Builder $query) => $query->where('query_type', QueryType::Write->value),
             ])
             ->latest();
 
-        if (! $user->isAdmin()) {
-            $reviewableConnectionIds = $user->reviewableDatabaseConnectionIds();
-            $accessibleConnectionIds = $user->accessibleDatabaseConnectionIds();
-            $visibleConnectionIds = collect($accessibleConnectionIds)
-                ->merge($reviewableConnectionIds)
-                ->unique()
-                ->values()
-                ->all();
-
-            $query->where(function ($requests) use ($user, $visibleConnectionIds): void {
-                $requests->where('requester_id', $user->id)
-                    ->orWhereIn('database_connection_id', $visibleConnectionIds);
-            });
-        }
+        $query->visibleTo($user);
 
         $filters = $this->filters();
         $this->applyFilters($query, $filters);
 
+        $visibleConnectionIds = $user->isAdmin()
+            ? []
+            : collect($user->accessibleDatabaseConnectionIds())
+                ->merge($user->reviewableDatabaseConnectionIds())
+                ->unique()
+                ->values()
+                ->all();
         $connectionOptions = DatabaseConnection::query()
-            ->when(! $user->isAdmin(), fn ($connections) => $connections->whereIn('id', $user->accessibleDatabaseConnectionIds()))
+            ->when(! $user->isAdmin(), fn ($connections) => $connections->whereIn('id', $visibleConnectionIds))
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -84,7 +85,12 @@ class QueryRequestController extends Controller
                 'requires_approval' => $queryRequest->requires_approval,
                 'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
                 'requester' => $queryRequest->requester->name,
-                'connection' => $queryRequest->databaseConnection->name,
+                'connections' => $this->targetConnections($queryRequest)
+                    ->map(fn (DatabaseConnection $connection): array => [
+                        'id' => $connection->id,
+                        'name' => $connection->name,
+                    ])
+                    ->values(),
                 'created_at' => $queryRequest->created_at?->toIso8601String(),
                 'active_session_expires_at' => $this->activeSessionExpiresAt($queryRequest),
                 'latest_session_expires_at' => $this->latestSessionExpiresAt($queryRequest),
@@ -524,13 +530,23 @@ class QueryRequestController extends Controller
                 $query->where(function (Builder $query) use ($search): void {
                     $query->where('title', 'like', "%{$search}%")
                         ->orWhereHas('requester', fn (Builder $requesters) => $requesters->where('name', 'like', "%{$search}%"))
-                        ->orWhereHas('databaseConnection', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"));
+                        ->orWhereHas('databaseConnection', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('accessConnections', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('statements.databaseConnection', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"));
                 });
             })
             ->when($filters['status'] !== '', fn (Builder $query) => $query->where('status', $filters['status']))
             ->when($filters['request_kind'] !== '', fn (Builder $query) => $query->where('request_kind', $filters['request_kind']))
             ->when($filters['query_type'] !== '', fn (Builder $query) => $query->where('query_type', $filters['query_type']))
-            ->when($filters['connection_id'] !== '', fn (Builder $query) => $query->where('database_connection_id', $filters['connection_id']));
+            ->when($filters['connection_id'] !== '', function (Builder $query) use ($filters): void {
+                $connectionId = $filters['connection_id'];
+
+                $query->where(function (Builder $query) use ($connectionId): void {
+                    $query->where('database_connection_id', $connectionId)
+                        ->orWhereHas('accessConnections', fn (Builder $connections) => $connections->whereKey($connectionId))
+                        ->orWhereHas('statements', fn (Builder $statements) => $statements->where('database_connection_id', $connectionId));
+                });
+            });
     }
 
     private function activeSessionExpiresAt(QueryRequest $queryRequest): ?string
@@ -575,26 +591,57 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return Collection<int, array{id: int, title: string, status: 'approved'|'cancelled'|'completed'|'draft'|'failed'|'pending_review'|'rejected'|'running'|'scheduled'}>
+     * @return Collection<int, array{id: int, title: string, status: 'approved'|'cancelled'|'completed'|'draft'|'pending_review'|'rejected'|'running'|'scheduled', connections: array<int, array{id: int, name: string}>}>
      */
     private function replacementCandidates(QueryRequest $failedQueryRequest, User $user): Collection
     {
         return QueryRequest::query()
             ->with(['databaseConnection', 'accessConnections', 'statements.databaseConnection'])
             ->where('request_kind', QueryRequestKind::SingleExecution)
-            ->where('database_connection_id', $failedQueryRequest->database_connection_id)
             ->where('status', '!=', QueryRequestStatus::Failed)
             ->whereKeyNot($failedQueryRequest->id)
             ->where('created_at', '>=', $failedQueryRequest->completed_at ?? $failedQueryRequest->created_at)
             ->latest()
-            ->limit(50)
             ->get()
             ->filter(fn (QueryRequest $candidate): bool => $user->can('view', $candidate))
             ->map(fn (QueryRequest $candidate): array => [
                 'id' => $candidate->id,
                 'title' => $candidate->title,
-                'status' => (string) $candidate->status->value,
+                'status' => match ($candidate->status) {
+                    QueryRequestStatus::Failed => throw new \LogicException('Failed query requests cannot be replacement candidates.'),
+                    default => $candidate->status->value,
+                },
+                'connections' => $this->targetConnections($candidate)
+                    ->map(fn (DatabaseConnection $connection): array => [
+                        'id' => $connection->id,
+                        'name' => $connection->name,
+                    ])
+                    ->values()
+                    ->all(),
             ])
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, DatabaseConnection>
+     */
+    private function targetConnections(QueryRequest $queryRequest): Collection
+    {
+        if ($queryRequest->request_kind === QueryRequestKind::QueryAccess
+            && $queryRequest->accessConnections->isNotEmpty()) {
+            return $queryRequest->accessConnections
+                ->unique('id')
+                ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
+                ->values();
+        }
+
+        $connections = $queryRequest->statements
+            ->map(fn (QueryRequestStatement $statement): DatabaseConnection => $statement->databaseConnection ?? $queryRequest->databaseConnection)
+            ->unique('id');
+
+        return $connections
+            ->whenEmpty(fn (): Collection => collect([$queryRequest->databaseConnection]))
+            ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
     }
 
@@ -656,7 +703,9 @@ class QueryRequestController extends Controller
                     : 'Deployment batch draft saved.')
                 : ($submittingDraft
                     ? 'Deployment batch submitted for workflow processing.'
-                    : 'Query request updated and returned for approval.'),
+                    : ($queryRequest->requires_approval
+                        ? 'Query request updated and returned for approval.'
+                        : 'Query request updated.')),
         ]);
 
         return redirect()->route('query-requests.show', $queryRequest);

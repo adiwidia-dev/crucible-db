@@ -31,6 +31,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
+use Inertia\Support\SessionKey;
 use Inertia\Testing\AssertableInertia as Assert;
 use RuntimeException;
 use Tests\TestCase;
@@ -607,7 +608,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
         );
     }
 
-    public function test_editing_an_approved_request_replaces_statements_and_requires_reapproval(): void
+    public function test_admin_editing_an_approved_request_replaces_statements_without_reapproval(): void
     {
         $admin = $this->adminUser();
         $connection = DatabaseConnection::factory()->create();
@@ -633,14 +634,21 @@ class QueryRequestBatchWorkflowTest extends TestCase
             ],
         ]);
 
-        $response->assertRedirect(route('query-requests.show', $queryRequest));
+        $response
+            ->assertRedirect(route('query-requests.show', $queryRequest))
+            ->assertSessionHas(SessionKey::FLASH_DATA, [
+                'toast' => [
+                    'type' => 'success',
+                    'message' => 'Query request updated.',
+                ],
+            ]);
 
         $queryRequest->refresh();
 
-        $this->assertSame(QueryRequestStatus::PendingReview, $queryRequest->status);
-        $this->assertTrue($queryRequest->requires_approval);
-        $this->assertNull($queryRequest->approved_by_id);
-        $this->assertNull($queryRequest->approved_at);
+        $this->assertSame(QueryRequestStatus::Approved, $queryRequest->status);
+        $this->assertFalse($queryRequest->requires_approval);
+        $this->assertSame($admin->id, $queryRequest->approved_by_id);
+        $this->assertNotNull($queryRequest->approved_at);
         $this->assertSame('DEP-204 revised migration', $queryRequest->title);
         $this->assertSame(
             ['select 2 as value', 'delete from temporary_rows where id = 9'],
@@ -648,8 +656,52 @@ class QueryRequestBatchWorkflowTest extends TestCase
         );
 
         $auditLog = AuditLog::query()->where('action', 'query_request.updated')->firstOrFail();
-        $this->assertTrue($auditLog->metadata['approval_invalidated']);
+        $this->assertFalse($auditLog->metadata['approval_invalidated']);
         $this->assertSame(QueryRequestStatus::Approved->value, $auditLog->metadata['previous_status']);
+    }
+
+    public function test_editing_an_approved_request_requires_reapproval_when_the_requester_policy_requires_it(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        RoleDatabasePermission::factory()->write()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'requires_approval' => true,
+        ]);
+        $queryRequest = QueryRequest::factory()->approved()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'approved_by_id' => $requester->id,
+            'requires_approval' => false,
+            'sql' => 'select 1',
+        ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'database_connection_id' => $connection->id,
+            'sql' => 'select 1',
+        ]);
+
+        $this->actingAs($requester)->put(route('query-requests.update', $queryRequest), [
+            'database_connection_id' => $connection->id,
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Deployment requiring reapproval',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'delete from temporary_rows where id = 9',
+            ]],
+        ])->assertRedirect(route('query-requests.show', $queryRequest));
+
+        $queryRequest->refresh();
+
+        $this->assertSame(QueryRequestStatus::PendingReview, $queryRequest->status);
+        $this->assertTrue($queryRequest->requires_approval);
+        $this->assertNull($queryRequest->approved_by_id);
+        $this->assertNull($queryRequest->approved_at);
+
+        $auditLog = AuditLog::query()->where('action', 'query_request.updated')->firstOrFail();
+        $this->assertTrue($auditLog->metadata['approval_invalidated']);
     }
 
     public function test_dispatched_or_completed_request_cannot_be_edited(): void
@@ -1011,7 +1063,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
             && $job->resumeFromPosition === 2);
     }
 
-    public function test_failed_write_batch_creates_a_linked_request_for_reapproval_from_the_failed_statement(): void
+    public function test_admin_failed_write_batch_creates_an_approved_linked_retry_from_the_failed_statement(): void
     {
         $requester = $this->adminUser();
         $connection = DatabaseConnection::factory()->create();
@@ -1059,8 +1111,9 @@ class QueryRequestBatchWorkflowTest extends TestCase
             ->firstOrFail();
 
         $response->assertRedirect(route('query-requests.show', $retryRequest));
-        $this->assertSame(QueryRequestStatus::PendingReview, $retryRequest->status);
-        $this->assertTrue($retryRequest->requires_approval);
+        $this->assertSame(QueryRequestStatus::Approved, $retryRequest->status);
+        $this->assertFalse($retryRequest->requires_approval);
+        $this->assertSame($requester->id, $retryRequest->approved_by_id);
         $this->assertSame(
             ['update customers set active = 1', 'select count(*) from customers'],
             $retryRequest->statements()->pluck('sql')->all(),
@@ -1069,6 +1122,90 @@ class QueryRequestBatchWorkflowTest extends TestCase
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'query_request.retry_created',
             'auditable_id' => $retryRequest->id,
+        ]);
+    }
+
+    public function test_failed_write_batch_retry_requires_approval_when_the_requester_policy_requires_it(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        RoleDatabasePermission::factory()->write()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'requires_approval' => true,
+        ]);
+        $queryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'query_type' => QueryType::Write,
+            'status' => QueryRequestStatus::Failed,
+            'completed_at' => now(),
+            'title' => 'DEP-451 policy-controlled retry',
+        ]);
+        $failedStatement = QueryRequestStatement::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'database_connection_id' => $connection->id,
+            'position' => 1,
+            'sql' => 'update customers set active = 1',
+            'query_type' => QueryType::Write,
+        ]);
+        QueryExecution::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'query_request_statement_id' => $failedStatement->id,
+            'database_connection_id' => $connection->id,
+            'status' => ExecutionStatus::Failed,
+        ]);
+
+        $this->actingAs($requester)->post(route('query-requests.retry', $queryRequest));
+
+        $retryRequest = QueryRequest::query()
+            ->where('retry_of_id', $queryRequest->id)
+            ->firstOrFail();
+
+        $this->assertSame(QueryRequestStatus::PendingReview, $retryRequest->status);
+        $this->assertTrue($retryRequest->requires_approval);
+        $this->assertNull($retryRequest->approved_by_id);
+    }
+
+    public function test_failed_write_batch_retry_is_rejected_when_the_requester_lost_target_access(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        $permission = RoleDatabasePermission::factory()->write()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'requires_approval' => false,
+        ]);
+        $queryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'query_type' => QueryType::Write,
+            'status' => QueryRequestStatus::Failed,
+            'completed_at' => now(),
+        ]);
+        $failedStatement = QueryRequestStatement::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'database_connection_id' => $connection->id,
+            'position' => 1,
+            'sql' => 'update customers set active = 1',
+            'query_type' => QueryType::Write,
+        ]);
+        QueryExecution::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'query_request_statement_id' => $failedStatement->id,
+            'database_connection_id' => $connection->id,
+            'status' => ExecutionStatus::Failed,
+        ]);
+        $permission->delete();
+
+        $this->actingAs($requester->refresh())
+            ->post(route('query-requests.retry', $queryRequest))
+            ->assertSessionHasErrors('statements.0.database_connection_id');
+
+        $this->assertDatabaseMissing('query_requests', [
+            'retry_of_id' => $queryRequest->id,
         ]);
     }
 
@@ -1110,18 +1247,55 @@ class QueryRequestBatchWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_failed_deployment_batch_cannot_be_resolved_with_a_batch_from_another_target(): void
+    public function test_failed_deployment_batch_can_be_resolved_with_a_new_visible_batch_for_different_targets(): void
     {
         $requester = $this->adminUser();
+        $failedPrimaryConnection = DatabaseConnection::factory()->create(['name' => 'Failed Primary']);
+        $failedSecondaryConnection = DatabaseConnection::factory()->create(['name' => 'Failed Secondary']);
+        $replacementPrimaryConnection = DatabaseConnection::factory()->create(['name' => 'Replacement Primary']);
+        $replacementSecondaryConnection = DatabaseConnection::factory()->create(['name' => 'Replacement Secondary']);
         $failedQueryRequest = QueryRequest::factory()->create([
             'requester_id' => $requester->id,
+            'database_connection_id' => $failedPrimaryConnection->id,
             'status' => QueryRequestStatus::Failed,
             'completed_at' => now()->subMinute(),
         ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $failedQueryRequest->id,
+            'database_connection_id' => $failedPrimaryConnection->id,
+            'position' => 1,
+        ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $failedQueryRequest->id,
+            'database_connection_id' => $failedSecondaryConnection->id,
+            'position' => 2,
+        ]);
         $replacementQueryRequest = QueryRequest::factory()->create([
             'requester_id' => $requester->id,
+            'database_connection_id' => $replacementPrimaryConnection->id,
             'status' => QueryRequestStatus::Approved,
         ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $replacementQueryRequest->id,
+            'database_connection_id' => $replacementPrimaryConnection->id,
+            'position' => 1,
+        ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $replacementQueryRequest->id,
+            'database_connection_id' => $replacementSecondaryConnection->id,
+            'position' => 2,
+        ]);
+
+        $this->actingAs($requester)
+            ->get(route('query-requests.show', $failedQueryRequest))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('replacement_candidates', 1)
+                ->where('replacement_candidates.0.id', $replacementQueryRequest->id)
+                ->where('replacement_candidates.0.connections', [
+                    ['id' => $replacementPrimaryConnection->id, 'name' => $replacementPrimaryConnection->name],
+                    ['id' => $replacementSecondaryConnection->id, 'name' => $replacementSecondaryConnection->name],
+                ]));
 
         $this->actingAs($requester)
             ->from(route('query-requests.show', $failedQueryRequest))
@@ -1130,9 +1304,35 @@ class QueryRequestBatchWorkflowTest extends TestCase
                 'replacement_query_request_id' => $replacementQueryRequest->id,
             ])
             ->assertRedirect(route('query-requests.show', $failedQueryRequest))
-            ->assertSessionHasErrors('replacement_query_request_id');
+            ->assertSessionHasNoErrors();
 
-        $this->assertNull($failedQueryRequest->fresh()->failure_resolved_at);
+        $this->assertSame(
+            $replacementQueryRequest->id,
+            $failedQueryRequest->fresh()->replacement_query_request_id,
+        );
+    }
+
+    public function test_failure_resolution_lists_all_new_visible_replacement_batches(): void
+    {
+        $requester = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+        $failedQueryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Failed,
+            'completed_at' => now()->subMinute(),
+        ]);
+        QueryRequest::factory()->count(51)->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Approved,
+        ]);
+
+        $this->actingAs($requester)
+            ->get(route('query-requests.show', $failedQueryRequest))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('replacement_candidates', 51));
     }
 
     public function test_completed_query_access_request_creates_a_linked_request_with_the_same_targets(): void

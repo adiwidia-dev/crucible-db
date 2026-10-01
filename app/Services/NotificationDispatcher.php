@@ -504,10 +504,13 @@ class NotificationDispatcher
 
         return User::query()
             ->whereNull('disabled_at')
-            ->with('roles.databasePermissions')
+            ->with([
+                'roles.databasePermissions',
+                'roles.connectionGroupPolicies.connectionGroup.databaseConnections:id',
+            ])
             ->get()
             ->filter(fn (User $user): bool => $user->id !== $queryRequest->requester_id
-                && $connections->every(fn (DatabaseConnection $connection): bool => $this->canReviewConnection($user, $connection)))
+                && $connections->every(fn (DatabaseConnection $connection): bool => $user->canReviewDatabase($connection)))
             ->values();
     }
 
@@ -562,24 +565,6 @@ class NotificationDispatcher
         return $connections->isNotEmpty()
             ? $connections
             : new Collection([$queryRequest->databaseConnection]);
-    }
-
-    private function canReviewConnection(User $user, DatabaseConnection $connection): bool
-    {
-        if ($user->roles->contains('is_admin', true)) {
-            return true;
-        }
-
-        foreach ($user->roles as $role) {
-            $permission = $role->databasePermissions
-                ->firstWhere('database_connection_id', $connection->id);
-
-            if ($permission !== null) {
-                return $permission->can_review;
-            }
-        }
-
-        return false;
     }
 
     /**

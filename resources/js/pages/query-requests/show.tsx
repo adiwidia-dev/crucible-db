@@ -28,6 +28,8 @@ import QueryReviewController from '@/actions/App/Http/Controllers/QueryReviewCon
 import QuerySessionController from '@/actions/App/Http/Controllers/QuerySessionController';
 import { PageHeader } from '@/components/crucible/page-header';
 import { Pagination } from '@/components/crucible/pagination';
+import { ReplacementQueryRequestCombobox } from '@/components/crucible/replacement-query-request-combobox';
+import type { ReplacementQueryRequestOption } from '@/components/crucible/replacement-query-request-combobox';
 import { SqlEditor } from '@/components/crucible/sql-editor';
 import { StatusBadge } from '@/components/crucible/status-badge';
 import InputError from '@/components/input-error';
@@ -218,11 +220,7 @@ type Props = {
     can_cancel: boolean;
     can_retry: boolean;
     can_resolve_failure: boolean;
-    replacement_candidates: Array<{
-        id: number;
-        title: string;
-        status: QueryRequestStatus;
-    }>;
+    replacement_candidates: ReplacementQueryRequestOption[];
     retry_strategy:
         'resume_read_only' | 'create_retry_request' | 'renew_access' | null;
     can_start_session: boolean;
@@ -391,6 +389,8 @@ export default function QueryRequestShow({
     const [failureResolution, setFailureResolution] = useState<
         'replaced' | 'investigated' | 'not_applicable'
     >('replaced');
+    const [replacementQueryRequestId, setReplacementQueryRequestId] =
+        useState('');
     const executionToastStorageKey = `query-request:${query_request.id}:awaiting-execution`;
     const [awaitingExecution, setAwaitingExecution] = useState(
         () =>
@@ -864,11 +864,14 @@ export default function QueryRequestShow({
                                                 query_request.id,
                                             )}
                                             options={{ preserveScroll: true }}
-                                            onSuccess={() =>
+                                            onSuccess={() => {
                                                 setIsFailureResolutionDialogOpen(
                                                     false,
-                                                )
-                                            }
+                                                );
+                                                setReplacementQueryRequestId(
+                                                    '',
+                                                );
+                                            }}
                                             className="grid gap-4"
                                         >
                                             {({ processing, errors }) => (
@@ -914,64 +917,20 @@ export default function QueryRequestShow({
                                                     </div>
                                                     {failureResolution ===
                                                         'replaced' && (
-                                                        <div className="grid gap-2">
-                                                            <Label htmlFor="replacement-query-request">
-                                                                Replacement
-                                                                deployment batch
-                                                            </Label>
-                                                            <select
-                                                                id="replacement-query-request"
-                                                                name="replacement_query_request_id"
-                                                                required
-                                                                defaultValue=""
-                                                                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                                            >
-                                                                <option
-                                                                    value=""
-                                                                    disabled
-                                                                >
-                                                                    Select the
-                                                                    new
-                                                                    deployment
-                                                                    batch
-                                                                </option>
-                                                                {replacement_candidates.map(
-                                                                    (
-                                                                        candidate,
-                                                                    ) => (
-                                                                        <option
-                                                                            key={
-                                                                                candidate.id
-                                                                            }
-                                                                            value={
-                                                                                candidate.id
-                                                                            }
-                                                                        >
-                                                                            #
-                                                                            {
-                                                                                candidate.id
-                                                                            }{' '}
-                                                                            —{' '}
-                                                                            {
-                                                                                candidate.title
-                                                                            }
-                                                                        </option>
-                                                                    ),
-                                                                )}
-                                                            </select>
-                                                            <p className="text-xs text-muted-foreground">
-                                                                Only recent,
-                                                                visible batches
-                                                                for this
-                                                                database target
-                                                                are listed.
-                                                            </p>
-                                                            <InputError
-                                                                message={
-                                                                    errors.replacement_query_request_id
-                                                                }
-                                                            />
-                                                        </div>
+                                                        <ReplacementQueryRequestCombobox
+                                                            candidates={
+                                                                replacement_candidates
+                                                            }
+                                                            value={
+                                                                replacementQueryRequestId
+                                                            }
+                                                            onValueChange={
+                                                                setReplacementQueryRequestId
+                                                            }
+                                                            error={
+                                                                errors.replacement_query_request_id
+                                                            }
+                                                        />
                                                     )}
                                                     <div className="grid gap-2">
                                                         <Label htmlFor="failure-resolution-note">
@@ -1010,7 +969,11 @@ export default function QueryRequestShow({
                                                         </DialogClose>
                                                         <Button
                                                             disabled={
-                                                                processing
+                                                                processing ||
+                                                                (failureResolution ===
+                                                                    'replaced' &&
+                                                                    replacementQueryRequestId ===
+                                                                        '')
                                                             }
                                                         >
                                                             <CircleCheck />

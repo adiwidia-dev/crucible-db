@@ -322,6 +322,12 @@ class User extends Authenticatable implements PasskeyUser
             return $this->authorizationRoles;
         }
 
+        if ($this->hasLoadedAuthorizationRoles()) {
+            $this->authorizationRoles = $this->roles;
+
+            return $this->authorizationRoles;
+        }
+
         $this->authorizationRoles = $this->roles()
             ->with([
                 'databasePermissions',
@@ -330,6 +336,17 @@ class User extends Authenticatable implements PasskeyUser
             ->get();
 
         return $this->authorizationRoles;
+    }
+
+    private function hasLoadedAuthorizationRoles(): bool
+    {
+        return $this->relationLoaded('roles')
+            && $this->roles->every(fn (Role $role): bool => $role->relationLoaded('databasePermissions')
+                && $role->relationLoaded('connectionGroupPolicies')
+                && $role->connectionGroupPolicies->every(
+                    fn (RoleConnectionGroupPolicy $policy): bool => $policy->relationLoaded('connectionGroup')
+                        && $policy->connectionGroup->relationLoaded('databaseConnections'),
+                ));
     }
 
     /**
