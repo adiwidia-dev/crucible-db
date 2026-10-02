@@ -1217,12 +1217,14 @@ class QueryRequestBatchWorkflowTest extends TestCase
             'requester_id' => $requester->id,
             'database_connection_id' => $connection->id,
             'status' => QueryRequestStatus::Failed,
-            'completed_at' => now()->subMinute(),
+            'created_at' => now()->subHours(2),
+            'completed_at' => now(),
         ]);
         $replacementQueryRequest = QueryRequest::factory()->create([
             'requester_id' => $requester->id,
             'database_connection_id' => $connection->id,
             'status' => QueryRequestStatus::Approved,
+            'created_at' => now()->subHour(),
         ]);
 
         $this->actingAs($requester)
@@ -1312,7 +1314,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
         );
     }
 
-    public function test_failure_resolution_lists_all_new_visible_replacement_batches(): void
+    public function test_failure_resolution_lists_all_visible_batches_newer_than_the_failed_request(): void
     {
         $requester = $this->adminUser();
         $connection = DatabaseConnection::factory()->create();
@@ -1320,19 +1322,36 @@ class QueryRequestBatchWorkflowTest extends TestCase
             'requester_id' => $requester->id,
             'database_connection_id' => $connection->id,
             'status' => QueryRequestStatus::Failed,
-            'completed_at' => now()->subMinute(),
+            'created_at' => now()->subHours(2),
+            'completed_at' => now(),
+        ]);
+        QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Approved,
+            'created_at' => now()->subHours(3),
         ]);
         QueryRequest::factory()->count(51)->create([
             'requester_id' => $requester->id,
             'database_connection_id' => $connection->id,
             'status' => QueryRequestStatus::Approved,
+            'created_at' => now()->subHour(),
+        ]);
+        $completedQueryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Completed,
+            'created_at' => now()->subMinutes(30),
+            'completed_at' => now()->subMinutes(10),
         ]);
 
         $this->actingAs($requester)
             ->get(route('query-requests.show', $failedQueryRequest))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('replacement_candidates', 51));
+                ->has('replacement_candidates', 52)
+                ->where('replacement_candidates.0.id', $completedQueryRequest->id)
+                ->where('replacement_candidates.0.status', QueryRequestStatus::Completed->value));
     }
 
     public function test_completed_query_access_request_creates_a_linked_request_with_the_same_targets(): void

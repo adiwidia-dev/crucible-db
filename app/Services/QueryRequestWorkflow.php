@@ -852,12 +852,11 @@ class QueryRequestWorkflow
             $replacementQueryRequest = null;
 
             if ($resolution === FailureResolution::Replaced) {
-                $replacementCreatedAfter = $lockedQueryRequest->completed_at ?? $lockedQueryRequest->created_at;
                 $replacementQueryRequest = QueryRequest::query()
                     ->with(['databaseConnection', 'accessConnections', 'statements.databaseConnection'])
                     ->where('request_kind', QueryRequestKind::SingleExecution)
                     ->where('status', '!=', QueryRequestStatus::Failed)
-                    ->where('created_at', '>=', $replacementCreatedAfter)
+                    ->where('created_at', '>=', $lockedQueryRequest->created_at)
                     ->whereKeyNot($lockedQueryRequest->id)
                     ->lockForUpdate()
                     ->find($data['replacement_query_request_id'] ?? null);
@@ -865,7 +864,7 @@ class QueryRequestWorkflow
                 if ($replacementQueryRequest === null
                     || ! $actor->can('view', $replacementQueryRequest)) {
                     throw ValidationException::withMessages([
-                        'replacement_query_request_id' => 'Choose a visible, non-failed deployment batch created after this failure.',
+                        'replacement_query_request_id' => 'Choose a visible, non-failed deployment batch newer than this request.',
                     ]);
                 }
             }

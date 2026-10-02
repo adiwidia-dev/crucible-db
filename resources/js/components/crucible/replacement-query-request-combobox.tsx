@@ -1,6 +1,7 @@
 import { Combobox } from '@cloudflare/kumo/components/combobox';
 import { FileCode2, SearchX } from 'lucide-react';
 import { useCallback } from 'react';
+import type { RefObject } from 'react';
 import { StatusBadge } from '@/components/crucible/status-badge';
 import { statusLabel } from '@/lib/crucible';
 import type { QueryRequestStatus } from '@/lib/crucible';
@@ -19,13 +20,30 @@ type Props = {
     candidates: ReplacementQueryRequestOption[];
     error?: string;
     onValueChange: (value: string) => void;
+    portalContainer?: RefObject<HTMLElement | ShadowRoot | null>;
     value: string;
 };
+
+function connectionSummary(
+    connections: ReplacementQueryRequestOption['connections'],
+): string {
+    const visibleConnections = connections.slice(0, 2);
+    const hiddenConnectionCount =
+        connections.length - visibleConnections.length;
+    const visibleConnectionNames = visibleConnections
+        .map((connection) => connection.name)
+        .join(' · ');
+
+    return hiddenConnectionCount > 0
+        ? `${visibleConnectionNames} · +${hiddenConnectionCount} more`
+        : visibleConnectionNames;
+}
 
 export function ReplacementQueryRequestCombobox({
     candidates,
     error,
     onValueChange,
+    portalContainer,
     value,
 }: Props) {
     const { contains } = Combobox.useFilter();
@@ -58,7 +76,7 @@ export function ReplacementQueryRequestCombobox({
                 }
                 filter={filter}
                 label="Replacement deployment batch"
-                description="Search every visible deployment batch created after this failure."
+                description="Search every visible deployment batch newer than this request."
                 error={error}
                 required
             >
@@ -72,7 +90,10 @@ export function ReplacementQueryRequestCombobox({
                             : 'Select the new deployment batch'
                     }
                 </Combobox.TriggerValue>
-                <Combobox.Content className="max-h-80">
+                <Combobox.Content
+                    className="max-h-80 w-(--anchor-width) overflow-hidden"
+                    container={portalContainer}
+                >
                     <Combobox.Input
                         placeholder="Search by ID, title, status, or connection..."
                         aria-label="Search replacement deployment batches"
@@ -97,13 +118,18 @@ export function ReplacementQueryRequestCombobox({
                                                 {candidate.title}
                                             </span>
                                         </span>
-                                        <span className="mt-1 block truncate text-xs text-kumo-subtle">
-                                            {candidate.connections
+                                        <span
+                                            className="mt-1 block truncate text-xs text-kumo-subtle"
+                                            title={candidate.connections
                                                 .map(
                                                     (connection) =>
                                                         connection.name,
                                                 )
                                                 .join(' · ')}
+                                        >
+                                            {connectionSummary(
+                                                candidate.connections,
+                                            )}
                                         </span>
                                     </span>
                                     <StatusBadge

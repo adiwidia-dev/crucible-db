@@ -600,7 +600,7 @@ class QueryRequestController extends Controller
             ->where('request_kind', QueryRequestKind::SingleExecution)
             ->where('status', '!=', QueryRequestStatus::Failed)
             ->whereKeyNot($failedQueryRequest->id)
-            ->where('created_at', '>=', $failedQueryRequest->completed_at ?? $failedQueryRequest->created_at)
+            ->where('created_at', '>=', $failedQueryRequest->created_at)
             ->latest()
             ->get()
             ->filter(fn (QueryRequest $candidate): bool => $user->can('view', $candidate))

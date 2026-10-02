@@ -18,7 +18,7 @@ import {
     Send,
     Trash2,
 } from 'lucide-react';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { format } from 'sql-formatter';
 import NotificationSubscriptionController from '@/actions/App/Http/Controllers/NotificationSubscriptionController';
@@ -212,6 +212,27 @@ type QueryRequest = {
     } | null;
 };
 
+type TargetConnection = QueryRequest['connection'];
+
+function TargetConnectionBadge({
+    connection,
+}: {
+    connection: TargetConnection;
+}) {
+    return (
+        <span className="inline-flex max-w-full min-w-0 items-start gap-1.5 rounded-md border bg-background px-1.5 py-0.5 text-xs">
+            <span className="min-w-0 leading-5 font-medium wrap-anywhere">
+                {connection.name}
+            </span>
+            <StatusBadge
+                value={connection.driver}
+                label={driverLabel(connection.driver)}
+                className="mt-0.5"
+            />
+        </span>
+    );
+}
+
 type Props = {
     query_request: QueryRequest;
     can_review: boolean;
@@ -386,6 +407,7 @@ export default function QueryRequestShow({
     const [isPreflightExpanded, setIsPreflightExpanded] = useState(false);
     const [isFailureResolutionDialogOpen, setIsFailureResolutionDialogOpen] =
         useState(false);
+    const failureResolutionDialogContentRef = useRef<HTMLDivElement>(null);
     const [failureResolution, setFailureResolution] = useState<
         'replaced' | 'investigated' | 'not_applicable'
     >('replaced');
@@ -502,6 +524,8 @@ export default function QueryRequestShow({
         query_request.access_connections,
         query_request.request_kind,
     ]);
+    const summarizedTargetConnections = targetConnections.slice(0, 3);
+    const additionalTargetConnections = targetConnections.slice(3);
     const actionSummary =
         query_request.failure_resolution !== null
             ? 'The failure is resolved and remains in the execution history.'
@@ -846,7 +870,9 @@ export default function QueryRequestShow({
                                             Resolve failure
                                         </Button>
                                     </DialogTrigger>
-                                    <DialogContent>
+                                    <DialogContent
+                                        ref={failureResolutionDialogContentRef}
+                                    >
                                         <DialogHeader>
                                             <DialogTitle>
                                                 Resolve this failure?
@@ -929,6 +955,9 @@ export default function QueryRequestShow({
                                                             }
                                                             error={
                                                                 errors.replacement_query_request_id
+                                                            }
+                                                            portalContainer={
+                                                                failureResolutionDialogContentRef
                                                             }
                                                         />
                                                     )}
@@ -1229,26 +1258,59 @@ export default function QueryRequestShow({
                                 <dt className="text-xs text-muted-foreground">
                                     {targetConnections.length === 1
                                         ? 'Target'
-                                        : 'Targets'}
+                                        : `Targets · ${targetConnections.length} total`}
                                 </dt>
-                                <dd className="mt-1 flex min-w-0 flex-wrap gap-1.5">
-                                    {targetConnections.map((connection) => (
-                                        <span
-                                            key={connection.id}
-                                            className="inline-flex max-w-full min-w-0 items-start gap-1.5 rounded-md border bg-background px-1.5 py-0.5 text-xs"
-                                        >
-                                            <span className="min-w-0 leading-5 font-medium wrap-anywhere">
-                                                {connection.name}
-                                            </span>
-                                            <StatusBadge
-                                                value={connection.driver}
-                                                label={driverLabel(
-                                                    connection.driver,
-                                                )}
-                                                className="mt-0.5"
-                                            />
-                                        </span>
-                                    ))}
+                                <dd className="mt-1 min-w-0">
+                                    <Collapsible key={query_request.id}>
+                                        <div className="flex min-w-0 flex-wrap gap-1.5">
+                                            {summarizedTargetConnections.map(
+                                                (connection) => (
+                                                    <TargetConnectionBadge
+                                                        key={connection.id}
+                                                        connection={connection}
+                                                    />
+                                                ),
+                                            )}
+                                        </div>
+                                        {additionalTargetConnections.length >
+                                            0 && (
+                                            <CollapsibleContent>
+                                                <div className="mt-1.5 flex min-w-0 flex-wrap gap-1.5">
+                                                    {additionalTargetConnections.map(
+                                                        (connection) => (
+                                                            <TargetConnectionBadge
+                                                                key={
+                                                                    connection.id
+                                                                }
+                                                                connection={
+                                                                    connection
+                                                                }
+                                                            />
+                                                        ),
+                                                    )}
+                                                </div>
+                                            </CollapsibleContent>
+                                        )}
+                                        {additionalTargetConnections.length >
+                                            0 && (
+                                            <CollapsibleTrigger asChild>
+                                                <Button
+                                                    type="button"
+                                                    variant="link"
+                                                    size="sm"
+                                                    className="group mt-1 h-auto justify-start gap-1.5 px-0 py-1 text-xs font-medium has-[>svg]:px-0"
+                                                >
+                                                    <span className="group-data-[state=open]:hidden">
+                                                        {`Show ${additionalTargetConnections.length} more targets`}
+                                                    </span>
+                                                    <span className="hidden group-data-[state=open]:inline">
+                                                        Show fewer targets
+                                                    </span>
+                                                    <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+                                                </Button>
+                                            </CollapsibleTrigger>
+                                        )}
+                                    </Collapsible>
                                 </dd>
                             </div>
                         </dl>
