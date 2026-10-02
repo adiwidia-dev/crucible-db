@@ -1,6 +1,6 @@
 # Crucible DB Architecture Decisions
 
-Last updated: 2026-09-09
+Last updated: 2026-10-02
 
 ## Current product boundary
 
@@ -43,7 +43,7 @@ Each role policy defines:
 
 Users can hold multiple roles. The ordered **Policy precedence** list determines which role supplies an overlapping policy; the first applicable role wins. Users cannot approve their own requests, even when a role grants reviewer authority.
 
-For a deployment batch, approval is evaluated from every selected statement connection and query type: any statement that requires approval causes the request to require approval. For Query Access, the requester declares read-only or read + write access before the session starts. The selected level must be allowed by the effective Query Access capability on every target connection, which is distinct from deployment write authority. That declared access level and the current effective Query Access capability are enforced on every session query.
+For a deployment batch, approval is evaluated from every selected statement connection and query type: any statement that requires approval causes the request to require approval. For Query Access, the requester declares read-only or read + write access before the session starts. The selected level must be allowed by the effective Query Access capability on every target connection, which is distinct from deployment write authority. Requester status, target scope, approval requirements, access level, and duration are re-evaluated at dispatch, retry, queued execution, or session start. That declared access level and the current effective Query Access capability are also enforced on every session query.
 
 ## Query request workflows
 
@@ -51,9 +51,9 @@ For a deployment batch, approval is evaluated from every selected statement conn
 
 A Deployment Batch contains one or more ordered, single SQL statements. Each statement has its own target connection. It can be saved as a non-executable Draft even when preflight is blocked; drafts retain the SQL and latest report but do not create review work, notifications, schedules, or execution jobs. An editable saved batch can run preflight explicitly, which persists a fresh report and audit event. Strict submission from Draft repeats statement validation, role checks, approval evaluation, and preflight, and it rolls back when that fresh preflight is blocked. Submitted work is reviewed when policy requires it, optionally scheduled, dispatched through the `queries` queue, and executed in order. Execution stops at the first failed statement; completed and failed statements remain visible and locked in the request record.
 
-Changes to an approved batch invalidate that approval. Eligible work can be cancelled with a reason. A failed deployment can be retried: read-only retries can be dispatched from the failed statement; write-impacting retries create a linked request for fresh policy evaluation and approval.
+Changes to an approved batch invalidate that approval only when current policy still requires review; an exempt requester does not receive a redundant Pending Review state. Eligible work can be cancelled with a reason. A failed deployment can be retried: read-only retries can be dispatched from the failed statement; write-impacting retries create a linked request for fresh policy evaluation and approval. Failed work can also record an auditable resolution linked to any visible, newer, non-failed Deployment Batch, including a completed replacement.
 
-Scheduled batches do not run late without an explicit dispatch. If the requested time has passed while awaiting review, approving the batch leaves it ready for an authorized user to start rather than executing it unexpectedly.
+Scheduled batches do not run late without an explicit dispatch. If the requested time has passed while awaiting review, approving the batch leaves it ready for an authorized user to start rather than executing it unexpectedly. Queue workers claim execution with an atomic state transition and never overwrite a cancellation that wins during preflight or completion.
 
 ### Query Access
 

@@ -21,6 +21,8 @@ Read-only Query Access is the default for write-capable roles. Enable interactiv
 
 An individual connection policy overrides the same role's group policy for that connection. See [Roles, groups, and connections](../concepts/access-policy.md) for evaluation order.
 
+Policy changes take effect at the next governed action boundary. Crucible re-evaluates the original requester and every target before dispatch, queued execution, retry, or Query Access session start. Tightening approval, access, or duration can return work to review or prevent it from starting; existing request records are not permanent policy exceptions.
+
 ## Lifecycle safeguards
 
 The built-in administrator role cannot be edited or deleted through the role UI. A custom role cannot be deleted while users, individual connection permissions, or connection-group policies still reference it. Remove or migrate those assignments deliberately first.

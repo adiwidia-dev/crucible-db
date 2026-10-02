@@ -21,7 +21,7 @@ The production application container uses Supervisor to keep three processes run
 | `notifications` | In-app database notifications. | One process, three attempts, 60-second timeout. |
 | `mail` | Optional email delivery. | One process, three attempts, 60-second timeout. |
 
-All four queues use Redis. Query execution is deliberately isolated so email or notification work cannot execute SQL and query concurrency remains controlled.
+All four queues use Redis. Query execution is deliberately isolated so email or notification work cannot execute SQL and query concurrency remains controlled. A query worker atomically claims eligible work, re-evaluates the original requester's active account and current target policy, and preserves cancellation if it races with preflight or completion.
 
 ## Scheduled lifecycle commands
 

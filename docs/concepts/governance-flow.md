@@ -21,8 +21,9 @@ sequenceDiagram
             C->>V: Notify eligible reviewers
             V->>C: Approve or reject
         end
-        C->>C: Fresh preflight before dispatch
+        C->>C: Recheck requester, policy, targets, and preflight
         C->>Q: Execute ordered statements
+        Q->>Q: Atomically claim work and recheck current policy
         Q-->>C: Record per-statement result
         C-->>R: Notify and retain audit events
     end
@@ -43,6 +44,7 @@ sequenceDiagram
         V->>C: Approve access scope
     end
     R->>C: Start approved session
+    C->>C: Recheck requester, targets, level, approval, and duration
     R->>C: Run one SQL statement
     C->>C: Recheck expiry, session level, policy, and SQL
     C-->>R: Return result and record session query
@@ -55,6 +57,7 @@ Preflight evaluates each Deployment Batch statement for SQL classification, targ
 - **Warnings** guide the requester and reviewer.
 - **Blocks** prevent the work from moving forward.
 - A fresh strict check immediately before execution protects against stale target or policy assumptions.
+- Requester status and effective policy are re-evaluated at the final action boundary; stored approval or no-approval state cannot grant access that current policy no longer permits.
 
 ## Auditability
 
