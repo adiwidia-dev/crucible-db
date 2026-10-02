@@ -365,7 +365,7 @@ class QueryRequestController extends Controller
         $queryRequest->refresh();
 
         Inertia::flash('toast', $dispatched
-            ? ['type' => 'success', 'message' => 'Deployment batch queued for execution.']
+            ? ['type' => 'info', 'message' => 'Deployment batch queued for execution.']
             : ($queryRequest->status === QueryRequestStatus::PendingReview
                 ? ['type' => 'warning', 'message' => 'The current policy now requires approval. This batch was returned to Pending Review.']
                 : ['type' => 'error', 'message' => 'Deployment batch is blocked by its latest preflight checks.']));

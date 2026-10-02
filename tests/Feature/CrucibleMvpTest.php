@@ -1188,7 +1188,7 @@ SQL;
             ->assertRedirect()
             ->assertSessionHas(SessionKey::FLASH_DATA, [
                 'toast' => [
-                    'type' => 'success',
+                    'type' => 'info',
                     'message' => 'Deployment batch queued for execution.',
                 ],
             ]);
@@ -1495,7 +1495,7 @@ SQL;
             ->assertRedirect()
             ->assertSessionHas(SessionKey::FLASH_DATA, [
                 'toast' => [
-                    'type' => 'success',
+                    'type' => 'info',
                     'message' => 'Deployment batch queued for execution.',
                 ],
             ]);

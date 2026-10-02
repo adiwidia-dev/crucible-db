@@ -56,45 +56,6 @@ function TargetConnections({
             {connections.length > 1 && (
                 <div className="flex items-center gap-1.5 text-[11px]/4 font-semibold text-muted-foreground">
                     <span>{connections.length} targets</span>
-                    {hiddenConnectionCount > 0 && (
-                        <Popover>
-                            <Popover.Trigger
-                                render={
-                                    <button
-                                        type="button"
-                                        className="inline-flex items-center gap-0.5 rounded-sm text-primary underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
-                                    />
-                                }
-                                aria-label={`Show all ${connections.length} target connections`}
-                            >
-                                +{hiddenConnectionCount} more
-                                <ChevronDown className="size-3" />
-                            </Popover.Trigger>
-                            <Popover.Content
-                                side="bottom"
-                                align="start"
-                                positionMethod="fixed"
-                                className="w-72 p-3"
-                            >
-                                <Popover.Title className="text-sm/5">
-                                    {connections.length} target connections
-                                </Popover.Title>
-                                <Popover.Description className="mt-0.5 text-xs/4">
-                                    Every database included in this request.
-                                </Popover.Description>
-                                <ul className="mt-2 max-h-56 list-disc space-y-1 overflow-y-auto pl-4 text-xs/4 font-medium marker:text-kumo-subtle">
-                                    {connections.map((connection) => (
-                                        <li
-                                            key={connection.id}
-                                            className="break-words"
-                                        >
-                                            {connection.name}
-                                        </li>
-                                    ))}
-                                </ul>
-                            </Popover.Content>
-                        </Popover>
-                    )}
                 </div>
             )}
             <ul
@@ -105,6 +66,42 @@ function TargetConnections({
                     <li key={connection.id}>{connection.name}</li>
                 ))}
             </ul>
+            {hiddenConnectionCount > 0 && (
+                <Popover>
+                    <Popover.Trigger
+                        render={
+                            <button
+                                type="button"
+                                className="mt-1 inline-flex items-center gap-0.5 rounded-sm text-[11px]/4 font-semibold text-primary underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+                            />
+                        }
+                        aria-label={`Show all ${connections.length} target connections`}
+                    >
+                        +{hiddenConnectionCount} more
+                        <ChevronDown className="size-3" />
+                    </Popover.Trigger>
+                    <Popover.Content
+                        side="bottom"
+                        align="start"
+                        positionMethod="fixed"
+                        className="w-72 p-3"
+                    >
+                        <Popover.Title className="text-sm/5">
+                            {connections.length} target connections
+                        </Popover.Title>
+                        <Popover.Description className="mt-0.5 text-xs/4">
+                            Every database included in this request.
+                        </Popover.Description>
+                        <ul className="mt-2 max-h-56 list-disc space-y-1 overflow-y-auto pl-4 text-xs/4 font-medium marker:text-kumo-subtle">
+                            {connections.map((connection) => (
+                                <li key={connection.id} className="break-words">
+                                    {connection.name}
+                                </li>
+                            ))}
+                        </ul>
+                    </Popover.Content>
+                </Popover>
+            )}
         </div>
     );
 }
