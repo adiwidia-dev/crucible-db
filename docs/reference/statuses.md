@@ -10,7 +10,7 @@
 | Scheduled | Approved and waiting for its requested time. | Wait, or inspect if it becomes overdue. |
 | Running | Queued work is executing statements in order. | Observe results. |
 | Completed | All statements completed successfully. | Audit or export recorded results as permitted. |
-| Failed | A statement failed; later statements did not run. | Investigate and consider a linked retry. |
+| Failed | A statement failed; later statements did not run. | Investigate, retry, or record a resolution linked to a newer replacement batch. |
 | Rejected | A reviewer declined the request. | Address the reason in a new or edited request. |
 | Cancelled | Eligible work was cancelled with a reason. | Start new work only when needed. |
 
@@ -25,7 +25,7 @@
 | Expired | The approved access window elapsed. | Create a fresh request. |
 | Rejected / cancelled | Access will not start. | Read the reason and request the correct scope if appropriate. |
 
-State labels describe whether work may proceed; they do not replace the latest policy or SQL evaluation.
+State labels describe whether work may proceed; they do not replace the latest account, target, policy, approval, duration, or SQL evaluation. A request can return to **Pending review** when current policy newly requires approval.
 
 ## Native client lease and connection states
 

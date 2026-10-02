@@ -52,8 +52,13 @@ For a Deployment Batch, Crucible DB evaluates all statement targets and types. I
 
 For Query Access, the requested session level must be permitted for every selected connection. The selected level and current policy are both enforced on each query.
 
+Approval is evaluated from the requester's effective policy across the complete target set. The stored request state is not a permanent exception: Crucible evaluates current policy again before dispatch, queued execution, retry, or session start. A newly required review returns previously exempt work to **Pending Review**, while disabled users or removed access block the operation.
+
 !!! example "Example"
     A user has deployment write access for two production connections. One connection allows read-only Query Access, while the other allows read + write. A multi-connection Query Access request can only be read-only because every selected target must allow the requested level.
+
+!!! example "Policy changes after submission"
+    An administrator creates a Deployment Batch that initially requires no review. Before dispatch, their applicable role is changed so one target requires write approval. Crucible does not rely on the earlier exemption: dispatch returns the batch to **Pending Review** for an independent decision.
 
 ## Administrator checklist
 

@@ -40,32 +40,33 @@ class QueryRequestController extends Controller
 
         $user = request()->user();
         $query = QueryRequest::query()
-            ->with(['requester', 'databaseConnection', 'latestExecution', 'latestSession'])
+            ->with([
+                'requester',
+                'databaseConnection',
+                'accessConnections',
+                'statements.databaseConnection',
+                'latestExecution',
+                'latestSession',
+            ])
             ->withExists([
                 'executions as has_write_execution' => fn (Builder $query) => $query->where('query_type', QueryType::Write->value),
             ])
             ->latest();
 
-        if (! $user->isAdmin()) {
-            $reviewableConnectionIds = $user->reviewableDatabaseConnectionIds();
-            $accessibleConnectionIds = $user->accessibleDatabaseConnectionIds();
-            $visibleConnectionIds = collect($accessibleConnectionIds)
-                ->merge($reviewableConnectionIds)
-                ->unique()
-                ->values()
-                ->all();
-
-            $query->where(function ($requests) use ($user, $visibleConnectionIds): void {
-                $requests->where('requester_id', $user->id)
-                    ->orWhereIn('database_connection_id', $visibleConnectionIds);
-            });
-        }
+        $query->visibleTo($user);
 
         $filters = $this->filters();
         $this->applyFilters($query, $filters);
 
+        $visibleConnectionIds = $user->isAdmin()
+            ? []
+            : collect($user->accessibleDatabaseConnectionIds())
+                ->merge($user->reviewableDatabaseConnectionIds())
+                ->unique()
+                ->values()
+                ->all();
         $connectionOptions = DatabaseConnection::query()
-            ->when(! $user->isAdmin(), fn ($connections) => $connections->whereIn('id', $user->accessibleDatabaseConnectionIds()))
+            ->when(! $user->isAdmin(), fn ($connections) => $connections->whereIn('id', $visibleConnectionIds))
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -84,7 +85,12 @@ class QueryRequestController extends Controller
                 'requires_approval' => $queryRequest->requires_approval,
                 'scheduled_at' => $queryRequest->scheduled_at?->toIso8601String(),
                 'requester' => $queryRequest->requester->name,
-                'connection' => $queryRequest->databaseConnection->name,
+                'connections' => $this->targetConnections($queryRequest)
+                    ->map(fn (DatabaseConnection $connection): array => [
+                        'id' => $connection->id,
+                        'name' => $connection->name,
+                    ])
+                    ->values(),
                 'created_at' => $queryRequest->created_at?->toIso8601String(),
                 'active_session_expires_at' => $this->activeSessionExpiresAt($queryRequest),
                 'latest_session_expires_at' => $this->latestSessionExpiresAt($queryRequest),
@@ -356,9 +362,13 @@ class QueryRequestController extends Controller
 
         $dispatched = $workflow->dispatch($queryRequest, request()->user());
 
+        $queryRequest->refresh();
+
         Inertia::flash('toast', $dispatched
-            ? ['type' => 'success', 'message' => 'Deployment batch queued for execution.']
-            : ['type' => 'error', 'message' => 'Deployment batch is blocked by its latest preflight checks.']);
+            ? ['type' => 'info', 'message' => 'Deployment batch queued for execution.']
+            : ($queryRequest->status === QueryRequestStatus::PendingReview
+                ? ['type' => 'warning', 'message' => 'The current policy now requires approval. This batch was returned to Pending Review.']
+                : ['type' => 'error', 'message' => 'Deployment batch is blocked by its latest preflight checks.']));
 
         return back();
     }
@@ -405,7 +415,9 @@ class QueryRequestController extends Controller
         if ($retryRequest->id !== $queryRequest->id) {
             Inertia::flash('toast', [
                 'type' => 'success',
-                'message' => 'A linked retry request was created and requires approval before execution.',
+                'message' => $retryRequest->requires_approval
+                    ? 'A linked retry request was created and requires approval before execution.'
+                    : 'A linked retry request was created and is ready for execution.',
             ]);
 
             return redirect()->route('query-requests.show', $retryRequest);
@@ -524,13 +536,23 @@ class QueryRequestController extends Controller
                 $query->where(function (Builder $query) use ($search): void {
                     $query->where('title', 'like', "%{$search}%")
                         ->orWhereHas('requester', fn (Builder $requesters) => $requesters->where('name', 'like', "%{$search}%"))
-                        ->orWhereHas('databaseConnection', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"));
+                        ->orWhereHas('databaseConnection', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('accessConnections', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('statements.databaseConnection', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"));
                 });
             })
             ->when($filters['status'] !== '', fn (Builder $query) => $query->where('status', $filters['status']))
             ->when($filters['request_kind'] !== '', fn (Builder $query) => $query->where('request_kind', $filters['request_kind']))
             ->when($filters['query_type'] !== '', fn (Builder $query) => $query->where('query_type', $filters['query_type']))
-            ->when($filters['connection_id'] !== '', fn (Builder $query) => $query->where('database_connection_id', $filters['connection_id']));
+            ->when($filters['connection_id'] !== '', function (Builder $query) use ($filters): void {
+                $connectionId = $filters['connection_id'];
+
+                $query->where(function (Builder $query) use ($connectionId): void {
+                    $query->where('database_connection_id', $connectionId)
+                        ->orWhereHas('accessConnections', fn (Builder $connections) => $connections->whereKey($connectionId))
+                        ->orWhereHas('statements', fn (Builder $statements) => $statements->where('database_connection_id', $connectionId));
+                });
+            });
     }
 
     private function activeSessionExpiresAt(QueryRequest $queryRequest): ?string
@@ -575,26 +597,57 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return Collection<int, array{id: int, title: string, status: 'approved'|'cancelled'|'completed'|'draft'|'failed'|'pending_review'|'rejected'|'running'|'scheduled'}>
+     * @return Collection<int, array{id: int, title: string, status: 'approved'|'cancelled'|'completed'|'draft'|'pending_review'|'rejected'|'running'|'scheduled', connections: array<int, array{id: int, name: string}>}>
      */
     private function replacementCandidates(QueryRequest $failedQueryRequest, User $user): Collection
     {
         return QueryRequest::query()
             ->with(['databaseConnection', 'accessConnections', 'statements.databaseConnection'])
             ->where('request_kind', QueryRequestKind::SingleExecution)
-            ->where('database_connection_id', $failedQueryRequest->database_connection_id)
             ->where('status', '!=', QueryRequestStatus::Failed)
             ->whereKeyNot($failedQueryRequest->id)
-            ->where('created_at', '>=', $failedQueryRequest->completed_at ?? $failedQueryRequest->created_at)
+            ->where('created_at', '>=', $failedQueryRequest->created_at)
             ->latest()
-            ->limit(50)
             ->get()
             ->filter(fn (QueryRequest $candidate): bool => $user->can('view', $candidate))
             ->map(fn (QueryRequest $candidate): array => [
                 'id' => $candidate->id,
                 'title' => $candidate->title,
-                'status' => (string) $candidate->status->value,
+                'status' => match ($candidate->status) {
+                    QueryRequestStatus::Failed => throw new \LogicException('Failed query requests cannot be replacement candidates.'),
+                    default => $candidate->status->value,
+                },
+                'connections' => $this->targetConnections($candidate)
+                    ->map(fn (DatabaseConnection $connection): array => [
+                        'id' => $connection->id,
+                        'name' => $connection->name,
+                    ])
+                    ->values()
+                    ->all(),
             ])
+            ->values();
+    }
+
+    /**
+     * @return Collection<int, DatabaseConnection>
+     */
+    private function targetConnections(QueryRequest $queryRequest): Collection
+    {
+        if ($queryRequest->request_kind === QueryRequestKind::QueryAccess
+            && $queryRequest->accessConnections->isNotEmpty()) {
+            return $queryRequest->accessConnections
+                ->unique('id')
+                ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
+                ->values();
+        }
+
+        $connections = $queryRequest->statements
+            ->map(fn (QueryRequestStatement $statement): DatabaseConnection => $statement->databaseConnection ?? $queryRequest->databaseConnection)
+            ->unique('id');
+
+        return $connections
+            ->whenEmpty(fn (): Collection => collect([$queryRequest->databaseConnection]))
+            ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
     }
 
@@ -656,7 +709,9 @@ class QueryRequestController extends Controller
                     : 'Deployment batch draft saved.')
                 : ($submittingDraft
                     ? 'Deployment batch submitted for workflow processing.'
-                    : 'Query request updated and returned for approval.'),
+                    : ($queryRequest->requires_approval
+                        ? 'Query request updated and returned for approval.'
+                        : 'Query request updated.')),
         ]);
 
         return redirect()->route('query-requests.show', $queryRequest);
@@ -682,7 +737,7 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, can_query_access_read:bool, can_query_access_write:bool, can_native_proxy_read:bool, can_native_proxy_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
+     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, can_query_access_read:bool, can_query_access_write:bool, can_native_proxy_read:bool, can_native_proxy_write:bool, query_access_read_requires_approval:bool, query_access_write_requires_approval:bool, query_access_max_write_session_minutes:int|null, native_proxy_read_requires_approval:bool, native_proxy_write_requires_approval:bool, native_proxy_max_write_session_minutes:int|null}>
      */
     private function connectionOptions(User $user): array
     {
@@ -692,7 +747,6 @@ class QueryRequestController extends Controller
             ->orderBy('name')
             ->get()
             ->map(function (DatabaseConnection $connection) use ($user): array {
-                $readPermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Read);
                 $writePermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Write);
                 $queryAccessReadPermission = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Read);
                 $queryAccessWritePermission = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write);
@@ -708,9 +762,12 @@ class QueryRequestController extends Controller
                     'can_query_access_write' => $queryAccessWritePermission['query_access_mode']->allows(QueryType::Write),
                     'can_native_proxy_read' => $nativeReadPermission['native_proxy_access_mode']->allows(QueryType::Read),
                     'can_native_proxy_write' => $nativeWritePermission['native_proxy_access_mode']->allows(QueryType::Write),
-                    'read_requires_approval' => $readPermission['read_requires_approval'],
-                    'write_requires_approval' => $writePermission['write_requires_approval'],
-                    'max_write_session_minutes' => $writePermission['max_write_session_minutes'],
+                    'query_access_read_requires_approval' => $queryAccessReadPermission['read_requires_approval'],
+                    'query_access_write_requires_approval' => $queryAccessWritePermission['write_requires_approval'],
+                    'query_access_max_write_session_minutes' => $queryAccessWritePermission['max_write_session_minutes'],
+                    'native_proxy_read_requires_approval' => $nativeReadPermission['read_requires_approval'],
+                    'native_proxy_write_requires_approval' => $nativeWritePermission['write_requires_approval'],
+                    'native_proxy_max_write_session_minutes' => $nativeWritePermission['max_write_session_minutes'],
                 ];
             })
             ->values()

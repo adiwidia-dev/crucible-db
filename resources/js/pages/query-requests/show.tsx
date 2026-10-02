@@ -18,7 +18,7 @@ import {
     Send,
     Trash2,
 } from 'lucide-react';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { format } from 'sql-formatter';
 import NotificationSubscriptionController from '@/actions/App/Http/Controllers/NotificationSubscriptionController';
@@ -28,6 +28,8 @@ import QueryReviewController from '@/actions/App/Http/Controllers/QueryReviewCon
 import QuerySessionController from '@/actions/App/Http/Controllers/QuerySessionController';
 import { PageHeader } from '@/components/crucible/page-header';
 import { Pagination } from '@/components/crucible/pagination';
+import { ReplacementQueryRequestCombobox } from '@/components/crucible/replacement-query-request-combobox';
+import type { ReplacementQueryRequestOption } from '@/components/crucible/replacement-query-request-combobox';
 import { SqlEditor } from '@/components/crucible/sql-editor';
 import { StatusBadge } from '@/components/crucible/status-badge';
 import InputError from '@/components/input-error';
@@ -210,6 +212,27 @@ type QueryRequest = {
     } | null;
 };
 
+type TargetConnection = QueryRequest['connection'];
+
+function TargetConnectionBadge({
+    connection,
+}: {
+    connection: TargetConnection;
+}) {
+    return (
+        <span className="inline-flex max-w-full min-w-0 items-start gap-1.5 rounded-md border bg-background px-1.5 py-0.5 text-xs">
+            <span className="min-w-0 leading-5 font-medium wrap-anywhere">
+                {connection.name}
+            </span>
+            <StatusBadge
+                value={connection.driver}
+                label={driverLabel(connection.driver)}
+                className="mt-0.5"
+            />
+        </span>
+    );
+}
+
 type Props = {
     query_request: QueryRequest;
     can_review: boolean;
@@ -218,11 +241,7 @@ type Props = {
     can_cancel: boolean;
     can_retry: boolean;
     can_resolve_failure: boolean;
-    replacement_candidates: Array<{
-        id: number;
-        title: string;
-        status: QueryRequestStatus;
-    }>;
+    replacement_candidates: ReplacementQueryRequestOption[];
     retry_strategy:
         'resume_read_only' | 'create_retry_request' | 'renew_access' | null;
     can_start_session: boolean;
@@ -388,9 +407,12 @@ export default function QueryRequestShow({
     const [isPreflightExpanded, setIsPreflightExpanded] = useState(false);
     const [isFailureResolutionDialogOpen, setIsFailureResolutionDialogOpen] =
         useState(false);
+    const failureResolutionDialogContentRef = useRef<HTMLDivElement>(null);
     const [failureResolution, setFailureResolution] = useState<
         'replaced' | 'investigated' | 'not_applicable'
     >('replaced');
+    const [replacementQueryRequestId, setReplacementQueryRequestId] =
+        useState('');
     const executionToastStorageKey = `query-request:${query_request.id}:awaiting-execution`;
     const [awaitingExecution, setAwaitingExecution] = useState(
         () =>
@@ -502,6 +524,8 @@ export default function QueryRequestShow({
         query_request.access_connections,
         query_request.request_kind,
     ]);
+    const summarizedTargetConnections = targetConnections.slice(0, 3);
+    const additionalTargetConnections = targetConnections.slice(3);
     const actionSummary =
         query_request.failure_resolution !== null
             ? 'The failure is resolved and remains in the execution history.'
@@ -846,7 +870,9 @@ export default function QueryRequestShow({
                                             Resolve failure
                                         </Button>
                                     </DialogTrigger>
-                                    <DialogContent>
+                                    <DialogContent
+                                        ref={failureResolutionDialogContentRef}
+                                    >
                                         <DialogHeader>
                                             <DialogTitle>
                                                 Resolve this failure?
@@ -864,11 +890,14 @@ export default function QueryRequestShow({
                                                 query_request.id,
                                             )}
                                             options={{ preserveScroll: true }}
-                                            onSuccess={() =>
+                                            onSuccess={() => {
                                                 setIsFailureResolutionDialogOpen(
                                                     false,
-                                                )
-                                            }
+                                                );
+                                                setReplacementQueryRequestId(
+                                                    '',
+                                                );
+                                            }}
                                             className="grid gap-4"
                                         >
                                             {({ processing, errors }) => (
@@ -914,64 +943,23 @@ export default function QueryRequestShow({
                                                     </div>
                                                     {failureResolution ===
                                                         'replaced' && (
-                                                        <div className="grid gap-2">
-                                                            <Label htmlFor="replacement-query-request">
-                                                                Replacement
-                                                                deployment batch
-                                                            </Label>
-                                                            <select
-                                                                id="replacement-query-request"
-                                                                name="replacement_query_request_id"
-                                                                required
-                                                                defaultValue=""
-                                                                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                                            >
-                                                                <option
-                                                                    value=""
-                                                                    disabled
-                                                                >
-                                                                    Select the
-                                                                    new
-                                                                    deployment
-                                                                    batch
-                                                                </option>
-                                                                {replacement_candidates.map(
-                                                                    (
-                                                                        candidate,
-                                                                    ) => (
-                                                                        <option
-                                                                            key={
-                                                                                candidate.id
-                                                                            }
-                                                                            value={
-                                                                                candidate.id
-                                                                            }
-                                                                        >
-                                                                            #
-                                                                            {
-                                                                                candidate.id
-                                                                            }{' '}
-                                                                            —{' '}
-                                                                            {
-                                                                                candidate.title
-                                                                            }
-                                                                        </option>
-                                                                    ),
-                                                                )}
-                                                            </select>
-                                                            <p className="text-xs text-muted-foreground">
-                                                                Only recent,
-                                                                visible batches
-                                                                for this
-                                                                database target
-                                                                are listed.
-                                                            </p>
-                                                            <InputError
-                                                                message={
-                                                                    errors.replacement_query_request_id
-                                                                }
-                                                            />
-                                                        </div>
+                                                        <ReplacementQueryRequestCombobox
+                                                            candidates={
+                                                                replacement_candidates
+                                                            }
+                                                            value={
+                                                                replacementQueryRequestId
+                                                            }
+                                                            onValueChange={
+                                                                setReplacementQueryRequestId
+                                                            }
+                                                            error={
+                                                                errors.replacement_query_request_id
+                                                            }
+                                                            portalContainer={
+                                                                failureResolutionDialogContentRef
+                                                            }
+                                                        />
                                                     )}
                                                     <div className="grid gap-2">
                                                         <Label htmlFor="failure-resolution-note">
@@ -1010,7 +998,11 @@ export default function QueryRequestShow({
                                                         </DialogClose>
                                                         <Button
                                                             disabled={
-                                                                processing
+                                                                processing ||
+                                                                (failureResolution ===
+                                                                    'replaced' &&
+                                                                    replacementQueryRequestId ===
+                                                                        '')
                                                             }
                                                         >
                                                             <CircleCheck />
@@ -1266,26 +1258,59 @@ export default function QueryRequestShow({
                                 <dt className="text-xs text-muted-foreground">
                                     {targetConnections.length === 1
                                         ? 'Target'
-                                        : 'Targets'}
+                                        : `Targets · ${targetConnections.length} total`}
                                 </dt>
-                                <dd className="mt-1 flex min-w-0 flex-wrap gap-1.5">
-                                    {targetConnections.map((connection) => (
-                                        <span
-                                            key={connection.id}
-                                            className="inline-flex max-w-full min-w-0 items-start gap-1.5 rounded-md border bg-background px-1.5 py-0.5 text-xs"
-                                        >
-                                            <span className="min-w-0 leading-5 font-medium wrap-anywhere">
-                                                {connection.name}
-                                            </span>
-                                            <StatusBadge
-                                                value={connection.driver}
-                                                label={driverLabel(
-                                                    connection.driver,
-                                                )}
-                                                className="mt-0.5"
-                                            />
-                                        </span>
-                                    ))}
+                                <dd className="mt-1 min-w-0">
+                                    <Collapsible key={query_request.id}>
+                                        <div className="flex min-w-0 flex-wrap gap-1.5">
+                                            {summarizedTargetConnections.map(
+                                                (connection) => (
+                                                    <TargetConnectionBadge
+                                                        key={connection.id}
+                                                        connection={connection}
+                                                    />
+                                                ),
+                                            )}
+                                        </div>
+                                        {additionalTargetConnections.length >
+                                            0 && (
+                                            <CollapsibleContent>
+                                                <div className="mt-1.5 flex min-w-0 flex-wrap gap-1.5">
+                                                    {additionalTargetConnections.map(
+                                                        (connection) => (
+                                                            <TargetConnectionBadge
+                                                                key={
+                                                                    connection.id
+                                                                }
+                                                                connection={
+                                                                    connection
+                                                                }
+                                                            />
+                                                        ),
+                                                    )}
+                                                </div>
+                                            </CollapsibleContent>
+                                        )}
+                                        {additionalTargetConnections.length >
+                                            0 && (
+                                            <CollapsibleTrigger asChild>
+                                                <Button
+                                                    type="button"
+                                                    variant="link"
+                                                    size="sm"
+                                                    className="group mt-1 h-auto justify-start gap-1.5 px-0 py-1 text-xs font-medium has-[>svg]:px-0"
+                                                >
+                                                    <span className="group-data-[state=open]:hidden">
+                                                        {`Show ${additionalTargetConnections.length} more targets`}
+                                                    </span>
+                                                    <span className="hidden group-data-[state=open]:inline">
+                                                        Show fewer targets
+                                                    </span>
+                                                    <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+                                                </Button>
+                                            </CollapsibleTrigger>
+                                        )}
+                                    </Collapsible>
                                 </dd>
                             </div>
                         </dl>

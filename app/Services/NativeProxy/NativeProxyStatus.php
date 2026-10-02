@@ -6,7 +6,6 @@ use App\Enums\NativeProxyConnectionStatus;
 use App\Models\NativeProxyConnection;
 use App\Models\QuerySession;
 use App\Models\User;
-use Illuminate\Database\Eloquent\Builder;
 
 class NativeProxyStatus
 {
@@ -21,11 +20,8 @@ class NativeProxyStatus
      */
     public function for(User $user): array
     {
-        $isAdmin = $user->isAdmin();
-        $reviewableConnectionIds = $isAdmin
-            ? []
-            : $user->reviewableDatabaseConnectionIds();
-        $visibleSessionIds = $this->visibleSessions($user, $isAdmin, $reviewableConnectionIds)
+        $visibleSessionIds = QuerySession::query()
+            ->visibleTo($user)
             ->select('id');
         $activeConnections = NativeProxyConnection::query()
             ->whereIn('query_session_id', $visibleSessionIds)
@@ -36,26 +32,5 @@ class NativeProxyStatus
             'connections' => (clone $activeConnections)->count(),
             'instances' => (clone $activeConnections)->distinct('proxy_instance_id')->count('proxy_instance_id'),
         ];
-    }
-
-    /**
-     * @param  array<int, int>  $reviewableConnectionIds
-     * @return Builder<QuerySession>
-     */
-    private function visibleSessions(User $user, bool $isAdmin, array $reviewableConnectionIds): Builder
-    {
-        $query = QuerySession::query();
-
-        if ($isAdmin) {
-            return $query;
-        }
-
-        return $query->where(function (Builder $sessions) use ($user, $reviewableConnectionIds): void {
-            $sessions->where('user_id', $user->id);
-
-            if ($reviewableConnectionIds !== []) {
-                $sessions->orWhereIn('database_connection_id', $reviewableConnectionIds);
-            }
-        });
     }
 }

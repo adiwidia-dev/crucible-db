@@ -20,6 +20,6 @@ The People list distinguishes active, pending invitation, and disabled accounts.
 
 ## Enable or disable access
 
-Disable a user when access must stop without deleting historical ownership. Disabled users cannot sign in, while their past requests, reviews, executions, and audit attribution remain intact.
+Disable a user when access must stop without deleting historical ownership. Disabled users cannot sign in or start pending governed work; dispatch, queued execution, retry, and Query Access session start recheck the original requester's active state. Past requests, reviews, executions, and audit attribution remain intact.
 
 An administrator cannot change their own role assignment on this page. Use another authorized administrator for changes to administrator access.

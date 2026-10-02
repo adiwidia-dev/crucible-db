@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AccessMode;
 use App\Enums\ExecutionStatus;
 use App\Enums\FailureResolution;
 use App\Enums\PreflightStatus;
@@ -24,6 +25,7 @@ use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
 use App\Services\DatabaseTlsMaterializer;
 use App\Services\DeploymentPreflight;
+use App\Services\EffectiveQueryRequestPolicy;
 use App\Services\NotificationDispatcher;
 use App\Services\QueryRequestWorkflow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,6 +33,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
+use Inertia\Support\SessionKey;
 use Inertia\Testing\AssertableInertia as Assert;
 use RuntimeException;
 use Tests\TestCase;
@@ -560,6 +563,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
             app(AuditLogger::class),
             app(DeploymentPreflight::class),
             app(NotificationDispatcher::class),
+            app(EffectiveQueryRequestPolicy::class),
         );
 
         $queryRequest->refresh();
@@ -607,7 +611,258 @@ class QueryRequestBatchWorkflowTest extends TestCase
         );
     }
 
-    public function test_editing_an_approved_request_replaces_statements_and_requires_reapproval(): void
+    public function test_dispatch_returns_an_auto_approved_batch_to_pending_review_when_policy_now_requires_approval(): void
+    {
+        Queue::fake();
+        Notification::fake();
+
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        $permission = RoleDatabasePermission::factory()->bypassApproval()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+        ]);
+        $queryRequest = app(QueryRequestWorkflow::class)->create($requester, [
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Read before policy tightening',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'select 1',
+            ]],
+        ]);
+
+        $permission->forceFill([
+            'read_requires_approval' => true,
+        ])->save();
+
+        $dispatched = app(QueryRequestWorkflow::class)->dispatch($queryRequest, $requester);
+
+        $queryRequest->refresh();
+
+        $this->assertFalse($dispatched);
+        $this->assertSame(QueryRequestStatus::PendingReview, $queryRequest->status);
+        $this->assertTrue($queryRequest->requires_approval);
+        $this->assertNull($queryRequest->approved_by_id);
+        $this->assertSame(2, $queryRequest->revision);
+        Queue::assertNotPushed(ExecuteQueryRequest::class);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'query_request.approval_invalidated',
+            'auditable_id' => $queryRequest->id,
+        ]);
+    }
+
+    public function test_queued_batch_rechecks_tightened_approval_policy_before_execution(): void
+    {
+        Notification::fake();
+
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        $permission = RoleDatabasePermission::factory()->bypassApproval()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+        ]);
+        $queryRequest = app(QueryRequestWorkflow::class)->create($requester, [
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Queued before policy tightening',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'select 1',
+            ]],
+        ]);
+        $queryRequest->forceFill(['dispatched_at' => now()])->save();
+        $permission->forceFill(['read_requires_approval' => true])->save();
+
+        $fakeExecutor = new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
+        {
+            public int $executionCount = 0;
+
+            public function execute(DatabaseConnection $databaseConnection, string $sql, QueryType $queryType): array
+            {
+                $this->executionCount++;
+
+                return [
+                    'row_count' => 1,
+                    'sample_rows' => [],
+                    'result_truncated' => false,
+                ];
+            }
+        };
+
+        (new ExecuteQueryRequest($queryRequest->id))->handle(
+            $fakeExecutor,
+            app(AuditLogger::class),
+            app(DeploymentPreflight::class),
+            app(NotificationDispatcher::class),
+            app(EffectiveQueryRequestPolicy::class),
+        );
+
+        $queryRequest->refresh();
+
+        $this->assertSame(0, $fakeExecutor->executionCount);
+        $this->assertSame(QueryRequestStatus::PendingReview, $queryRequest->status);
+        $this->assertNull($queryRequest->dispatched_at);
+        $this->assertNull($queryRequest->approved_by_id);
+    }
+
+    public function test_disabled_requester_cannot_execute_an_already_queued_batch(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        RoleDatabasePermission::factory()->bypassApproval()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+        ]);
+        $queryRequest = app(QueryRequestWorkflow::class)->create($requester, [
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Queued before requester disablement',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'select 1',
+            ]],
+        ]);
+        $queryRequest->forceFill(['dispatched_at' => now()])->save();
+        $requester->forceFill(['disabled_at' => now()])->save();
+
+        $fakeExecutor = new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
+        {
+            public int $executionCount = 0;
+
+            public function execute(DatabaseConnection $databaseConnection, string $sql, QueryType $queryType): array
+            {
+                $this->executionCount++;
+
+                return [
+                    'row_count' => 1,
+                    'sample_rows' => [],
+                    'result_truncated' => false,
+                ];
+            }
+        };
+
+        (new ExecuteQueryRequest($queryRequest->id))->handle(
+            $fakeExecutor,
+            app(AuditLogger::class),
+            app(DeploymentPreflight::class),
+            app(NotificationDispatcher::class),
+            app(EffectiveQueryRequestPolicy::class),
+        );
+
+        $queryRequest->refresh();
+
+        $this->assertSame(0, $fakeExecutor->executionCount);
+        $this->assertSame(QueryRequestStatus::Approved, $queryRequest->status);
+        $this->assertSame(PreflightStatus::Blocked, $queryRequest->preflight_status);
+        $this->assertSame(
+            'requester_disabled',
+            data_get($queryRequest->preflight_report, 'statements.0.messages.0.code'),
+        );
+        $this->assertNull($queryRequest->dispatched_at);
+    }
+
+    public function test_disabled_requester_cannot_dispatch_a_scheduled_batch(): void
+    {
+        Queue::fake();
+        Notification::fake();
+
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        RoleDatabasePermission::factory()->bypassApproval()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+        ]);
+        $queryRequest = app(QueryRequestWorkflow::class)->create($requester, [
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Scheduled before requester disablement',
+            'scheduled_at' => now()->addMinute()->toIso8601String(),
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'select 1',
+            ]],
+        ]);
+        $queryRequest->forceFill(['scheduled_at' => now()->subMinute()])->save();
+        $requester->forceFill(['disabled_at' => now()])->save();
+
+        $dispatched = app(QueryRequestWorkflow::class)->dispatch($queryRequest);
+
+        $queryRequest->refresh();
+
+        $this->assertFalse($dispatched);
+        $this->assertSame(QueryRequestStatus::Approved, $queryRequest->status);
+        $this->assertSame(PreflightStatus::Blocked, $queryRequest->preflight_status);
+        $this->assertNull($queryRequest->dispatched_at);
+        Queue::assertNotPushed(ExecuteQueryRequest::class);
+    }
+
+    public function test_cancellation_during_preflight_is_not_overwritten_by_the_execution_claim(): void
+    {
+        $admin = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+        $queryRequest = app(QueryRequestWorkflow::class)->create($admin, [
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Cancel while the worker checks policy',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'select 1',
+            ]],
+        ]);
+        $queryRequest->forceFill(['dispatched_at' => now()])->save();
+
+        $fakeExecutor = new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
+        {
+            public int $executionCount = 0;
+
+            public function execute(DatabaseConnection $databaseConnection, string $sql, QueryType $queryType): array
+            {
+                $this->executionCount++;
+
+                return [
+                    'row_count' => 1,
+                    'sample_rows' => [],
+                    'result_truncated' => false,
+                ];
+            }
+        };
+        $realPreflight = app(DeploymentPreflight::class);
+        $preflight = \Mockery::mock(DeploymentPreflight::class);
+        $preflight->shouldReceive('evaluate')
+            ->once()
+            ->andReturnUsing(function (QueryRequest $request) use ($admin, $realPreflight): array {
+                $report = $realPreflight->evaluate($request);
+                app(QueryRequestWorkflow::class)->cancel($request, $admin, 'Cancelled while queued.');
+
+                return $report;
+            });
+        $preflight->shouldReceive('persist')
+            ->once()
+            ->andReturnUsing(fn (QueryRequest $request, array $report) => $realPreflight->persist($request, $report));
+
+        $job = new ExecuteQueryRequest($queryRequest->id);
+        $job->handle(
+            $fakeExecutor,
+            app(AuditLogger::class),
+            $preflight,
+            app(NotificationDispatcher::class),
+            app(EffectiveQueryRequestPolicy::class),
+        );
+
+        $this->assertSame(0, $fakeExecutor->executionCount);
+        $this->assertSame(QueryRequestStatus::Cancelled, $queryRequest->refresh()->status);
+        $this->assertDatabaseCount('query_executions', 0);
+
+        $job->failed(new RuntimeException('Worker stopped after cancellation.'));
+
+        $this->assertSame(QueryRequestStatus::Cancelled, $queryRequest->refresh()->status);
+    }
+
+    public function test_admin_editing_an_approved_request_replaces_statements_without_reapproval(): void
     {
         $admin = $this->adminUser();
         $connection = DatabaseConnection::factory()->create();
@@ -633,14 +888,21 @@ class QueryRequestBatchWorkflowTest extends TestCase
             ],
         ]);
 
-        $response->assertRedirect(route('query-requests.show', $queryRequest));
+        $response
+            ->assertRedirect(route('query-requests.show', $queryRequest))
+            ->assertSessionHas(SessionKey::FLASH_DATA, [
+                'toast' => [
+                    'type' => 'success',
+                    'message' => 'Query request updated.',
+                ],
+            ]);
 
         $queryRequest->refresh();
 
-        $this->assertSame(QueryRequestStatus::PendingReview, $queryRequest->status);
-        $this->assertTrue($queryRequest->requires_approval);
-        $this->assertNull($queryRequest->approved_by_id);
-        $this->assertNull($queryRequest->approved_at);
+        $this->assertSame(QueryRequestStatus::Approved, $queryRequest->status);
+        $this->assertFalse($queryRequest->requires_approval);
+        $this->assertSame($admin->id, $queryRequest->approved_by_id);
+        $this->assertNotNull($queryRequest->approved_at);
         $this->assertSame('DEP-204 revised migration', $queryRequest->title);
         $this->assertSame(
             ['select 2 as value', 'delete from temporary_rows where id = 9'],
@@ -648,8 +910,52 @@ class QueryRequestBatchWorkflowTest extends TestCase
         );
 
         $auditLog = AuditLog::query()->where('action', 'query_request.updated')->firstOrFail();
-        $this->assertTrue($auditLog->metadata['approval_invalidated']);
+        $this->assertFalse($auditLog->metadata['approval_invalidated']);
         $this->assertSame(QueryRequestStatus::Approved->value, $auditLog->metadata['previous_status']);
+    }
+
+    public function test_editing_an_approved_request_requires_reapproval_when_the_requester_policy_requires_it(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        RoleDatabasePermission::factory()->write()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'requires_approval' => true,
+        ]);
+        $queryRequest = QueryRequest::factory()->approved()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'approved_by_id' => $requester->id,
+            'requires_approval' => false,
+            'sql' => 'select 1',
+        ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'database_connection_id' => $connection->id,
+            'sql' => 'select 1',
+        ]);
+
+        $this->actingAs($requester)->put(route('query-requests.update', $queryRequest), [
+            'database_connection_id' => $connection->id,
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Deployment requiring reapproval',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'delete from temporary_rows where id = 9',
+            ]],
+        ])->assertRedirect(route('query-requests.show', $queryRequest));
+
+        $queryRequest->refresh();
+
+        $this->assertSame(QueryRequestStatus::PendingReview, $queryRequest->status);
+        $this->assertTrue($queryRequest->requires_approval);
+        $this->assertNull($queryRequest->approved_by_id);
+        $this->assertNull($queryRequest->approved_at);
+
+        $auditLog = AuditLog::query()->where('action', 'query_request.updated')->firstOrFail();
+        $this->assertTrue($auditLog->metadata['approval_invalidated']);
     }
 
     public function test_dispatched_or_completed_request_cannot_be_edited(): void
@@ -700,6 +1006,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
             app(AuditLogger::class),
             app(DeploymentPreflight::class),
             app(NotificationDispatcher::class),
+            app(EffectiveQueryRequestPolicy::class),
         );
 
         $this->assertSame(['select 1', 'update widgets set active = 1', 'select 3'], $fakeExecutor->executedSql);
@@ -749,6 +1056,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
                 app(AuditLogger::class),
                 app(DeploymentPreflight::class),
                 app(NotificationDispatcher::class),
+                app(EffectiveQueryRequestPolicy::class),
             );
 
             $this->fail('The failing statement should stop the batch.');
@@ -808,6 +1116,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
             app(AuditLogger::class),
             app(DeploymentPreflight::class),
             app(NotificationDispatcher::class),
+            app(EffectiveQueryRequestPolicy::class),
         );
 
         $this->assertSame(
@@ -1011,7 +1320,50 @@ class QueryRequestBatchWorkflowTest extends TestCase
             && $job->resumeFromPosition === 2);
     }
 
-    public function test_failed_write_batch_creates_a_linked_request_for_reapproval_from_the_failed_statement(): void
+    public function test_failed_read_only_batch_creates_a_linked_retry_when_current_policy_needs_fresh_approval(): void
+    {
+        Queue::fake();
+
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        $permission = RoleDatabasePermission::factory()->bypassApproval()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+        ]);
+        $queryRequest = app(QueryRequestWorkflow::class)->create($requester, [
+            'request_kind' => QueryRequestKind::SingleExecution->value,
+            'title' => 'Read batch before policy tightening',
+            'statements' => [[
+                'database_connection_id' => $connection->id,
+                'sql' => 'select 1',
+            ]],
+        ]);
+        $failedStatement = $queryRequest->statements()->sole();
+        $queryRequest->forceFill([
+            'status' => QueryRequestStatus::Failed,
+            'completed_at' => now(),
+        ])->save();
+        QueryExecution::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'query_request_statement_id' => $failedStatement->id,
+            'database_connection_id' => $connection->id,
+            'status' => ExecutionStatus::Failed,
+        ]);
+        $permission->forceFill(['read_requires_approval' => true])->save();
+
+        $retryRequest = app(QueryRequestWorkflow::class)->retry($queryRequest, $requester);
+
+        $this->assertNotSame($queryRequest->id, $retryRequest->id);
+        $this->assertSame($queryRequest->id, $retryRequest->retry_of_id);
+        $this->assertSame(QueryRequestStatus::PendingReview, $retryRequest->status);
+        $this->assertTrue($retryRequest->requires_approval);
+        $this->assertNull($retryRequest->approved_by_id);
+        Queue::assertNotPushed(ExecuteQueryRequest::class);
+    }
+
+    public function test_admin_failed_write_batch_creates_an_approved_linked_retry_from_the_failed_statement(): void
     {
         $requester = $this->adminUser();
         $connection = DatabaseConnection::factory()->create();
@@ -1059,8 +1411,9 @@ class QueryRequestBatchWorkflowTest extends TestCase
             ->firstOrFail();
 
         $response->assertRedirect(route('query-requests.show', $retryRequest));
-        $this->assertSame(QueryRequestStatus::PendingReview, $retryRequest->status);
-        $this->assertTrue($retryRequest->requires_approval);
+        $this->assertSame(QueryRequestStatus::Approved, $retryRequest->status);
+        $this->assertFalse($retryRequest->requires_approval);
+        $this->assertSame($requester->id, $retryRequest->approved_by_id);
         $this->assertSame(
             ['update customers set active = 1', 'select count(*) from customers'],
             $retryRequest->statements()->pluck('sql')->all(),
@@ -1072,6 +1425,90 @@ class QueryRequestBatchWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_failed_write_batch_retry_requires_approval_when_the_requester_policy_requires_it(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        RoleDatabasePermission::factory()->write()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'requires_approval' => true,
+        ]);
+        $queryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'query_type' => QueryType::Write,
+            'status' => QueryRequestStatus::Failed,
+            'completed_at' => now(),
+            'title' => 'DEP-451 policy-controlled retry',
+        ]);
+        $failedStatement = QueryRequestStatement::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'database_connection_id' => $connection->id,
+            'position' => 1,
+            'sql' => 'update customers set active = 1',
+            'query_type' => QueryType::Write,
+        ]);
+        QueryExecution::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'query_request_statement_id' => $failedStatement->id,
+            'database_connection_id' => $connection->id,
+            'status' => ExecutionStatus::Failed,
+        ]);
+
+        $this->actingAs($requester)->post(route('query-requests.retry', $queryRequest));
+
+        $retryRequest = QueryRequest::query()
+            ->where('retry_of_id', $queryRequest->id)
+            ->firstOrFail();
+
+        $this->assertSame(QueryRequestStatus::PendingReview, $retryRequest->status);
+        $this->assertTrue($retryRequest->requires_approval);
+        $this->assertNull($retryRequest->approved_by_id);
+    }
+
+    public function test_failed_write_batch_retry_is_rejected_when_the_requester_lost_target_access(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $requester = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        $permission = RoleDatabasePermission::factory()->write()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'requires_approval' => false,
+        ]);
+        $queryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'query_type' => QueryType::Write,
+            'status' => QueryRequestStatus::Failed,
+            'completed_at' => now(),
+        ]);
+        $failedStatement = QueryRequestStatement::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'database_connection_id' => $connection->id,
+            'position' => 1,
+            'sql' => 'update customers set active = 1',
+            'query_type' => QueryType::Write,
+        ]);
+        QueryExecution::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'query_request_statement_id' => $failedStatement->id,
+            'database_connection_id' => $connection->id,
+            'status' => ExecutionStatus::Failed,
+        ]);
+        $permission->delete();
+
+        $this->actingAs($requester->refresh())
+            ->post(route('query-requests.retry', $queryRequest))
+            ->assertSessionHasErrors('statements.0.database_connection_id');
+
+        $this->assertDatabaseMissing('query_requests', [
+            'retry_of_id' => $queryRequest->id,
+        ]);
+    }
+
     public function test_failed_deployment_batch_can_be_resolved_with_a_replacement_batch(): void
     {
         $requester = $this->adminUser();
@@ -1080,12 +1517,14 @@ class QueryRequestBatchWorkflowTest extends TestCase
             'requester_id' => $requester->id,
             'database_connection_id' => $connection->id,
             'status' => QueryRequestStatus::Failed,
-            'completed_at' => now()->subMinute(),
+            'created_at' => now()->subHours(2),
+            'completed_at' => now(),
         ]);
         $replacementQueryRequest = QueryRequest::factory()->create([
             'requester_id' => $requester->id,
             'database_connection_id' => $connection->id,
             'status' => QueryRequestStatus::Approved,
+            'created_at' => now()->subHour(),
         ]);
 
         $this->actingAs($requester)
@@ -1110,18 +1549,55 @@ class QueryRequestBatchWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_failed_deployment_batch_cannot_be_resolved_with_a_batch_from_another_target(): void
+    public function test_failed_deployment_batch_can_be_resolved_with_a_new_visible_batch_for_different_targets(): void
     {
         $requester = $this->adminUser();
+        $failedPrimaryConnection = DatabaseConnection::factory()->create(['name' => 'Failed Primary']);
+        $failedSecondaryConnection = DatabaseConnection::factory()->create(['name' => 'Failed Secondary']);
+        $replacementPrimaryConnection = DatabaseConnection::factory()->create(['name' => 'Replacement Primary']);
+        $replacementSecondaryConnection = DatabaseConnection::factory()->create(['name' => 'Replacement Secondary']);
         $failedQueryRequest = QueryRequest::factory()->create([
             'requester_id' => $requester->id,
+            'database_connection_id' => $failedPrimaryConnection->id,
             'status' => QueryRequestStatus::Failed,
             'completed_at' => now()->subMinute(),
         ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $failedQueryRequest->id,
+            'database_connection_id' => $failedPrimaryConnection->id,
+            'position' => 1,
+        ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $failedQueryRequest->id,
+            'database_connection_id' => $failedSecondaryConnection->id,
+            'position' => 2,
+        ]);
         $replacementQueryRequest = QueryRequest::factory()->create([
             'requester_id' => $requester->id,
+            'database_connection_id' => $replacementPrimaryConnection->id,
             'status' => QueryRequestStatus::Approved,
         ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $replacementQueryRequest->id,
+            'database_connection_id' => $replacementPrimaryConnection->id,
+            'position' => 1,
+        ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $replacementQueryRequest->id,
+            'database_connection_id' => $replacementSecondaryConnection->id,
+            'position' => 2,
+        ]);
+
+        $this->actingAs($requester)
+            ->get(route('query-requests.show', $failedQueryRequest))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('replacement_candidates', 1)
+                ->where('replacement_candidates.0.id', $replacementQueryRequest->id)
+                ->where('replacement_candidates.0.connections', [
+                    ['id' => $replacementPrimaryConnection->id, 'name' => $replacementPrimaryConnection->name],
+                    ['id' => $replacementSecondaryConnection->id, 'name' => $replacementSecondaryConnection->name],
+                ]));
 
         $this->actingAs($requester)
             ->from(route('query-requests.show', $failedQueryRequest))
@@ -1130,9 +1606,52 @@ class QueryRequestBatchWorkflowTest extends TestCase
                 'replacement_query_request_id' => $replacementQueryRequest->id,
             ])
             ->assertRedirect(route('query-requests.show', $failedQueryRequest))
-            ->assertSessionHasErrors('replacement_query_request_id');
+            ->assertSessionHasNoErrors();
 
-        $this->assertNull($failedQueryRequest->fresh()->failure_resolved_at);
+        $this->assertSame(
+            $replacementQueryRequest->id,
+            $failedQueryRequest->fresh()->replacement_query_request_id,
+        );
+    }
+
+    public function test_failure_resolution_lists_all_visible_batches_newer_than_the_failed_request(): void
+    {
+        $requester = $this->adminUser();
+        $connection = DatabaseConnection::factory()->create();
+        $failedQueryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Failed,
+            'created_at' => now()->subHours(2),
+            'completed_at' => now(),
+        ]);
+        QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Approved,
+            'created_at' => now()->subHours(3),
+        ]);
+        QueryRequest::factory()->count(51)->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Approved,
+            'created_at' => now()->subHour(),
+        ]);
+        $completedQueryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $connection->id,
+            'status' => QueryRequestStatus::Completed,
+            'created_at' => now()->subMinutes(30),
+            'completed_at' => now()->subMinutes(10),
+        ]);
+
+        $this->actingAs($requester)
+            ->get(route('query-requests.show', $failedQueryRequest))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('replacement_candidates', 52)
+                ->where('replacement_candidates.0.id', $completedQueryRequest->id)
+                ->where('replacement_candidates.0.status', QueryRequestStatus::Completed->value));
     }
 
     public function test_completed_query_access_request_creates_a_linked_request_with_the_same_targets(): void
@@ -1206,6 +1725,7 @@ class QueryRequestBatchWorkflowTest extends TestCase
             app(AuditLogger::class),
             app(DeploymentPreflight::class),
             app(NotificationDispatcher::class),
+            app(EffectiveQueryRequestPolicy::class),
         );
 
         $this->assertSame(['select 1'], $fakeExecutor->executedSql);

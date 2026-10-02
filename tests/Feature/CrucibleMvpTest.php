@@ -15,6 +15,7 @@ use App\Models\AuditLog;
 use App\Models\DatabaseConnection;
 use App\Models\QueryExecution;
 use App\Models\QueryRequest;
+use App\Models\QueryRequestStatement;
 use App\Models\QuerySession;
 use App\Models\QuerySessionQuery;
 use App\Models\Role;
@@ -24,6 +25,7 @@ use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
 use App\Services\DatabaseTlsMaterializer;
 use App\Services\DeploymentPreflight;
+use App\Services\EffectiveQueryRequestPolicy;
 use App\Services\NotificationDispatcher;
 use App\Services\QueryGuard;
 use App\Services\QueryRequestWorkflow;
@@ -854,6 +856,66 @@ SQL;
                 ->where('query_requests.data.0.title', 'Customer export'));
     }
 
+    public function test_query_request_index_lists_and_filters_every_target_connection(): void
+    {
+        $admin = $this->adminUser();
+        $firstConnection = DatabaseConnection::factory()->create(['name' => 'Accounts Primary']);
+        $secondConnection = DatabaseConnection::factory()->create(['name' => 'Billing Replica']);
+        $thirdConnection = DatabaseConnection::factory()->create(['name' => 'Customer Archive']);
+        $queryAccessRequest = QueryRequest::factory()->queryAccess()->create([
+            'requester_id' => $admin->id,
+            'database_connection_id' => $firstConnection->id,
+            'title' => 'Cross-database query access',
+            'created_at' => now(),
+        ]);
+        $queryAccessRequest->accessConnections()->sync([
+            $firstConnection->id,
+            $secondConnection->id,
+        ]);
+        $deploymentRequest = QueryRequest::factory()->create([
+            'requester_id' => $admin->id,
+            'database_connection_id' => $firstConnection->id,
+            'title' => 'Cross-database deployment',
+            'created_at' => now()->subMinute(),
+        ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $deploymentRequest->id,
+            'database_connection_id' => $firstConnection->id,
+            'position' => 1,
+        ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $deploymentRequest->id,
+            'database_connection_id' => $thirdConnection->id,
+            'position' => 2,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('query_requests.data', 2)
+                ->where('query_requests.data.0.connections', [
+                    ['id' => $firstConnection->id, 'name' => $firstConnection->name],
+                    ['id' => $secondConnection->id, 'name' => $secondConnection->name],
+                ])
+                ->where('query_requests.data.1.connections', [
+                    ['id' => $firstConnection->id, 'name' => $firstConnection->name],
+                    ['id' => $thirdConnection->id, 'name' => $thirdConnection->name],
+                ]));
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.index', ['connection_id' => $secondConnection->id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('query_requests.data', 1)
+                ->where('query_requests.data.0.id', $queryAccessRequest->id));
+
+        $this->actingAs($admin)
+            ->get(route('query-requests.index', ['search' => 'Customer Archive']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('query_requests.data', 1)
+                ->where('query_requests.data.0.id', $deploymentRequest->id));
+    }
+
     public function test_query_request_lists_surface_write_when_any_execution_writes(): void
     {
         $admin = $this->adminUser();
@@ -928,6 +990,65 @@ SQL;
                 ->where('query_request.title', 'Shared request')
                 ->where('can_review', false)
                 ->where('can_start_session', false));
+    }
+
+    public function test_non_admin_query_request_index_requires_visibility_to_every_target_connection(): void
+    {
+        $viewer = $this->developerUser('Multi-target viewer');
+        $requester = User::factory()->create();
+        $firstConnection = DatabaseConnection::factory()->create(['name' => 'Visible primary']);
+        $secondConnection = DatabaseConnection::factory()->create(['name' => 'Initially hidden secondary']);
+
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $this->roleId($viewer),
+            'database_connection_id' => $firstConnection->id,
+            'access_mode' => AccessMode::Read,
+        ]);
+
+        $queryAccessRequest = QueryRequest::factory()->queryAccess()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $firstConnection->id,
+            'title' => 'Multi-target query access',
+            'created_at' => now()->subMinute(),
+        ]);
+        $queryAccessRequest->accessConnections()->sync([$firstConnection->id, $secondConnection->id]);
+
+        $deploymentRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $firstConnection->id,
+            'title' => 'Multi-target deployment',
+            'created_at' => now(),
+        ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $deploymentRequest->id,
+            'database_connection_id' => $firstConnection->id,
+            'position' => 1,
+        ]);
+        QueryRequestStatement::factory()->create([
+            'query_request_id' => $deploymentRequest->id,
+            'database_connection_id' => $secondConnection->id,
+            'position' => 2,
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('query-requests.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('query_requests.data', 0));
+
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $this->roleId($viewer),
+            'database_connection_id' => $secondConnection->id,
+            'access_mode' => AccessMode::Read,
+        ]);
+
+        $this->actingAs($viewer->refresh())
+            ->get(route('query-requests.index'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('query_requests.data', 2)
+                ->where('query_requests.data.0.id', $deploymentRequest->id)
+                ->where('query_requests.data.1.id', $queryAccessRequest->id));
     }
 
     public function test_query_access_request_show_includes_the_latest_ended_session(): void
@@ -1067,7 +1188,7 @@ SQL;
             ->assertRedirect()
             ->assertSessionHas(SessionKey::FLASH_DATA, [
                 'toast' => [
-                    'type' => 'success',
+                    'type' => 'info',
                     'message' => 'Deployment batch queued for execution.',
                 ],
             ]);
@@ -1374,7 +1495,7 @@ SQL;
             ->assertRedirect()
             ->assertSessionHas(SessionKey::FLASH_DATA, [
                 'toast' => [
-                    'type' => 'success',
+                    'type' => 'info',
                     'message' => 'Deployment batch queued for execution.',
                 ],
             ]);
@@ -1647,6 +1768,7 @@ SQL;
             app(AuditLogger::class),
             app(DeploymentPreflight::class),
             app(NotificationDispatcher::class),
+            app(EffectiveQueryRequestPolicy::class),
         );
 
         $queryRequest->refresh();

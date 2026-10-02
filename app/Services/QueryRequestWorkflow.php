@@ -37,6 +37,7 @@ class QueryRequestWorkflow
         private readonly QueryResultSnapshotStore $resultSnapshotStore,
         private readonly LeaseWorkflow $nativeProxyLeaseWorkflow,
         private readonly ApplicationSettings $applicationSettings,
+        private readonly EffectiveQueryRequestPolicy $effectiveQueryRequestPolicy,
     ) {}
 
     /**
@@ -89,18 +90,7 @@ class QueryRequestWorkflow
 
         if (! $requester->isAdmin()) {
             if ($requestKind === QueryRequestKind::SingleExecution) {
-                foreach ($statements as $index => $statement) {
-                    $permission = $requester->effectiveDatabasePermissionFor(
-                        $databaseConnections->get($statement['database_connection_id']),
-                        $statement['query_type'],
-                    );
-
-                    if (! $permission['access_mode']->allows($statement['query_type'])) {
-                        throw ValidationException::withMessages([
-                            "statements.{$index}.database_connection_id" => 'Your role is not allowed to run this query type on the selected database.',
-                        ]);
-                    }
-                }
+                $this->ensureCanRunStatements($requester, $databaseConnections, $statements);
             }
 
             if ($requestKind === QueryRequestKind::QueryAccess) {
@@ -299,18 +289,7 @@ class QueryRequestWorkflow
 
         if (! $actor->isAdmin()) {
             if ($requestKind === QueryRequestKind::SingleExecution) {
-                foreach ($statements as $index => $statement) {
-                    $permission = $actor->effectiveDatabasePermissionFor(
-                        $databaseConnections->get($statement['database_connection_id']),
-                        $statement['query_type'],
-                    );
-
-                    if (! $permission['access_mode']->allows($statement['query_type'])) {
-                        throw ValidationException::withMessages([
-                            "statements.{$index}.database_connection_id" => 'Your role is not allowed to run this query type on the selected database.',
-                        ]);
-                    }
-                }
+                $this->ensureCanRunStatements($actor, $databaseConnections, $statements);
             }
 
             if ($requestKind === QueryRequestKind::QueryAccess) {
@@ -367,11 +346,9 @@ class QueryRequestWorkflow
 
             $previousStatus = $lockedQueryRequest->status;
             $submittingDraft = $previousStatus === QueryRequestStatus::Draft;
-            $status = $submittingDraft
-                ? (! $requiresApproval
-                    ? ($scheduledAt?->isFuture() ? QueryRequestStatus::Scheduled : QueryRequestStatus::Approved)
-                    : QueryRequestStatus::PendingReview)
-                : QueryRequestStatus::PendingReview;
+            $status = $requiresApproval
+                ? QueryRequestStatus::PendingReview
+                : ($scheduledAt?->isFuture() ? QueryRequestStatus::Scheduled : QueryRequestStatus::Approved);
 
             $lockedQueryRequest->forceFill([
                 'database_connection_id' => $databaseConnection->id,
@@ -383,11 +360,11 @@ class QueryRequestWorkflow
                 'access_transport' => $accessTransport,
                 'requested_access_mode' => $requestedAccessMode,
                 'status' => $status,
-                'requires_approval' => $submittingDraft ? $requiresApproval : true,
+                'requires_approval' => $requiresApproval,
                 'scheduled_at' => $scheduledAt,
                 'access_duration_minutes' => $accessDurationMinutes,
-                'approved_by_id' => $submittingDraft && ! $requiresApproval ? $actor->id : null,
-                'approved_at' => $submittingDraft && ! $requiresApproval ? now() : null,
+                'approved_by_id' => $requiresApproval ? null : $actor->id,
+                'approved_at' => $requiresApproval ? null : now(),
                 'dispatched_by_id' => null,
                 'execution_source_ip_address' => $executionSourceIpAddress ?? $lockedQueryRequest->execution_source_ip_address,
                 'dispatched_at' => null,
@@ -416,7 +393,8 @@ class QueryRequestWorkflow
 
             $this->auditLogger->log('query_request.updated', $actor, $lockedQueryRequest, [
                 'previous_status' => $previousStatus->value,
-                'approval_invalidated' => in_array($previousStatus, [QueryRequestStatus::Approved, QueryRequestStatus::Scheduled], true),
+                'approval_invalidated' => $requiresApproval
+                    && in_array($previousStatus, [QueryRequestStatus::Approved, QueryRequestStatus::Scheduled], true),
                 'status' => $lockedQueryRequest->status->value,
                 'query_type' => $lockedQueryRequest->query_type->value,
                 'request_kind' => $lockedQueryRequest->request_kind->value,
@@ -439,7 +417,7 @@ class QueryRequestWorkflow
 
             if ($submittingDraft && $requiresApproval) {
                 $this->notificationDispatcher->requestSubmitted($lockedQueryRequest);
-            } elseif (! $submittingDraft) {
+            } elseif (! $submittingDraft && $requiresApproval) {
                 $this->notificationDispatcher->reapprovalRequired($lockedQueryRequest);
             }
 
@@ -612,6 +590,17 @@ class QueryRequestWorkflow
                     }
                 }
 
+                if ($decision === 'approved' && $lockedQueryRequest->request_kind === QueryRequestKind::QueryAccess) {
+                    try {
+                        $this->effectiveQueryRequestPolicy->ensureQueryAccessRequestCanStart($lockedQueryRequest);
+                    } catch (ValidationException $exception) {
+                        throw ValidationException::withMessages([
+                            'decision' => collect($exception->errors())->flatten()->first()
+                                ?? 'This access request is no longer allowed by the requester\'s current policy.',
+                        ]);
+                    }
+                }
+
                 $review = QueryReview::query()->create([
                     'query_request_id' => $lockedQueryRequest->id,
                     'query_request_revision' => $lockedQueryRequest->revision,
@@ -623,6 +612,7 @@ class QueryRequestWorkflow
                 if ($decision === 'approved') {
                     $lockedQueryRequest->forceFill([
                         'status' => $lockedQueryRequest->scheduled_at?->isFuture() ? QueryRequestStatus::Scheduled : QueryRequestStatus::Approved,
+                        'requires_approval' => $this->effectiveQueryRequestPolicy->requestRequiresApproval($lockedQueryRequest),
                         'approved_by_id' => $reviewer->id,
                         'approved_at' => now(),
                     ])->save();
@@ -650,7 +640,7 @@ class QueryRequestWorkflow
     {
         $actorIpAddress = $actor instanceof User ? $this->auditLogger->clientIpAddress() : null;
 
-        [$wasDispatched, $blockedScheduledRequest] = DB::transaction(function () use ($queryRequest, $actor, $actorIpAddress): array {
+        [$wasDispatched, $blockedScheduledRequest, $reapprovalRequest] = DB::transaction(function () use ($queryRequest, $actor, $actorIpAddress): array {
             $lockedQueryRequest = QueryRequest::query()
                 ->lockForUpdate()
                 ->findOrFail($queryRequest->id);
@@ -668,7 +658,7 @@ class QueryRequestWorkflow
             }
 
             if ($lockedQueryRequest->dispatched_at !== null || ! in_array($lockedQueryRequest->status, [QueryRequestStatus::Approved, QueryRequestStatus::Scheduled], true)) {
-                return [false, null];
+                return [false, null, null];
             }
 
             $wasScheduled = $lockedQueryRequest->status === QueryRequestStatus::Scheduled;
@@ -687,7 +677,25 @@ class QueryRequestWorkflow
                     'blocker_count' => $report['summary']['blocker_count'],
                 ], $executionSourceIpAddress);
 
-                return [false, $wasScheduled ? $lockedQueryRequest->fresh() : null];
+                return [false, $wasScheduled ? $lockedQueryRequest->fresh() : null, null];
+            }
+
+            if ($this->effectiveQueryRequestPolicy->requestRequiresFreshApproval($lockedQueryRequest)) {
+                $lockedQueryRequest->forceFill([
+                    'status' => QueryRequestStatus::PendingReview,
+                    'requires_approval' => true,
+                    'approved_by_id' => null,
+                    'approved_at' => null,
+                    'dispatched_at' => null,
+                    'dispatched_by_id' => null,
+                    'revision' => $lockedQueryRequest->revision + 1,
+                ])->save();
+
+                $this->auditLogger->logWithClientIp('query_request.approval_invalidated', $actor, $lockedQueryRequest, [
+                    'trigger' => $wasScheduled ? 'scheduled_dispatch' : 'manual_dispatch',
+                ], $executionSourceIpAddress);
+
+                return [false, null, $lockedQueryRequest->fresh()];
             }
 
             $lockedQueryRequest->forceFill([
@@ -701,11 +709,15 @@ class QueryRequestWorkflow
 
             $this->auditLogger->logWithClientIp('query_request.dispatched', $actor, $lockedQueryRequest, [], $executionSourceIpAddress);
 
-            return [true, null];
+            return [true, null, null];
         }, attempts: 3);
 
         if ($blockedScheduledRequest instanceof QueryRequest) {
             $this->notificationDispatcher->scheduledBatchPreflightBlocked($blockedScheduledRequest);
+        }
+
+        if ($reapprovalRequest instanceof QueryRequest) {
+            $this->notificationDispatcher->reapprovalRequired($reapprovalRequest);
         }
 
         return $wasDispatched;
@@ -774,7 +786,7 @@ class QueryRequestWorkflow
     }
 
     /**
-     * Resume a failed read-only batch or create a linked reapproval request for state-changing work.
+     * Resume a failed read-only batch or create a linked retry request for state-changing work.
      *
      * @throws ValidationException
      */
@@ -811,7 +823,8 @@ class QueryRequestWorkflow
 
             $retryFromPosition = $this->retryFromPosition($lockedQueryRequest);
 
-            if ($lockedQueryRequest->query_type === QueryType::Read) {
+            if ($lockedQueryRequest->query_type === QueryType::Read
+                && ! $this->effectiveQueryRequestPolicy->requestRequiresFreshApproval($lockedQueryRequest)) {
                 $lockedQueryRequest->forceFill([
                     'status' => QueryRequestStatus::Approved,
                     'dispatched_at' => now(),
@@ -877,17 +890,17 @@ class QueryRequestWorkflow
             if ($resolution === FailureResolution::Replaced) {
                 $replacementQueryRequest = QueryRequest::query()
                     ->with(['databaseConnection', 'accessConnections', 'statements.databaseConnection'])
+                    ->where('request_kind', QueryRequestKind::SingleExecution)
+                    ->where('status', '!=', QueryRequestStatus::Failed)
+                    ->where('created_at', '>=', $lockedQueryRequest->created_at)
+                    ->whereKeyNot($lockedQueryRequest->id)
                     ->lockForUpdate()
                     ->find($data['replacement_query_request_id'] ?? null);
 
                 if ($replacementQueryRequest === null
-                    || $replacementQueryRequest->id === $lockedQueryRequest->id
-                    || $replacementQueryRequest->request_kind !== QueryRequestKind::SingleExecution
-                    || $replacementQueryRequest->database_connection_id !== $lockedQueryRequest->database_connection_id
-                    || $replacementQueryRequest->status === QueryRequestStatus::Failed
                     || ! $actor->can('view', $replacementQueryRequest)) {
                     throw ValidationException::withMessages([
-                        'replacement_query_request_id' => 'Choose a visible, non-failed deployment batch for the same database target.',
+                        'replacement_query_request_id' => 'Choose a visible, non-failed deployment batch newer than this request.',
                     ]);
                 }
             }
@@ -973,13 +986,13 @@ class QueryRequestWorkflow
         $requestedAccessMode = $sourceRequest->request_kind === QueryRequestKind::QueryAccess
             ? $sourceRequest->requested_access_mode ?? AccessMode::Read
             : null;
+        $requester = $sourceRequest->requester;
         $requiresApproval = true;
         $status = QueryRequestStatus::PendingReview;
         $approvedById = null;
         $approvedAt = null;
 
         if ($sourceRequest->request_kind === QueryRequestKind::QueryAccess) {
-            $requester = $sourceRequest->requester;
             $databaseConnections = $sourceRequest->accessConnections
                 ->whenEmpty(fn (): Collection => collect([$databaseConnection]));
 
@@ -999,6 +1012,38 @@ class QueryRequestWorkflow
                 $databaseConnections,
                 [],
                 $requestedAccessMode,
+                $sourceRequest->access_transport,
+            );
+            $status = $requiresApproval ? QueryRequestStatus::PendingReview : QueryRequestStatus::Approved;
+            $approvedById = $requiresApproval ? null : $requester->id;
+            $approvedAt = $requiresApproval ? null : now();
+        } else {
+            $databaseConnections = $statements
+                ->map(fn ($statement) => $statement->databaseConnection)
+                ->filter()
+                ->whenEmpty(fn (): Collection => collect([$databaseConnection]))
+                ->keyBy('id');
+            $approvalStatements = $usesLegacySql
+                ? [[
+                    'position' => 1,
+                    'database_connection_id' => $sourceRequest->database_connection_id,
+                    'sql' => $sourceRequest->sql,
+                    'query_type' => $sourceRequest->query_type,
+                ]]
+                : $statements->map(fn ($statement): array => [
+                    'position' => $statement->position,
+                    'database_connection_id' => $statement->database_connection_id,
+                    'sql' => $statement->sql,
+                    'query_type' => $statement->query_type,
+                ])->all();
+
+            $this->ensureCanRunStatements($requester, $databaseConnections, $approvalStatements);
+
+            $requiresApproval = $this->requiresApproval(
+                $requester,
+                $databaseConnections,
+                $approvalStatements,
+                null,
                 $sourceRequest->access_transport,
             );
             $status = $requiresApproval ? QueryRequestStatus::PendingReview : QueryRequestStatus::Approved;
@@ -1077,28 +1122,23 @@ class QueryRequestWorkflow
      */
     private function ensureCanRequestAccess(User $user, Collection $databaseConnections, AccessMode $requestedAccessMode, AccessTransport $accessTransport): void
     {
-        if ($user->isAdmin()) {
-            return;
-        }
+        $this->effectiveQueryRequestPolicy->ensureCanRequestAccess(
+            $user,
+            $databaseConnections,
+            $requestedAccessMode,
+            $accessTransport,
+        );
+    }
 
-        foreach ($databaseConnections as $connection) {
-            $queryType = $this->queryTypeForAccessMode($requestedAccessMode);
-            $permission = $accessTransport === AccessTransport::NativeProxy
-                ? $user->effectiveNativeProxyPermissionFor($connection, $queryType)
-                : $user->effectiveQueryAccessPermissionFor($connection, $queryType);
-
-            $accessMode = $accessTransport === AccessTransport::NativeProxy
-                ? $permission['native_proxy_access_mode']
-                : $permission['query_access_mode'];
-
-            if (! $accessMode->allows($queryType)) {
-                throw ValidationException::withMessages([
-                    $accessTransport === AccessTransport::NativeProxy ? 'requested_access_mode' : 'database_connection_ids' => $accessTransport === AccessTransport::NativeProxy
-                        ? 'Your role is not allowed to request the selected Native Client Access level for this database.'
-                        : 'Your role is not allowed to request the selected session access level for every selected database.',
-                ]);
-            }
-        }
+    /**
+     * @param  Collection<int, DatabaseConnection>  $databaseConnections
+     * @param  array<int, array{database_connection_id:int, query_type:QueryType}>  $statements
+     *
+     * @throws ValidationException
+     */
+    private function ensureCanRunStatements(User $user, Collection $databaseConnections, array $statements): void
+    {
+        $this->effectiveQueryRequestPolicy->ensureCanRunStatements($user, $databaseConnections, $statements);
     }
 
     /**
@@ -1119,49 +1159,19 @@ class QueryRequestWorkflow
         return $accessMode;
     }
 
-    private function queryTypeForAccessMode(AccessMode $accessMode): QueryType
-    {
-        return $accessMode === AccessMode::Write ? QueryType::Write : QueryType::Read;
-    }
-
     /**
      * @param  Collection<int, DatabaseConnection>  $databaseConnections
      * @param  array<int, array{position:int, sql:string, query_type:QueryType, database_connection_id:int}>  $statements
      */
     private function requiresApproval(User $user, Collection $databaseConnections, array $statements, ?AccessMode $requestedAccessMode, AccessTransport $accessTransport = AccessTransport::Browser): bool
     {
-        if ($user->isAdmin()) {
-            return false;
-        }
-
-        if ($requestedAccessMode instanceof AccessMode) {
-            $queryType = $this->queryTypeForAccessMode($requestedAccessMode);
-
-            return $databaseConnections->contains(function (DatabaseConnection $connection) use ($user, $queryType, $accessTransport): bool {
-                $permission = $accessTransport === AccessTransport::NativeProxy
-                    ? $user->effectiveNativeProxyPermissionFor($connection, $queryType)
-                    : $user->effectiveQueryAccessPermissionFor($connection, $queryType);
-
-                return $queryType === QueryType::Read
-                    ? $permission['read_requires_approval']
-                    : $permission['write_requires_approval'];
-            });
-        }
-
-        return collect($statements)->contains(function (array $statement) use ($user, $databaseConnections): bool {
-            $queryType = $statement['query_type'];
-            $connection = $databaseConnections->get($statement['database_connection_id']);
-
-            if (! $connection instanceof DatabaseConnection) {
-                return true;
-            }
-
-            $permission = $user->effectiveDatabasePermissionFor($connection, $queryType);
-
-            return $queryType === QueryType::Read
-                ? $permission['read_requires_approval']
-                : $permission['write_requires_approval'];
-        });
+        return $this->effectiveQueryRequestPolicy->requiresApproval(
+            $user,
+            $databaseConnections,
+            $statements,
+            $requestedAccessMode,
+            $accessTransport,
+        );
     }
 
     /**
@@ -1171,22 +1181,12 @@ class QueryRequestWorkflow
      */
     private function ensureWriteSessionDurationIsAllowed(User $user, Collection $databaseConnections, int $durationMinutes, AccessTransport $accessTransport = AccessTransport::Browser): void
     {
-        if ($user->isAdmin()) {
-            return;
-        }
-
-        foreach ($databaseConnections as $connection) {
-            $permission = $accessTransport === AccessTransport::NativeProxy
-                ? $user->effectiveNativeProxyPermissionFor($connection, QueryType::Write)
-                : $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write);
-            $maximumDuration = $permission['max_write_session_minutes'];
-
-            if ($maximumDuration !== null && $durationMinutes > $maximumDuration) {
-                throw ValidationException::withMessages([
-                    'access_duration_minutes' => "Write sessions on {$connection->name} are limited to {$maximumDuration} minutes.",
-                ]);
-            }
-        }
+        $this->effectiveQueryRequestPolicy->ensureWriteSessionDurationIsAllowed(
+            $user,
+            $databaseConnections,
+            $durationMinutes,
+            $accessTransport,
+        );
     }
 
     /**

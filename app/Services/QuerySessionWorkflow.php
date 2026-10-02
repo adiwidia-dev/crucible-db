@@ -31,6 +31,7 @@ class QuerySessionWorkflow
         private readonly NotificationDispatcher $notificationDispatcher,
         private readonly LeaseWorkflow $nativeProxyLeaseWorkflow,
         private readonly ApplicationSettings $applicationSettings,
+        private readonly EffectiveQueryRequestPolicy $effectiveQueryRequestPolicy,
     ) {}
 
     /**
@@ -38,10 +39,10 @@ class QuerySessionWorkflow
      */
     public function start(QueryRequest $queryRequest, User $user): QuerySession
     {
-        return Cache::lock('query-request:session-start:'.$queryRequest->id, 10)->block(5, function () use ($queryRequest, $user): QuerySession {
-            return DB::transaction(function () use ($queryRequest, $user): QuerySession {
+        $result = Cache::lock('query-request:session-start:'.$queryRequest->id, 10)->block(5, function () use ($queryRequest, $user): QuerySession|QueryRequest {
+            return DB::transaction(function () use ($queryRequest, $user): QuerySession|QueryRequest {
                 $lockedQueryRequest = QueryRequest::query()
-                    ->with(['accessConnections', 'databaseConnection'])
+                    ->with(['requester', 'accessConnections', 'databaseConnection'])
                     ->lockForUpdate()
                     ->findOrFail($queryRequest->id);
 
@@ -71,23 +72,24 @@ class QuerySessionWorkflow
 
                 $databaseConnections = $this->sessionConnections($lockedQueryRequest);
                 $sessionAccessMode = $lockedQueryRequest->requested_access_mode ?? AccessMode::Read;
-                $sessionQueryType = $sessionAccessMode === AccessMode::Write ? QueryType::Write : QueryType::Read;
-                $accessTransport = $lockedQueryRequest->access_transport;
-                $hasCurrentSessionAccess = $databaseConnections->contains(function (DatabaseConnection $connection) use ($user, $sessionQueryType, $accessTransport): bool {
-                    if ($accessTransport === AccessTransport::NativeProxy) {
-                        return ! $user->effectiveNativeProxyPermissionFor($connection, $sessionQueryType)['native_proxy_access_mode']->allows($sessionQueryType);
-                    }
+                $this->effectiveQueryRequestPolicy->ensureQueryAccessRequestCanStart($lockedQueryRequest);
 
-                    return ! $user->isAdmin()
-                        && ! $user->effectiveQueryAccessPermissionFor($connection, $sessionQueryType)['query_access_mode']->allows($sessionQueryType);
-                });
+                if ($this->effectiveQueryRequestPolicy->requestRequiresFreshApproval($lockedQueryRequest)) {
+                    $lockedQueryRequest->forceFill([
+                        'status' => QueryRequestStatus::PendingReview,
+                        'requires_approval' => true,
+                        'approved_by_id' => null,
+                        'approved_at' => null,
+                        'dispatched_at' => null,
+                        'dispatched_by_id' => null,
+                        'revision' => $lockedQueryRequest->revision + 1,
+                    ])->save();
 
-                if ($hasCurrentSessionAccess) {
-                    throw ValidationException::withMessages([
-                        'query_request' => $accessTransport === AccessTransport::NativeProxy
-                            ? 'You no longer have the approved Native Client Access level for this database.'
-                            : 'You no longer have the approved session access level on every selected database.',
+                    $this->auditLogger->log('query_request.approval_invalidated', $user, $lockedQueryRequest, [
+                        'trigger' => 'session_start',
                     ]);
+
+                    return $lockedQueryRequest->fresh();
                 }
 
                 $startedAt = now();
@@ -119,6 +121,16 @@ class QuerySessionWorkflow
                 return $session;
             });
         });
+
+        if ($result instanceof QueryRequest) {
+            $this->notificationDispatcher->reapprovalRequired($result);
+
+            throw ValidationException::withMessages([
+                'query_request' => 'The requester\'s current policy now requires approval. This request was returned to Pending Review.',
+            ]);
+        }
+
+        return $result;
     }
 
     /**

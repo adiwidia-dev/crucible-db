@@ -20,4 +20,5 @@ Credentials are encrypted at rest and are not exposed in request details, notifi
 2. Confirm the target connection and current request state.
 3. Check whether the action is blocked by policy, approval, schedule, or expired access.
 4. Use a linked retry only when it represents the appropriate next work item.
-5. Escalate with the request URL and audit context, never by copying credentials into a ticket.
+5. When recording a handled failure, search all visible newer Deployment Batches by ID, title, status, or connection and link the actual replacement, even when it already completed.
+6. Escalate with the request URL and audit context, never by copying credentials into a ticket.

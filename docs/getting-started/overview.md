@@ -5,7 +5,7 @@ Crucible DB has two ways to perform database work. Choose the one that matches t
 | Workflow | Use it when | What is controlled |
 | --- | --- | --- |
 | **Deployment Batch** | You have a known, ordered set of SQL statements to change a database. | Each statement, its target, preflight, approval, schedule, execution, and audit record. |
-| **Query Access** | You need temporary browser access to inspect data or perform approved interactive work. | Connections, session duration, declared read-only or read + write level, each query, expiry, and audit record. |
+| **Query Access** | You need temporary browser or Native client access to inspect data or perform approved interactive work. | Connections, transport, session duration, declared read-only or read + write level, each query, expiry, and audit record. |
 
 ## Deployment Batch at a glance
 
@@ -15,12 +15,12 @@ Before submission, Crucible DB evaluates the SQL, target, schedule, and effectiv
 
 ## Query Access at a glance
 
-Query Access gives you an expiring, browser-based SQL session for selected connections. You request either:
+Query Access gives you an expiring browser or Native client SQL session for selected connections. You request either:
 
 - **Read-only** to inspect schemas and data.
 - **Read + write** only when every selected connection's effective policy explicitly permits it.
 
-Approval, when required, approves the access scope. Every query is then checked again against the active session level and current workspace policy.
+Approval, when required, approves the access scope. Current account and policy state are checked again when the session starts, and every query is checked against the active session level and current workspace policy.
 
 !!! warning "Approval is not a blank cheque"
     Approval never bypasses SQL policy, a session's declared access level, target permission, or expiry. A previously approved request can still be blocked if policy changes before it runs.

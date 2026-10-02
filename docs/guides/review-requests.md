@@ -25,6 +25,8 @@ Choose **Approve** only when the stated scope is appropriate. Choose **Reject** 
 
 Approval does not override later policy changes or safety checks. A Deployment Batch receives fresh preflight immediately before dispatch. Query Access checks each statement against the active session and current policy.
 
+Current policy is also checked when a Deployment Batch is dispatched or claimed by a worker and when a Query Access session starts. This includes the original requester's current account state and every target connection, not only the person initiating the later action. Work returns to review or is blocked when its previous approval or exemption no longer satisfies current policy.
+
 ## Warnings versus blocks
 
 Warnings are a decision aid. They should be understood and recorded in the request context when approved. Blocks are safeguards: they prevent a request from moving forward until the SQL, target, policy, or schedule problem is resolved.

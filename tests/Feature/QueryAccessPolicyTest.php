@@ -217,6 +217,69 @@ class QueryAccessPolicyTest extends TestCase
                 ->where('connections.0.can_native_proxy_read', false));
     }
 
+    public function test_request_options_use_the_role_that_grants_each_access_workflow_policy(): void
+    {
+        $deploymentRole = Role::factory()->developer()->create([
+            'name' => 'Deployment Reader',
+            'slug' => 'deployment-reader',
+        ]);
+        $queryAccessRole = Role::factory()->developer()->create([
+            'name' => 'Query Access Writer',
+            'slug' => 'query-access-writer',
+        ]);
+        $nativeAccessRole = Role::factory()->developer()->create([
+            'name' => 'Native Access Writer',
+            'slug' => 'native-access-writer',
+        ]);
+        $user = User::factory()->withRole($deploymentRole)->create();
+        $user->roles()->updateExistingPivot($deploymentRole->id, ['priority' => 10]);
+        $user->roles()->attach($queryAccessRole, ['priority' => 20]);
+        $user->roles()->attach($nativeAccessRole, ['priority' => 30]);
+        $connection = DatabaseConnection::factory()->create();
+
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $deploymentRole->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+            'query_access_mode' => AccessMode::None,
+            'native_proxy_access_mode' => AccessMode::None,
+            'read_requires_approval' => true,
+            'write_requires_approval' => true,
+            'max_write_session_minutes' => 5,
+        ]);
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $queryAccessRole->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::Write,
+            'native_proxy_access_mode' => AccessMode::None,
+            'read_requires_approval' => false,
+            'write_requires_approval' => false,
+            'max_write_session_minutes' => 30,
+        ]);
+        RoleDatabasePermission::factory()->create([
+            'role_id' => $nativeAccessRole->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Write,
+            'query_access_mode' => AccessMode::None,
+            'native_proxy_access_mode' => AccessMode::Write,
+            'read_requires_approval' => true,
+            'write_requires_approval' => true,
+            'max_write_session_minutes' => 45,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('query-requests.create'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('connections.0.query_access_read_requires_approval', false)
+                ->where('connections.0.query_access_write_requires_approval', false)
+                ->where('connections.0.query_access_max_write_session_minutes', 30)
+                ->where('connections.0.native_proxy_read_requires_approval', true)
+                ->where('connections.0.native_proxy_write_requires_approval', true)
+                ->where('connections.0.native_proxy_max_write_session_minutes', 45));
+    }
+
     public function test_globally_disabled_access_workflows_are_hidden_and_cannot_be_created(): void
     {
         $admin = User::factory()->withRole(Role::factory()->admin()->create())->create();
@@ -688,8 +751,10 @@ class QueryAccessPolicyTest extends TestCase
             'title' => 'Correct employee records',
             'access_duration_minutes' => 30,
         ]);
+        $reviewer = User::factory()->create();
         $request->forceFill([
             'status' => QueryRequestStatus::Approved,
+            'approved_by_id' => $reviewer->id,
             'approved_at' => now(),
         ])->save();
 
@@ -717,6 +782,78 @@ class QueryAccessPolicyTest extends TestCase
         $this->assertSame(QueryType::Write, $result['query']->query_type);
     }
 
+    public function test_session_start_returns_an_auto_approved_request_to_pending_review_when_policy_tightens(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $user = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        $permission = RoleDatabasePermission::factory()->bypassApproval()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'access_mode' => AccessMode::Read,
+            'query_access_mode' => AccessMode::Read,
+        ]);
+        $queryRequest = app(QueryRequestWorkflow::class)->create($user, [
+            'request_kind' => QueryRequestKind::QueryAccess->value,
+            'requested_access_mode' => AccessMode::Read->value,
+            'database_connection_ids' => [$connection->id],
+            'title' => 'Read access before policy tightening',
+            'access_duration_minutes' => 20,
+        ]);
+        $permission->forceFill(['read_requires_approval' => true])->save();
+
+        try {
+            app(QuerySessionWorkflow::class)->start($queryRequest, $user);
+            $this->fail('The stale automatic approval should not start a session.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'The requester\'s current policy now requires approval. This request was returned to Pending Review.',
+                $exception->errors()['query_request'][0],
+            );
+        }
+
+        $queryRequest->refresh();
+
+        $this->assertSame(QueryRequestStatus::PendingReview, $queryRequest->status);
+        $this->assertTrue($queryRequest->requires_approval);
+        $this->assertNull($queryRequest->approved_by_id);
+        $this->assertSame(2, $queryRequest->revision);
+        $this->assertDatabaseCount('query_sessions', 0);
+    }
+
+    public function test_session_start_rechecks_a_tightened_write_duration_limit(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $user = User::factory()->withRole($role)->create();
+        $connection = DatabaseConnection::factory()->create();
+        $permission = RoleDatabasePermission::factory()->queryAccessWrite()->bypassApproval()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $connection->id,
+            'max_write_session_minutes' => 120,
+        ]);
+        $queryRequest = app(QueryRequestWorkflow::class)->create($user, [
+            'request_kind' => QueryRequestKind::QueryAccess->value,
+            'requested_access_mode' => AccessMode::Write->value,
+            'database_connection_ids' => [$connection->id],
+            'title' => 'Write access before duration tightening',
+            'access_duration_minutes' => 60,
+        ]);
+        $permission->forceFill(['max_write_session_minutes' => 30])->save();
+
+        try {
+            app(QuerySessionWorkflow::class)->start($queryRequest, $user);
+            $this->fail('The session should enforce the current write duration limit.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                "Write sessions on {$connection->name} are limited to 30 minutes.",
+                $exception->errors()['access_duration_minutes'][0],
+            );
+        }
+
+        $this->assertSame(QueryRequestStatus::Approved, $queryRequest->refresh()->status);
+        $this->assertDatabaseCount('query_sessions', 0);
+    }
+
     public function test_active_write_session_stops_accepting_writes_when_query_access_is_restricted(): void
     {
         [$user, $connection] = $this->userWithSeparatedReadAndWritePolicies();
@@ -727,8 +864,10 @@ class QueryAccessPolicyTest extends TestCase
             'title' => 'Correct employee records',
             'access_duration_minutes' => 20,
         ]);
+        $reviewer = User::factory()->create();
         $request->forceFill([
             'status' => QueryRequestStatus::Approved,
+            'approved_by_id' => $reviewer->id,
             'approved_at' => now(),
         ])->save();
 

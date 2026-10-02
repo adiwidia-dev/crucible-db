@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\QuerySessionFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -100,6 +101,45 @@ class QuerySession extends Model
     public function nativeProxyLease(): HasOne
     {
         return $this->hasOne(NativeProxyLease::class);
+    }
+
+    /**
+     * @param  Builder<QuerySession>  $query
+     * @return Builder<QuerySession>
+     */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        if ($user->isAdmin()) {
+            return $query;
+        }
+
+        $reviewableConnectionIds = $user->reviewableDatabaseConnectionIds();
+
+        return $query->where(function (Builder $sessions) use ($user, $reviewableConnectionIds): void {
+            $sessions->where('user_id', $user->id)
+                ->orWhere(function (Builder $visibleSessions) use ($reviewableConnectionIds): void {
+                    if ($reviewableConnectionIds === []) {
+                        $visibleSessions->whereRaw('0 = 1');
+
+                        return;
+                    }
+
+                    $visibleSessions->where(function (Builder $targets) use ($reviewableConnectionIds): void {
+                        $targets->where(function (Builder $scopedTargets) use ($reviewableConnectionIds): void {
+                            $scopedTargets
+                                ->has('databaseConnections')
+                                ->whereDoesntHave(
+                                    'databaseConnections',
+                                    fn (Builder $connections) => $connections->whereNotIn('database_connections.id', $reviewableConnectionIds),
+                                );
+                        })->orWhere(function (Builder $legacyTarget) use ($reviewableConnectionIds): void {
+                            $legacyTarget
+                                ->doesntHave('databaseConnections')
+                                ->whereIn('query_sessions.database_connection_id', $reviewableConnectionIds);
+                        });
+                    });
+                });
+        });
     }
 
     public function isActive(): bool

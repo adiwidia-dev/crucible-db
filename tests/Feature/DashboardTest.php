@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Enums\AccessMode;
 use App\Enums\QueryRequestStatus;
+use App\Models\DatabaseConnection;
 use App\Models\NativeProxyConnection;
 use App\Models\QueryRequest;
 use App\Models\QuerySession;
 use App\Models\Role;
+use App\Models\RoleDatabasePermission;
 use App\Models\SqlPolicyCandidate;
 use App\Models\SqlPolicyCandidateOccurrence;
 use App\Models\User;
@@ -52,12 +54,12 @@ class DashboardTest extends TestCase
     {
         config()->set('native_proxy.enabled', true);
         config()->set('native_proxy.health_url', 'http://native-proxy:8081/readyz');
-        config()->set('native_proxy.expected_version', '0.2.13');
+        config()->set('native_proxy.expected_version', '0.2.14');
 
         Http::fake([
             'http://native-proxy:8081/readyz' => Http::response([
                 'proxy_id' => 'proxy-a',
-                'version' => '0.2.13',
+                'version' => '0.2.14',
             ]),
         ]);
 
@@ -81,7 +83,7 @@ class DashboardTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('connections/index')
                 ->where('native_proxy_status.health.status', 'healthy')
-                ->where('native_proxy_status.health.version', '0.2.13')
+                ->where('native_proxy_status.health.version', '0.2.14')
                 ->where('native_proxy_status.connections', 1)
                 ->where('native_proxy_status.instances', 1)
                 ->missing('native_proxy_status.health.password')
@@ -116,6 +118,59 @@ class DashboardTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->where('native_proxy_status.connections', 1)
                 ->where('native_proxy_status.instances', 1));
+    }
+
+    public function test_dashboard_requires_review_access_to_every_request_and_session_target(): void
+    {
+        $role = Role::factory()->developer()->create();
+        $reviewer = User::factory()->withRole($role)->create();
+        $requester = User::factory()->create();
+        $firstConnection = DatabaseConnection::factory()->create();
+        $secondConnection = DatabaseConnection::factory()->create();
+
+        RoleDatabasePermission::factory()->reviewer()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $firstConnection->id,
+        ]);
+
+        $request = QueryRequest::factory()->queryAccess()->create([
+            'requester_id' => $requester->id,
+            'database_connection_id' => $firstConnection->id,
+            'status' => QueryRequestStatus::PendingReview,
+        ]);
+        $request->accessConnections()->sync([$firstConnection->id, $secondConnection->id]);
+        $session = QuerySession::factory()->create([
+            'query_request_id' => $request->id,
+            'database_connection_id' => $firstConnection->id,
+            'user_id' => $requester->id,
+        ]);
+        $session->databaseConnections()->sync([$firstConnection->id, $secondConnection->id]);
+        NativeProxyConnection::factory()->active()->create([
+            'query_session_id' => $session->id,
+            'query_request_id' => $request->id,
+            'database_connection_id' => $firstConnection->id,
+        ]);
+
+        $this->actingAs($reviewer)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.pending_reviews', 0)
+                ->where('summary.active_sessions', 0)
+                ->where('summary.native_proxy_connections', 0));
+
+        RoleDatabasePermission::factory()->reviewer()->create([
+            'role_id' => $role->id,
+            'database_connection_id' => $secondConnection->id,
+        ]);
+
+        $this->actingAs($reviewer->refresh())
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('summary.pending_reviews', 1)
+                ->where('summary.active_sessions', 1)
+                ->where('summary.native_proxy_connections', 1));
     }
 
     public function test_dashboard_returns_an_operational_queue_ordered_by_latest_activity_visible_to_an_admin(): void
@@ -228,12 +283,12 @@ class DashboardTest extends TestCase
     {
         config()->set('native_proxy.enabled', true);
         config()->set('native_proxy.health_url', 'http://native-proxy:8081/readyz');
-        config()->set('native_proxy.expected_version', '0.2.13');
+        config()->set('native_proxy.expected_version', '0.2.14');
 
         Http::fake([
             'http://native-proxy:8081/readyz' => Http::response([
                 'proxy_id' => 'proxy-a',
-                'version' => '0.2.13',
+                'version' => '0.2.14',
             ]),
         ]);
 
@@ -258,7 +313,7 @@ class DashboardTest extends TestCase
                 ->where('summary.native_proxy_connections', 1)
                 ->where('summary.native_proxy_instances', 1)
                 ->where('native_proxy_health.status', 'healthy')
-                ->where('native_proxy_health.version', '0.2.13')
+                ->where('native_proxy_health.version', '0.2.14')
                 ->missing('native_proxy_health.password')
                 ->missing('native_proxy_health.parameters')
                 ->missing('native_proxy_health.rows')

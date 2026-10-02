@@ -37,9 +37,11 @@ Common warnings include an unbounded `SELECT` and an `UPDATE` or `DELETE` withou
 
 ## Approval and scheduling
 
-If any selected connection and statement type requires approval, the whole batch requires an independent reviewer. You cannot approve your own request.
+If any selected connection and statement type requires approval, the whole batch requires an independent reviewer. You cannot approve your own request. Every target participates in this decision, including batches whose statements span many connections.
 
 After approval, the batch can be dispatched immediately or wait for its requested schedule. If its requested time passes while it is awaiting review, approval does not run it late. An authorized person must dispatch it explicitly.
+
+Dispatch and queued execution re-evaluate the requester's active account and current effective policy. If current policy now requires approval for work that was previously exempt, the batch returns to **Pending Review** instead of running. A disabled requester or lost target permission blocks execution.
 
 ## Execution results
 
@@ -56,4 +58,6 @@ Where recorded rows exist, use **Export CSV** from the execution result. The exp
 
 Eligible work can be cancelled with a reason. A failed request may offer a linked retry. Write-impacting retry work receives fresh policy and approval evaluation.
 
-When a failure has been handled outside a retry, an authorized user can record its resolution, optionally link the replacement Deployment Batch, and add an operational note. The failed batch leaves the live Operational queue, while its execution history and resolution record remain available for audit.
+When a failure has been handled outside a retry, an authorized user can record its resolution, optionally link the replacement Deployment Batch, and add an operational note. Search replacement candidates by request ID, title, status, or connection. The selector includes every visible, newer, non-failed Deployment Batch, including a replacement that already completed. The failed batch leaves the live Operational queue, while its execution history and resolution record remain available for audit.
+
+Cancellation and queued execution use atomic state transitions. If cancellation wins while a worker is preparing or finishing the batch, the request remains cancelled rather than being overwritten by a later running, completed, or failed update.

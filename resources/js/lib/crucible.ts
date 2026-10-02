@@ -60,7 +60,10 @@ export type QueryRequestSummary = {
     requires_approval: boolean;
     scheduled_at: string | null;
     requester: string;
-    connection: string;
+    connections: Array<{
+        id: number;
+        name: string;
+    }>;
     created_at: string | null;
     active_session_expires_at: string | null;
     latest_session_expires_at: string | null;

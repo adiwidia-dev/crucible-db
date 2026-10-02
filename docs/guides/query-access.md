@@ -27,11 +27,13 @@ The **Read + write** option is visible only when the effective Query Access poli
 
 Query Access scope cannot be edited after creation. Cancel an incorrect request and create a new one so its targets, duration, level, policy, and approval history remain unambiguous.
 
-If any selected target requires approval for the requested level, the request waits for an independent reviewer. The reviewer approves the bounded access scope, not an unknown future SQL statement.
+If any selected target requires approval for the requested level, the request waits for an independent reviewer. The strictest approval requirement and permitted duration across the complete target set govern the request. The reviewer approves the bounded access scope, not an unknown future SQL statement.
 
 ## After approval
 
 Open the approved request and choose **Start session**. Select the active connection when multiple connections were approved. The session shows its declared access level and expiry.
+
+Session start re-evaluates the requester's active account, access level, approval requirement, target scope, and maximum duration against current policy. If a request that originally needed no review now requires approval, it returns to **Pending Review**. A disabled requester, removed target permission, or newly reduced duration prevents stale approval from starting broader access.
 
 When an active session already exists, the request action changes to **Resume Session**. Starting or resuming never expands the approved connection set, access level, or duration.
 

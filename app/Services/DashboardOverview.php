@@ -71,35 +71,24 @@ class DashboardOverview
     public function for(User $user): array
     {
         $isAdmin = $user->isAdmin();
-        $reviewableConnectionIds = $isAdmin
-            ? []
-            : $user->reviewableDatabaseConnectionIds();
-        $accessibleConnectionIds = $isAdmin
-            ? []
-            : $user->accessibleDatabaseConnectionIds();
-        $visibleConnectionIds = collect($accessibleConnectionIds)
-            ->merge($reviewableConnectionIds)
-            ->unique()
-            ->values()
-            ->all();
 
-        $pendingReviews = $this->reviewableRequests($user, $isAdmin, $reviewableConnectionIds)
+        $pendingReviews = $this->reviewableRequests($user)
             ->where('status', QueryRequestStatus::PendingReview)
             ->latest('created_at');
-        $scheduledRequests = $this->visibleRequests($user, $isAdmin, $visibleConnectionIds)
+        $scheduledRequests = $this->visibleRequests($user)
             ->where('status', QueryRequestStatus::Scheduled)
             ->whereNotNull('scheduled_at')
             ->latest('approved_at');
-        $readyRequests = $this->visibleRequests($user, $isAdmin, $visibleConnectionIds)
+        $readyRequests = $this->visibleRequests($user)
             ->where('request_kind', QueryRequestKind::SingleExecution)
             ->where('status', QueryRequestStatus::Approved)
             ->whereNull('dispatched_at')
             ->latest('approved_at');
-        $failedRequests = $this->visibleRequests($user, $isAdmin, $visibleConnectionIds)
+        $failedRequests = $this->visibleRequests($user)
             ->where('status', QueryRequestStatus::Failed)
             ->whereNull('failure_resolved_at')
             ->latest('completed_at');
-        $expiringSessions = $this->visibleSessions($user, $isAdmin, $reviewableConnectionIds)
+        $expiringSessions = $this->visibleSessions($user)
             ->whereNull('ended_at')
             ->where('expires_at', '>', now())
             ->latest('started_at');
@@ -291,60 +280,27 @@ class DashboardOverview
     }
 
     /**
-     * @param  array<int, int>  $visibleConnectionIds
      * @return Builder<QueryRequest>
      */
-    private function visibleRequests(User $user, bool $isAdmin, array $visibleConnectionIds): Builder
+    private function visibleRequests(User $user): Builder
     {
-        $query = QueryRequest::query();
-
-        if ($isAdmin) {
-            return $query;
-        }
-
-        return $query->where(function (Builder $requests) use ($user, $visibleConnectionIds): void {
-            $requests->where('requester_id', $user->id);
-
-            if ($visibleConnectionIds !== []) {
-                $requests->orWhereIn('database_connection_id', $visibleConnectionIds);
-            }
-        });
+        return QueryRequest::query()->visibleTo($user);
     }
 
     /**
-     * @param  array<int, int>  $reviewableConnectionIds
      * @return Builder<QueryRequest>
      */
-    private function reviewableRequests(User $user, bool $isAdmin, array $reviewableConnectionIds): Builder
+    private function reviewableRequests(User $user): Builder
     {
-        $query = QueryRequest::query()->where('requester_id', '!=', $user->id);
-
-        if ($isAdmin) {
-            return $query;
-        }
-
-        return $query->whereIn('database_connection_id', $reviewableConnectionIds);
+        return QueryRequest::query()->reviewableBy($user);
     }
 
     /**
-     * @param  array<int, int>  $reviewableConnectionIds
      * @return Builder<QuerySession>
      */
-    private function visibleSessions(User $user, bool $isAdmin, array $reviewableConnectionIds): Builder
+    private function visibleSessions(User $user): Builder
     {
-        $query = QuerySession::query();
-
-        if ($isAdmin) {
-            return $query;
-        }
-
-        return $query->where(function (Builder $sessions) use ($user, $reviewableConnectionIds): void {
-            $sessions->where('user_id', $user->id);
-
-            if ($reviewableConnectionIds !== []) {
-                $sessions->orWhereIn('database_connection_id', $reviewableConnectionIds);
-            }
-        });
+        return QuerySession::query()->visibleTo($user);
     }
 
     /**

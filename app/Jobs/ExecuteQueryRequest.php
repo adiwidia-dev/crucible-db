@@ -12,10 +12,12 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
 use App\Services\DeploymentPreflight;
+use App\Services\EffectiveQueryRequestPolicy;
 use App\Services\NotificationDispatcher;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class ExecuteQueryRequest implements ShouldQueue
@@ -48,6 +50,7 @@ class ExecuteQueryRequest implements ShouldQueue
         AuditLogger $auditLogger,
         DeploymentPreflight $deploymentPreflight,
         NotificationDispatcher $notificationDispatcher,
+        EffectiveQueryRequestPolicy $effectiveQueryRequestPolicy,
     ): void {
         $queryRequest = QueryRequest::query()
             ->with('databaseConnection', 'requester', 'dispatchedBy', 'statements.databaseConnection')
@@ -66,11 +69,27 @@ class ExecuteQueryRequest implements ShouldQueue
         $deploymentPreflight->persist($queryRequest, $preflight);
 
         if ($preflight['status'] === PreflightStatus::Blocked) {
-            $queryRequest->forceFill([
-                'status' => QueryRequestStatus::Approved,
-                'dispatched_at' => null,
-                'dispatched_by_id' => null,
-            ])->save();
+            $queryRequest = DB::transaction(function (): ?QueryRequest {
+                $lockedQueryRequest = QueryRequest::query()
+                    ->lockForUpdate()
+                    ->findOrFail($this->queryRequestId);
+
+                if (! in_array($lockedQueryRequest->status, [QueryRequestStatus::Approved, QueryRequestStatus::Running], true)) {
+                    return null;
+                }
+
+                $lockedQueryRequest->forceFill([
+                    'status' => QueryRequestStatus::Approved,
+                    'dispatched_at' => null,
+                    'dispatched_by_id' => null,
+                ])->save();
+
+                return $lockedQueryRequest->fresh(['requester', 'dispatchedBy']);
+            }, attempts: 3);
+
+            if (! $queryRequest instanceof QueryRequest) {
+                return;
+            }
 
             $auditLogger->logWithClientIp('query_request.preflight_blocked', $executorUser, $queryRequest, [
                 'trigger' => 'execution_guard',
@@ -84,10 +103,84 @@ class ExecuteQueryRequest implements ShouldQueue
             return;
         }
 
-        $queryRequest->forceFill([
-            'status' => QueryRequestStatus::Running,
-            'last_error' => null,
-        ])->save();
+        /** @var array{state:'blocked'|'claimed'|'reapproval'|'stopped',request:QueryRequest|null} $claim */
+        $claim = DB::transaction(function () use ($effectiveQueryRequestPolicy): array {
+            $lockedQueryRequest = QueryRequest::query()
+                ->with(['requester', 'databaseConnection', 'accessConnections', 'statements.databaseConnection', 'dispatchedBy'])
+                ->lockForUpdate()
+                ->findOrFail($this->queryRequestId);
+
+            if (! in_array($lockedQueryRequest->status, [QueryRequestStatus::Approved, QueryRequestStatus::Running], true)) {
+                return ['state' => 'stopped', 'request' => null];
+            }
+
+            if ($lockedQueryRequest->requester->isDisabled()) {
+                $lockedQueryRequest->forceFill([
+                    'status' => QueryRequestStatus::Approved,
+                    'dispatched_at' => null,
+                    'dispatched_by_id' => null,
+                ])->save();
+
+                return ['state' => 'blocked', 'request' => $lockedQueryRequest->fresh(['requester', 'dispatchedBy'])];
+            }
+
+            if ($effectiveQueryRequestPolicy->requestRequiresFreshApproval($lockedQueryRequest)) {
+                $lockedQueryRequest->forceFill([
+                    'status' => QueryRequestStatus::PendingReview,
+                    'requires_approval' => true,
+                    'approved_by_id' => null,
+                    'approved_at' => null,
+                    'dispatched_at' => null,
+                    'dispatched_by_id' => null,
+                    'revision' => $lockedQueryRequest->revision + 1,
+                ])->save();
+
+                return ['state' => 'reapproval', 'request' => $lockedQueryRequest->fresh(['requester', 'dispatchedBy'])];
+            }
+
+            $lockedQueryRequest->forceFill([
+                'status' => QueryRequestStatus::Running,
+                'last_error' => null,
+            ])->save();
+
+            return [
+                'state' => 'claimed',
+                'request' => $lockedQueryRequest->fresh([
+                    'databaseConnection',
+                    'requester',
+                    'dispatchedBy',
+                    'statements.databaseConnection',
+                ]),
+            ];
+        }, attempts: 3);
+
+        if ($claim['state'] === 'stopped' || ! $claim['request'] instanceof QueryRequest) {
+            return;
+        }
+
+        $queryRequest = $claim['request'];
+
+        if ($claim['state'] === 'blocked') {
+            $auditLogger->logWithClientIp('query_request.preflight_blocked', $executorUser, $queryRequest, [
+                'trigger' => 'execution_guard',
+                'blocker_count' => 1,
+            ], $queryRequest->execution_source_ip_address);
+
+            if ($queryRequest->scheduled_at?->isPast()) {
+                $notificationDispatcher->scheduledBatchPreflightBlocked($queryRequest);
+            }
+
+            return;
+        }
+
+        if ($claim['state'] === 'reapproval') {
+            $auditLogger->logWithClientIp('query_request.approval_invalidated', $executorUser, $queryRequest, [
+                'trigger' => 'execution_guard',
+            ], $queryRequest->execution_source_ip_address);
+            $notificationDispatcher->reapprovalRequired($queryRequest);
+
+            return;
+        }
 
         $statements = $queryRequest->statements
             ->filter(fn ($statement): bool => $statement->position >= ($this->resumeFromPosition ?? 1))
@@ -180,19 +273,39 @@ class ExecuteQueryRequest implements ShouldQueue
                     return;
                 }
 
-                $queryRequest->forceFill([
-                    'status' => QueryRequestStatus::Failed,
-                    'completed_at' => $finishedAt,
-                    'last_error' => $exception->getMessage(),
-                    'result_summary' => [
-                        'statement_count' => $statements->count(),
-                        'completed_statement_count' => count($statementResults),
-                        'failed_statement_position' => $statement['position'],
-                        'row_count' => $totalRowCount,
-                        'result_truncated' => $resultTruncated,
-                        'statements' => $statementResults,
-                    ],
-                ])->save();
+                $failureRecorded = DB::transaction(function () use ($exception, $finishedAt, $queryRequest, $resultTruncated, $statement, $statementResults, $statements, $totalRowCount): bool {
+                    $lockedQueryRequest = QueryRequest::query()
+                        ->lockForUpdate()
+                        ->findOrFail($queryRequest->id);
+
+                    if ($lockedQueryRequest->status === QueryRequestStatus::Cancelled) {
+                        return false;
+                    }
+
+                    $lockedQueryRequest->forceFill([
+                        'status' => QueryRequestStatus::Failed,
+                        'completed_at' => $finishedAt,
+                        'last_error' => $exception->getMessage(),
+                        'result_summary' => [
+                            'statement_count' => $statements->count(),
+                            'completed_statement_count' => count($statementResults),
+                            'failed_statement_position' => $statement['position'],
+                            'row_count' => $totalRowCount,
+                            'result_truncated' => $resultTruncated,
+                            'statements' => $statementResults,
+                        ],
+                    ])->save();
+
+                    return true;
+                }, attempts: 3);
+
+                if (! $failureRecorded) {
+                    $this->recordCancellationAcknowledgement($auditLogger, $executorUser, $queryRequest);
+
+                    return;
+                }
+
+                $queryRequest->refresh();
 
                 $auditLogger->logWithClientIp('query_request.execution_failed', $executorUser, $queryRequest, [
                     'statement_position' => $statement['position'],
@@ -215,17 +328,37 @@ class ExecuteQueryRequest implements ShouldQueue
 
         $finishedAt = now();
 
-        $queryRequest->forceFill([
-            'status' => QueryRequestStatus::Completed,
-            'completed_at' => $finishedAt,
-            'result_summary' => [
-                'statement_count' => $statements->count(),
-                'completed_statement_count' => count($statementResults),
-                'row_count' => $totalRowCount,
-                'result_truncated' => $resultTruncated,
-                'statements' => $statementResults,
-            ],
-        ])->save();
+        $completionRecorded = DB::transaction(function () use ($finishedAt, $queryRequest, $resultTruncated, $statementResults, $statements, $totalRowCount): bool {
+            $lockedQueryRequest = QueryRequest::query()
+                ->lockForUpdate()
+                ->findOrFail($queryRequest->id);
+
+            if ($lockedQueryRequest->status === QueryRequestStatus::Cancelled) {
+                return false;
+            }
+
+            $lockedQueryRequest->forceFill([
+                'status' => QueryRequestStatus::Completed,
+                'completed_at' => $finishedAt,
+                'result_summary' => [
+                    'statement_count' => $statements->count(),
+                    'completed_statement_count' => count($statementResults),
+                    'row_count' => $totalRowCount,
+                    'result_truncated' => $resultTruncated,
+                    'statements' => $statementResults,
+                ],
+            ])->save();
+
+            return true;
+        }, attempts: 3);
+
+        if (! $completionRecorded) {
+            $this->recordCancellationAcknowledgement($auditLogger, $executorUser, $queryRequest);
+
+            return;
+        }
+
+        $queryRequest->refresh();
 
         $auditLogger->logWithClientIp('query_request.executed', $executorUser, $queryRequest, [
             'execution_ids' => $executionIds,
@@ -239,15 +372,25 @@ class ExecuteQueryRequest implements ShouldQueue
 
     public function failed(?Throwable $exception): void
     {
-        $queryRequest = QueryRequest::query()->find($this->queryRequestId);
+        $queryRequest = DB::transaction(function () use ($exception): ?QueryRequest {
+            $lockedQueryRequest = QueryRequest::query()
+                ->lockForUpdate()
+                ->find($this->queryRequestId);
 
-        if ($queryRequest instanceof QueryRequest && ! $queryRequest->isTerminal()) {
-            $queryRequest->forceFill([
+            if (! $lockedQueryRequest instanceof QueryRequest || $lockedQueryRequest->isTerminal()) {
+                return null;
+            }
+
+            $lockedQueryRequest->forceFill([
                 'status' => QueryRequestStatus::Failed,
                 'completed_at' => now(),
                 'last_error' => $exception?->getMessage() ?? 'Query execution failed.',
             ])->save();
 
+            return $lockedQueryRequest->fresh();
+        }, attempts: 3);
+
+        if ($queryRequest instanceof QueryRequest) {
             app(NotificationDispatcher::class)->batchFailed($queryRequest);
         }
     }
