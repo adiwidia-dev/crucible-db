@@ -362,9 +362,13 @@ class QueryRequestController extends Controller
 
         $dispatched = $workflow->dispatch($queryRequest, request()->user());
 
+        $queryRequest->refresh();
+
         Inertia::flash('toast', $dispatched
             ? ['type' => 'success', 'message' => 'Deployment batch queued for execution.']
-            : ['type' => 'error', 'message' => 'Deployment batch is blocked by its latest preflight checks.']);
+            : ($queryRequest->status === QueryRequestStatus::PendingReview
+                ? ['type' => 'warning', 'message' => 'The current policy now requires approval. This batch was returned to Pending Review.']
+                : ['type' => 'error', 'message' => 'Deployment batch is blocked by its latest preflight checks.']));
 
         return back();
     }
@@ -411,7 +415,9 @@ class QueryRequestController extends Controller
         if ($retryRequest->id !== $queryRequest->id) {
             Inertia::flash('toast', [
                 'type' => 'success',
-                'message' => 'A linked retry request was created and requires approval before execution.',
+                'message' => $retryRequest->requires_approval
+                    ? 'A linked retry request was created and requires approval before execution.'
+                    : 'A linked retry request was created and is ready for execution.',
             ]);
 
             return redirect()->route('query-requests.show', $retryRequest);
@@ -731,7 +737,7 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, can_query_access_read:bool, can_query_access_write:bool, can_native_proxy_read:bool, can_native_proxy_write:bool, read_requires_approval:bool, write_requires_approval:bool, max_write_session_minutes:int|null}>
+     * @return array<int, array{id:int, name:string, driver:'mysql'|'pgsql', can_write:bool, can_query_access_read:bool, can_query_access_write:bool, can_native_proxy_read:bool, can_native_proxy_write:bool, query_access_read_requires_approval:bool, query_access_write_requires_approval:bool, query_access_max_write_session_minutes:int|null, native_proxy_read_requires_approval:bool, native_proxy_write_requires_approval:bool, native_proxy_max_write_session_minutes:int|null}>
      */
     private function connectionOptions(User $user): array
     {
@@ -741,7 +747,6 @@ class QueryRequestController extends Controller
             ->orderBy('name')
             ->get()
             ->map(function (DatabaseConnection $connection) use ($user): array {
-                $readPermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Read);
                 $writePermission = $user->effectiveDatabasePermissionFor($connection, QueryType::Write);
                 $queryAccessReadPermission = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Read);
                 $queryAccessWritePermission = $user->effectiveQueryAccessPermissionFor($connection, QueryType::Write);
@@ -757,9 +762,12 @@ class QueryRequestController extends Controller
                     'can_query_access_write' => $queryAccessWritePermission['query_access_mode']->allows(QueryType::Write),
                     'can_native_proxy_read' => $nativeReadPermission['native_proxy_access_mode']->allows(QueryType::Read),
                     'can_native_proxy_write' => $nativeWritePermission['native_proxy_access_mode']->allows(QueryType::Write),
-                    'read_requires_approval' => $readPermission['read_requires_approval'],
-                    'write_requires_approval' => $writePermission['write_requires_approval'],
-                    'max_write_session_minutes' => $writePermission['max_write_session_minutes'],
+                    'query_access_read_requires_approval' => $queryAccessReadPermission['read_requires_approval'],
+                    'query_access_write_requires_approval' => $queryAccessWritePermission['write_requires_approval'],
+                    'query_access_max_write_session_minutes' => $queryAccessWritePermission['max_write_session_minutes'],
+                    'native_proxy_read_requires_approval' => $nativeReadPermission['read_requires_approval'],
+                    'native_proxy_write_requires_approval' => $nativeWritePermission['write_requires_approval'],
+                    'native_proxy_max_write_session_minutes' => $nativeWritePermission['max_write_session_minutes'],
                 ];
             })
             ->values()

@@ -25,6 +25,7 @@ use App\Services\AuditLogger;
 use App\Services\DatabaseQueryExecutor;
 use App\Services\DatabaseTlsMaterializer;
 use App\Services\DeploymentPreflight;
+use App\Services\EffectiveQueryRequestPolicy;
 use App\Services\NotificationDispatcher;
 use App\Services\QueryGuard;
 use App\Services\QueryRequestWorkflow;
@@ -1767,6 +1768,7 @@ SQL;
             app(AuditLogger::class),
             app(DeploymentPreflight::class),
             app(NotificationDispatcher::class),
+            app(EffectiveQueryRequestPolicy::class),
         );
 
         $queryRequest->refresh();

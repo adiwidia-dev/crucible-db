@@ -152,6 +152,14 @@ class DeploymentPreflight
             $sql = $statement->sql;
         }
 
+        if ($requester->isDisabled()) {
+            $messages[] = $this->message(
+                'blocked',
+                'requester_disabled',
+                'The requester account is disabled, so this deployment cannot execute.',
+            );
+        }
+
         if (! $connection instanceof DatabaseConnection) {
             $messages[] = $this->message(
                 'blocked',
@@ -164,7 +172,7 @@ class DeploymentPreflight
                 'inactive_target',
                 "{$connection->name} is inactive and cannot accept a deployment.",
             );
-        } elseif (! $requester->isAdmin()) {
+        } elseif (! $requester->isDisabled() && ! $requester->isAdmin()) {
             $permission = $requester->effectiveDatabasePermissionFor($connection, $queryType);
 
             if (! $permission['access_mode']->allows($queryType)) {

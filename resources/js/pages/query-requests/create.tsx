@@ -69,9 +69,12 @@ type Props = {
             can_query_access_write: boolean;
             can_native_proxy_read: boolean;
             can_native_proxy_write: boolean;
-            read_requires_approval: boolean;
-            write_requires_approval: boolean;
-            max_write_session_minutes: number | null;
+            query_access_read_requires_approval: boolean;
+            query_access_write_requires_approval: boolean;
+            query_access_max_write_session_minutes: number | null;
+            native_proxy_read_requires_approval: boolean;
+            native_proxy_write_requires_approval: boolean;
+            native_proxy_max_write_session_minutes: number | null;
         }
     >;
     sql_statement_policy: SqlStatementPolicy;
@@ -415,19 +418,27 @@ export default function QueryRequestCreate({
         );
     const sessionRequiresApproval =
         requestedAccessMode === 'write'
-            ? selectedSessionConnections.some(
-                  (connection) => connection.write_requires_approval,
+            ? selectedSessionConnections.some((connection) =>
+                  isNativeClientAccess
+                      ? connection.native_proxy_write_requires_approval
+                      : connection.query_access_write_requires_approval,
               )
-            : selectedSessionConnections.some(
-                  (connection) => connection.read_requires_approval,
+            : selectedSessionConnections.some((connection) =>
+                  isNativeClientAccess
+                      ? connection.native_proxy_read_requires_approval
+                      : connection.query_access_read_requires_approval,
               );
     const writeSessionMaximumMinutes = useMemo(() => {
         const limits = selectedSessionConnections
-            .map((connection) => connection.max_write_session_minutes)
+            .map((connection) =>
+                isNativeClientAccess
+                    ? connection.native_proxy_max_write_session_minutes
+                    : connection.query_access_max_write_session_minutes,
+            )
             .filter((limit): limit is number => limit !== null);
 
         return limits.length > 0 ? Math.min(...limits) : null;
-    }, [selectedSessionConnections]);
+    }, [isNativeClientAccess, selectedSessionConnections]);
     const deploymentPreflightPreview = useMemo(
         () =>
             statements.map((statement, index) => {
