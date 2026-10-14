@@ -19,7 +19,12 @@ sequenceDiagram
         C-->>R: Submit request
         alt Approval required
             C->>V: Notify eligible reviewers
-            V->>C: Approve or reject
+            alt Work is postponed
+                R->>C: Withdraw to Draft with reason
+                C-->>V: Invalidate stale review context
+            else Review proceeds
+                V->>C: Approve or reject
+            end
         end
         C->>C: Recheck requester, policy, targets, and preflight
         C->>Q: Execute ordered statements
@@ -64,3 +69,5 @@ Preflight evaluates each Deployment Batch statement for SQL classification, targ
 Crucible DB records meaningful lifecycle and administrative events. The audit record is designed to answer: who made a decision, what scope they acted on, when it happened, and what the system did as a result.
 
 Auditability complements, but does not replace, the target database’s own logging and change controls.
+
+Creating a similar request is a new governed action, not a continuation of prior authorization. It can reuse editable scope and context from completed or cancelled work, but the new requester, active target permissions, approval policy, and subsequent lifecycle are evaluated independently. The source relationship provides audit context without merging either request's review or execution history.

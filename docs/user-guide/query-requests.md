@@ -21,7 +21,7 @@ The request detail page is the source of truth for:
 - review decisions;
 - schedule and dispatch state;
 - execution or session results;
-- cancellation and retry lineage; and
+- cancellation, retry, and similar-request lineage; and
 - watch status and audit context.
 
 Completed executions can offer **Export CSV** when recorded rows are available. Exports are generated from the stored governed execution result and remain subject to request authorization. A result count ending in `+` indicates truncation; the source query may have returned more rows than Crucible retained.
@@ -29,6 +29,10 @@ Completed executions can offer **Export CSV** when recorded rows are available. 
 Editing approved work invalidates the previous approval when the executable scope changes. The updated request returns to the appropriate review state.
 
 Requests that remain exempt under the requester's current effective policy stay ready without a redundant review. Policy and account changes are checked again before a Deployment Batch runs or a Query Access session starts, so an earlier no-approval decision never bypasses current controls.
+
+A Deployment Batch requester or administrator can use **Withdraw from review** while a batch is **Pending review**. A required reason is recorded, the revision changes immediately, and the batch returns to the non-executable **Draft** state so an already-open reviewer page cannot approve postponed work.
+
+Completed and cancelled requests offer **Create similar**. This opens an editable new-request form and leaves the historical request unchanged. Crucible copies useful scope and context, but current permissions and approval policy apply; schedules, reviews, execution state, sessions, and cancellation details do not carry forward. Any inactive or unauthorized previous target is named and must be replaced explicitly.
 
 ## Start a request
 

@@ -5,14 +5,14 @@
 | State | Meaning | Typical next action |
 | --- | --- | --- |
 | Draft | Saved, editable, and non-executable. | Edit, run preflight, submit, or cancel. |
-| Pending review | Submitted and awaiting an independent eligible reviewer. | Review, reject, or cancel when eligible. |
+| Pending review | Submitted and awaiting an independent eligible reviewer. | Review, reject, cancel, or withdraw the batch to Draft when eligible. |
 | Approved / ready | Approval is complete and the batch may be dispatched. | Dispatch now or wait for the requested schedule. |
 | Scheduled | Approved and waiting for its requested time. | Wait, or inspect if it becomes overdue. |
 | Running | Queued work is executing statements in order. | Observe results. |
-| Completed | All statements completed successfully. | Audit or export recorded results as permitted. |
+| Completed | All statements completed successfully. | Audit or export recorded results, or create a separate similar request. |
 | Failed | A statement failed; later statements did not run. | Investigate, retry, or record a resolution linked to a newer replacement batch. |
 | Rejected | A reviewer declined the request. | Address the reason in a new or edited request. |
-| Cancelled | Eligible work was cancelled with a reason. | Start new work only when needed. |
+| Cancelled | Eligible work was cancelled with a reason. | Create a separate similar request if the work is needed later. |
 
 ## Query Access request and session states
 
@@ -21,9 +21,9 @@
 | Pending review | Access scope needs independent approval. | Wait for a reviewer or cancel. |
 | Approved | The approved scope can start a session. | Start the session. |
 | Active session | SQL can run only within expiry, declared level, and policy. | Run one permitted statement at a time or end the session. |
-| Ended | The session was explicitly ended. | Create a fresh linked request if more work is needed. |
-| Expired | The approved access window elapsed. | Create a fresh request. |
-| Rejected / cancelled | Access will not start. | Read the reason and request the correct scope if appropriate. |
+| Ended | The session was explicitly ended. | Request access again, or create a similar request when its scope needs changes. |
+| Expired | The approved access window elapsed. | Request access again, or create a similar request when its scope needs changes. |
+| Rejected / cancelled | Access will not start. | Read the reason and create a similar request with the correct scope if appropriate. |
 
 State labels describe whether work may proceed; they do not replace the latest account, target, policy, approval, duration, or SQL evaluation. A request can return to **Pending review** when current policy newly requires approval.
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\AccessMode;
 use App\Enums\AccessTransport;
 use App\Enums\DatabaseDriver;
 use App\Enums\ExecutionStatus;
@@ -14,6 +15,7 @@ use App\Http\Requests\ResolveFailedQueryRequestRequest;
 use App\Http\Requests\RetryQueryRequestRequest;
 use App\Http\Requests\StoreQueryRequestRequest;
 use App\Http\Requests\UpdateQueryRequestRequest;
+use App\Http\Requests\WithdrawQueryRequestRequest;
 use App\Models\DatabaseConnection;
 use App\Models\QueryExecution;
 use App\Models\QueryRequest;
@@ -26,9 +28,11 @@ use App\Services\AuditLogger;
 use App\Services\DeploymentPolicyPreview;
 use App\Services\QueryRequestWorkflow;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -122,6 +126,104 @@ class QueryRequestController extends Controller
         ]);
     }
 
+    public function createSimilar(QueryRequest $queryRequest, ApplicationSettings $settings): Response
+    {
+        Gate::authorize('createSimilar', $queryRequest);
+
+        $queryRequest->load([
+            'databaseConnection',
+            'accessConnections',
+            'statements.databaseConnection',
+        ]);
+
+        $user = request()->user();
+        $connections = $this->connectionOptions($user);
+        $connectionOptions = collect($connections)->keyBy('id');
+        $targetConnections = $this->targetConnections($queryRequest);
+        $accessFeatures = $this->accessFeatures($settings);
+        $availableTargetIds = $queryRequest->request_kind === QueryRequestKind::QueryAccess
+            ? $targetConnections
+                ->pluck('id')
+                ->filter(fn (int $connectionId): bool => $this->canCopyQueryAccessTarget(
+                    $connectionOptions->get($connectionId),
+                    $queryRequest,
+                    $accessFeatures,
+                ))
+                ->values()
+            : collect();
+        $statements = $queryRequest->statements
+            ->map(function (QueryRequestStatement $statement) use ($connectionOptions): array {
+                $connectionOption = $connectionOptions->get($statement->database_connection_id);
+
+                return [
+                    'sql' => $statement->sql,
+                    'database_connection_id' => $this->canCopyDeploymentTarget($connectionOption, $statement->query_type)
+                        ? $statement->database_connection_id
+                        : null,
+                ];
+            })
+            ->values();
+
+        if ($queryRequest->request_kind === QueryRequestKind::SingleExecution
+            && $statements->isEmpty()
+            && filled($queryRequest->sql)) {
+            $connectionOption = $connectionOptions->get($queryRequest->database_connection_id);
+            $statements->push([
+                'sql' => $queryRequest->sql,
+                'database_connection_id' => $this->canCopyDeploymentTarget($connectionOption, $queryRequest->query_type)
+                    ? $queryRequest->database_connection_id
+                    : null,
+            ]);
+        }
+
+        $unavailableTargetIds = $queryRequest->request_kind === QueryRequestKind::QueryAccess
+            ? $targetConnections->pluck('id')->diff($availableTargetIds)
+            : $queryRequest->statements
+                ->filter(fn (QueryRequestStatement $statement, int $index): bool => $statements->get($index)['database_connection_id'] === null)
+                ->pluck('database_connection_id')
+                ->whenEmpty(fn () => $statements->contains('database_connection_id', null)
+                    ? collect([$queryRequest->database_connection_id])
+                    : collect())
+                ->unique()
+                ->values();
+
+        $primaryConnectionId = $queryRequest->request_kind === QueryRequestKind::SingleExecution
+            ? $statements->pluck('database_connection_id')->filter()->first()
+            : $availableTargetIds->first();
+
+        return Inertia::render('query-requests/create', [
+            'connections' => $connections,
+            'query_request' => null,
+            'initial_values' => [
+                'database_connection_id' => $primaryConnectionId,
+                'database_connection_ids' => $queryRequest->request_kind === QueryRequestKind::QueryAccess
+                    ? $availableTargetIds->all()
+                    : [],
+                'request_kind' => $queryRequest->request_kind->value,
+                'access_transport' => $queryRequest->access_transport->value,
+                'title' => Str::limit("Copy of: {$queryRequest->title}", 255, ''),
+                'description' => $queryRequest->description,
+                'statements' => $statements->all(),
+                'scheduled_at' => null,
+                'access_duration_minutes' => $queryRequest->access_duration_minutes,
+                'requested_access_mode' => $queryRequest->requested_access_mode?->value,
+            ],
+            'copy_source' => [
+                'id' => $queryRequest->id,
+                'title' => $queryRequest->title,
+                'unavailable_targets' => $targetConnections
+                    ->filter(fn (DatabaseConnection $connection): bool => $unavailableTargetIds->contains($connection->id))
+                    ->map(fn (DatabaseConnection $connection): array => [
+                        'id' => $connection->id,
+                        'name' => $connection->name,
+                    ])
+                    ->values(),
+            ],
+            'sql_statement_policy' => $settings->sqlStatementPolicyFormValues(),
+            'access_features' => $accessFeatures,
+        ]);
+    }
+
     public function store(StoreQueryRequestRequest $request, QueryRequestWorkflow $workflow): RedirectResponse
     {
         $data = $this->requestData($request);
@@ -149,6 +251,7 @@ class QueryRequestController extends Controller
     public function show(QueryRequest $queryRequest): Response
     {
         Gate::authorize('view', $queryRequest);
+        $user = request()->user();
 
         $queryRequest->load([
             'requester',
@@ -159,6 +262,18 @@ class QueryRequestController extends Controller
             'accessConnections',
             'retryOf',
             'retries',
+            'copiedFrom' => function (Relation $relation) use ($user): void {
+                $relation->getQuery()->whereIn(
+                    'query_requests.id',
+                    QueryRequest::query()->visibleTo($user)->select('query_requests.id'),
+                );
+            },
+            'copies' => function (Relation $relation) use ($user): void {
+                $relation->getQuery()->whereIn(
+                    'query_requests.id',
+                    QueryRequest::query()->visibleTo($user)->select('query_requests.id'),
+                );
+            },
             'replacementQueryRequest',
             'reviews.reviewer',
             'statements.databaseConnection',
@@ -306,6 +421,15 @@ class QueryRequestController extends Controller
                     'title' => $retry->title,
                     'status' => $retry->status->value,
                 ])->values(),
+                'copied_from' => $queryRequest->copiedFrom ? [
+                    'id' => $queryRequest->copiedFrom->id,
+                    'title' => $queryRequest->copiedFrom->title,
+                ] : null,
+                'copies' => $queryRequest->copies->map(fn (QueryRequest $copy): array => [
+                    'id' => $copy->id,
+                    'title' => $copy->title,
+                    'status' => $copy->status->value,
+                ])->values(),
                 'connection' => [
                     'id' => $queryRequest->databaseConnection->id,
                     'name' => $queryRequest->databaseConnection->name,
@@ -340,10 +464,12 @@ class QueryRequestController extends Controller
                 ] : null,
             ],
             'can_review' => request()->user()->can('review', $queryRequest),
+            'can_withdraw_review' => request()->user()->can('withdrawReview', $queryRequest),
             'can_update' => request()->user()->can('update', $queryRequest),
             'can_dispatch' => request()->user()->can('dispatch', $queryRequest),
             'can_cancel' => request()->user()->can('cancel', $queryRequest),
             'can_retry' => request()->user()->can('retry', $queryRequest),
+            'can_create_similar' => request()->user()->can('createSimilar', $queryRequest),
             'can_resolve_failure' => $canResolveFailure,
             'replacement_candidates' => $replacementCandidates,
             'retry_strategy' => $this->retryStrategy($queryRequest),
@@ -384,6 +510,22 @@ class QueryRequestController extends Controller
             'message' => $queryRequest->preflight_status->value === 'blocked'
                 ? 'Preflight found blocked statements.'
                 : 'Preflight completed.',
+        ]);
+
+        return back();
+    }
+
+    public function withdrawReview(WithdrawQueryRequestRequest $request, QueryRequest $queryRequest, QueryRequestWorkflow $workflow): RedirectResponse
+    {
+        $workflow->withdrawFromReview(
+            $queryRequest,
+            $request->user(),
+            $request->validated('reason'),
+        );
+
+        Inertia::flash('toast', [
+            'type' => 'info',
+            'message' => 'Deployment batch withdrawn from review and returned to Draft.',
         ]);
 
         return back();
@@ -718,13 +860,16 @@ class QueryRequestController extends Controller
     }
 
     /**
-     * @return array{database_connection_id:int,database_connection_ids:array<int, int>,request_kind:string,access_transport:string,requested_access_mode:string|null,title:string,description:string|null,statements:array<int, array{sql:string,database_connection_id:int}>,scheduled_at:string|null,access_duration_minutes:int|null}
+     * @return array{database_connection_id:int,database_connection_ids:array<int, int>,copied_from_id:int|null,request_kind:string,access_transport:string,requested_access_mode:string|null,title:string,description:string|null,statements:array<int, array{sql:string,database_connection_id:int}>,scheduled_at:string|null,access_duration_minutes:int|null}
      */
     private function requestData(StoreQueryRequestRequest|UpdateQueryRequestRequest $request): array
     {
         return [
             'database_connection_id' => $request->integer('database_connection_id'),
             'database_connection_ids' => $request->validated('database_connection_ids', []),
+            'copied_from_id' => $request instanceof StoreQueryRequestRequest && $request->filled('copied_from_id')
+                ? $request->integer('copied_from_id')
+                : null,
             'request_kind' => $request->string('request_kind')->toString(),
             'access_transport' => $request->enum('access_transport', AccessTransport::class, AccessTransport::Browser)->value,
             'requested_access_mode' => $request->filled('requested_access_mode') ? $request->string('requested_access_mode')->toString() : null,
@@ -783,6 +928,40 @@ class QueryRequestController extends Controller
             'query_access_enabled' => $settings->queryAccessEnabled(),
             'native_client_access_enabled' => $settings->nativeClientAccessEnabled(),
         ];
+    }
+
+    /**
+     * @param  array{id:int, name:string, driver:string, can_write:bool, can_query_access_read:bool, can_query_access_write:bool, can_native_proxy_read:bool, can_native_proxy_write:bool, query_access_read_requires_approval:bool, query_access_write_requires_approval:bool, query_access_max_write_session_minutes:int|null, native_proxy_read_requires_approval:bool, native_proxy_write_requires_approval:bool, native_proxy_max_write_session_minutes:int|null}|null  $connectionOption
+     */
+    private function canCopyDeploymentTarget(?array $connectionOption, QueryType $queryType): bool
+    {
+        return $connectionOption !== null
+            && ($queryType === QueryType::Read || $connectionOption['can_write']);
+    }
+
+    /**
+     * @param  array{id:int, name:string, driver:string, can_write:bool, can_query_access_read:bool, can_query_access_write:bool, can_native_proxy_read:bool, can_native_proxy_write:bool, query_access_read_requires_approval:bool, query_access_write_requires_approval:bool, query_access_max_write_session_minutes:int|null, native_proxy_read_requires_approval:bool, native_proxy_write_requires_approval:bool, native_proxy_max_write_session_minutes:int|null}|null  $connectionOption
+     * @param  array{query_access_enabled:bool, native_client_access_enabled:bool}  $accessFeatures
+     */
+    private function canCopyQueryAccessTarget(?array $connectionOption, QueryRequest $queryRequest, array $accessFeatures): bool
+    {
+        if ($connectionOption === null) {
+            return false;
+        }
+
+        $isWriteAccess = $queryRequest->requested_access_mode === AccessMode::Write;
+
+        if ($queryRequest->access_transport === AccessTransport::NativeProxy) {
+            return $accessFeatures['native_client_access_enabled']
+                && ($isWriteAccess
+                    ? $connectionOption['can_native_proxy_write']
+                    : $connectionOption['can_native_proxy_read']);
+        }
+
+        return $accessFeatures['query_access_enabled']
+            && ($isWriteAccess
+                ? $connectionOption['can_query_access_write']
+                : $connectionOption['can_query_access_read']);
     }
 
     /**

@@ -8,6 +8,7 @@ import {
     CircleCheck,
     CircleX,
     Clock3,
+    CopyPlus,
     FileCode2,
     FileSearch,
     KeyRound,
@@ -42,9 +43,8 @@ import {
 import { index } from '@/routes/query-requests';
 import type { Auth } from '@/types';
 
-type EditableQueryRequest = {
-    id: number;
-    database_connection_id: number;
+type QueryRequestFormValues = {
+    database_connection_id: number | null;
     database_connection_ids: number[];
     request_kind: 'single_execution' | 'query_access';
     access_transport: 'browser' | 'native_proxy';
@@ -52,13 +52,26 @@ type EditableQueryRequest = {
     description: string | null;
     statements: Array<{
         sql: string;
-        database_connection_id: number;
+        database_connection_id: number | null;
     }>;
     scheduled_at: string | null;
     access_duration_minutes: number | null;
     requested_access_mode: 'read' | 'write' | null;
+};
+
+type EditableQueryRequest = QueryRequestFormValues & {
+    id: number;
     was_approved: boolean;
     is_draft: boolean;
+};
+
+type CopySource = {
+    id: number;
+    title: string;
+    unavailable_targets: Array<{
+        id: number;
+        name: string;
+    }>;
 };
 
 type Props = {
@@ -83,6 +96,8 @@ type Props = {
         native_client_access_enabled: boolean;
     };
     query_request: EditableQueryRequest | null;
+    initial_values?: QueryRequestFormValues | null;
+    copy_source?: CopySource | null;
     policy_previews?: PolicyPreview[];
 };
 
@@ -270,7 +285,7 @@ function usesEmergencySqlFallback(
 }
 
 function initialStatements(
-    queryRequest: EditableQueryRequest | null,
+    queryRequest: QueryRequestFormValues | null,
     defaultConnectionId: string,
 ): StatementDraft[] {
     const statements = queryRequest?.statements ?? [];
@@ -288,9 +303,10 @@ function initialStatements(
     return statements.map((statement, index) => ({
         key: `statement-${index + 1}`,
         sql: statement.sql,
-        databaseConnectionId: String(
-            statement.database_connection_id ?? defaultConnectionId,
-        ),
+        databaseConnectionId:
+            statement.database_connection_id === null
+                ? ''
+                : String(statement.database_connection_id),
     }));
 }
 
@@ -299,42 +315,45 @@ export default function QueryRequestCreate({
     sql_statement_policy: sqlStatementPolicy,
     access_features: accessFeatures,
     query_request,
+    initial_values: initialValues = null,
+    copy_source: copySource = null,
     policy_previews: initialPolicyPreviews = [],
 }: Props) {
     const { auth } = usePage<{ auth: Auth }>().props;
     const userTimezone = auth.user.timezone ?? 'UTC';
     const isEditing = query_request !== null;
     const isDraft = query_request?.is_draft ?? false;
+    const formValues = query_request ?? initialValues;
     const [requestKind, setRequestKind] = useState<
         'single_execution' | 'query_access'
-    >(query_request?.request_kind ?? 'single_execution');
+    >(formValues?.request_kind ?? 'single_execution');
     const [accessTransport, setAccessTransport] = useState<
         'browser' | 'native_proxy'
-    >(query_request?.access_transport ?? 'browser');
+    >(formValues?.access_transport ?? 'browser');
     const [scheduleQuery, setScheduleQuery] = useState(
-        query_request?.scheduled_at !== null &&
-            query_request?.scheduled_at !== undefined,
+        formValues?.scheduled_at !== null &&
+            formValues?.scheduled_at !== undefined,
     );
     const [scheduledAtLocal, setScheduledAtLocal] = useState(() =>
-        query_request?.scheduled_at
-            ? isoToZonedDateTimeLocal(query_request.scheduled_at, userTimezone)
+        formValues?.scheduled_at
+            ? isoToZonedDateTimeLocal(formValues.scheduled_at, userTimezone)
             : '',
     );
-    const defaultConnectionId = query_request
-        ? String(query_request.database_connection_id)
+    const defaultConnectionId = formValues?.database_connection_id
+        ? String(formValues.database_connection_id)
         : connections.length === 1
           ? String(connections[0].id)
           : '';
     const [selectedConnectionIds, setSelectedConnectionIds] = useState(
         () =>
-            query_request?.database_connection_ids.map(String) ??
+            formValues?.database_connection_ids.map(String) ??
             (defaultConnectionId === '' ? [] : [defaultConnectionId]),
     );
     const [requestedAccessMode, setRequestedAccessMode] = useState<
         'read' | 'write'
-    >(query_request?.requested_access_mode ?? 'read');
+    >(formValues?.requested_access_mode ?? 'read');
     const [statements, setStatements] = useState<StatementDraft[]>(() =>
-        initialStatements(query_request, defaultConnectionId),
+        initialStatements(formValues, defaultConnectionId),
     );
     const [focusedStatementKey, setFocusedStatementKey] = useState<
         string | null
@@ -694,9 +713,52 @@ export default function QueryRequestCreate({
                             ? isDraft
                                 ? 'Refine this draft, then submit it when preflight is ready.'
                                 : 'Revise the deployment batch and send the complete request back for approval.'
-                            : 'Prepare a governed deployment batch or request time-boxed query access.'
+                            : copySource
+                              ? 'Review the copied scope, make any changes, then save or submit it as a new request.'
+                              : 'Prepare a governed deployment batch or request time-boxed query access.'
                     }
                 />
+
+                {copySource && (
+                    <section
+                        aria-labelledby="copy-source-title"
+                        className="flex gap-3 border-y bg-card px-4 py-4 text-sm sm:rounded-lg sm:border sm:px-5"
+                    >
+                        <CopyPlus className="mt-0.5 size-4 shrink-0 text-primary" />
+                        <div className="min-w-0">
+                            <h2 id="copy-source-title" className="font-medium">
+                                Based on Request #{copySource.id}:{' '}
+                                {copySource.title}
+                            </h2>
+                            <p className="mt-1 text-muted-foreground">
+                                Approval, schedule, preflight, execution, and
+                                cancellation history were not copied. Current
+                                permissions and approval policy apply when this
+                                request is submitted.
+                            </p>
+                            {copySource.unavailable_targets.length > 0 && (
+                                <div
+                                    role="alert"
+                                    className="mt-3 flex gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200"
+                                >
+                                    <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+                                    <p>
+                                        Replace the unavailable{' '}
+                                        {copySource.unavailable_targets
+                                            .length === 1
+                                            ? 'target'
+                                            : 'targets'}{' '}
+                                        before submitting:{' '}
+                                        {copySource.unavailable_targets
+                                            .map((target) => target.name)
+                                            .join(', ')}
+                                        .
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </section>
+                )}
 
                 {query_request?.was_approved && (
                     <div className="flex gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
@@ -730,6 +792,13 @@ export default function QueryRequestCreate({
                                 name="access_transport"
                                 value={accessTransport}
                             />
+                            {copySource && (
+                                <input
+                                    type="hidden"
+                                    name="copied_from_id"
+                                    value={copySource.id}
+                                />
+                            )}
                             <section className="border-y bg-card sm:rounded-lg sm:border">
                                 <div className="border-b px-4 py-3 sm:px-5">
                                     <h2 className="text-sm font-semibold">
@@ -750,7 +819,7 @@ export default function QueryRequestCreate({
                                                 id="title"
                                                 name="title"
                                                 defaultValue={
-                                                    query_request?.title ?? ''
+                                                    formValues?.title ?? ''
                                                 }
                                                 placeholder="DEP-1234: customer data migration"
                                                 autoFocus={!isEditing}
@@ -771,7 +840,7 @@ export default function QueryRequestCreate({
                                                 name="description"
                                                 rows={4}
                                                 defaultValue={
-                                                    query_request?.description ??
+                                                    formValues?.description ??
                                                     ''
                                                 }
                                                 className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm transition-[color,border-color,box-shadow] duration-150 ease-out outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-reduce:transition-none"
@@ -1458,7 +1527,7 @@ export default function QueryRequestCreate({
                                                         : 1440
                                                 }
                                                 defaultValue={
-                                                    query_request?.access_duration_minutes ??
+                                                    formValues?.access_duration_minutes ??
                                                     60
                                                 }
                                                 className="bg-background"
@@ -1611,7 +1680,11 @@ export default function QueryRequestCreate({
                                                         ? QueryRequestController.show(
                                                               query_request.id,
                                                           )
-                                                        : index()
+                                                        : copySource
+                                                          ? QueryRequestController.show(
+                                                                copySource.id,
+                                                            )
+                                                          : index()
                                                 }
                                             >
                                                 <X />

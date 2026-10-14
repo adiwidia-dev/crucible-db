@@ -435,6 +435,157 @@ class QueryRequestBatchWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_requester_can_withdraw_a_pending_deployment_batch_to_draft(): void
+    {
+        Notification::fake();
+        $requester = User::factory()->create();
+        $reviewer = $this->adminUser();
+        $scheduledAt = now()->addDay()->startOfSecond();
+        $queryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+            'revision' => 4,
+            'scheduled_at' => $scheduledAt,
+        ]);
+
+        $this->actingAs($requester)
+            ->get(route('query-requests.show', $queryRequest))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('can_withdraw_review', true));
+
+        $this->actingAs($requester)
+            ->from(route('query-requests.show', $queryRequest))
+            ->post(route('query-requests.withdraw-review', $queryRequest), [
+                'reason' => 'The maintenance window was postponed.',
+            ])
+            ->assertRedirect(route('query-requests.show', $queryRequest))
+            ->assertSessionHasNoErrors();
+
+        $queryRequest->refresh();
+
+        $this->assertSame(QueryRequestStatus::Draft, $queryRequest->status);
+        $this->assertSame(5, $queryRequest->revision);
+        $this->assertTrue($queryRequest->requires_approval);
+        $this->assertNull($queryRequest->approved_by_id);
+        $this->assertNull($queryRequest->approved_at);
+        $this->assertNull($queryRequest->dispatched_at);
+        $this->assertNull($queryRequest->completed_at);
+        $this->assertTrue($scheduledAt->equalTo($queryRequest->scheduled_at));
+
+        $this->actingAs($requester)
+            ->get(route('query-requests.show', $queryRequest))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('query_request.status', QueryRequestStatus::Draft->value)
+                ->where('can_withdraw_review', false)
+                ->where('can_update', true));
+
+        $auditLog = AuditLog::query()
+            ->where('action', 'query_request.review_withdrawn')
+            ->where('auditable_id', $queryRequest->id)
+            ->sole();
+
+        $this->assertSame($requester->id, $auditLog->actor_id);
+        $this->assertSame('The maintenance window was postponed.', $auditLog->metadata['reason']);
+        $this->assertSame(4, $auditLog->metadata['previous_revision']);
+        $this->assertSame(5, $auditLog->metadata['revision']);
+
+        Notification::assertSentTo(
+            $reviewer,
+            OperationalNotification::class,
+            fn (OperationalNotification $notification): bool => $notification->toArray($reviewer)['event'] === 'query_request.review_withdrawn',
+        );
+        Notification::assertSentTo(
+            $requester,
+            OperationalNotification::class,
+            fn (OperationalNotification $notification): bool => $notification->toArray($requester)['event'] === 'query_request.review_withdrawn',
+        );
+
+        $this->actingAs($reviewer)
+            ->post(route('query-requests.reviews.store', $queryRequest), [
+                'expected_revision' => 4,
+                'decision' => 'approved',
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('query_reviews', 0);
+    }
+
+    public function test_admin_can_withdraw_another_users_pending_deployment_batch(): void
+    {
+        Notification::fake();
+        $requester = User::factory()->create();
+        $admin = $this->adminUser();
+        $queryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('query-requests.withdraw-review', $queryRequest), [
+                'reason' => 'The deployment owner requested a postponement.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(QueryRequestStatus::Draft, $queryRequest->refresh()->status);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'query_request.review_withdrawn',
+            'actor_id' => $admin->id,
+            'auditable_id' => $queryRequest->id,
+        ]);
+    }
+
+    public function test_review_withdrawal_requires_a_reason_and_owner_or_admin_authority(): void
+    {
+        $requester = User::factory()->create();
+        $otherUser = User::factory()->create();
+        $queryRequest = QueryRequest::factory()->create([
+            'requester_id' => $requester->id,
+        ]);
+
+        $this->actingAs($requester)
+            ->from(route('query-requests.show', $queryRequest))
+            ->post(route('query-requests.withdraw-review', $queryRequest), [
+                'reason' => '',
+            ])
+            ->assertRedirect(route('query-requests.show', $queryRequest))
+            ->assertSessionHasErrors('reason');
+
+        $this->actingAs($otherUser)
+            ->post(route('query-requests.withdraw-review', $queryRequest), [
+                'reason' => 'I should not be able to withdraw this batch.',
+            ])
+            ->assertForbidden();
+
+        $this->assertSame(QueryRequestStatus::PendingReview, $queryRequest->refresh()->status);
+        $this->assertDatabaseMissing('audit_logs', [
+            'action' => 'query_request.review_withdrawn',
+            'auditable_id' => $queryRequest->id,
+        ]);
+    }
+
+    public function test_query_access_and_non_pending_batches_cannot_be_withdrawn_to_draft(): void
+    {
+        $requester = $this->adminUser();
+        $queryAccessRequest = QueryRequest::factory()->queryAccess()->create([
+            'requester_id' => $requester->id,
+        ]);
+        $approvedBatch = QueryRequest::factory()->approved()->create([
+            'requester_id' => $requester->id,
+        ]);
+
+        foreach ([$queryAccessRequest, $approvedBatch] as $queryRequest) {
+            $this->actingAs($requester)
+                ->post(route('query-requests.withdraw-review', $queryRequest), [
+                    'reason' => 'This transition must not be allowed.',
+                ])
+                ->assertForbidden();
+        }
+
+        $this->assertSame(QueryRequestStatus::PendingReview, $queryAccessRequest->refresh()->status);
+        $this->assertSame(QueryRequestStatus::Approved, $approvedBatch->refresh()->status);
+    }
+
     public function test_non_owner_cannot_save_another_users_draft(): void
     {
         $owner = $this->adminUser();

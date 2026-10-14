@@ -41,8 +41,8 @@ class QueryRequestWorkflow
     ) {}
 
     /**
-     * @param  DatabaseConnection|array{database_connection_id?:int,database_connection_ids?:array<int, int>,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}  $databaseConnectionOrData
-     * @param  array{database_connection_id?:int,database_connection_ids?:array<int, int>,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}|null  $data
+     * @param  DatabaseConnection|array{database_connection_id?:int,database_connection_ids?:array<int, int>,copied_from_id?:int|null,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}  $databaseConnectionOrData
+     * @param  array{database_connection_id?:int,database_connection_ids?:array<int, int>,copied_from_id?:int|null,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}|null  $data
      *
      * @throws ValidationException
      */
@@ -133,6 +133,7 @@ class QueryRequestWorkflow
             $queryRequest = QueryRequest::query()->create([
                 'requester_id' => $requester->id,
                 'database_connection_id' => $databaseConnection->id,
+                'copied_from_id' => $data['copied_from_id'] ?? null,
                 'title' => $data['title'],
                 'description' => $data['description'] ?? null,
                 'sql' => $statements[0]['sql'] ?? '',
@@ -168,6 +169,7 @@ class QueryRequestWorkflow
                 'database_connection_ids' => $databaseConnections->pluck('id')->values()->all(),
                 'statement_count' => count($statements),
                 'uses_emergency_sql_fallback' => $usesEmergencySqlFallback,
+                'copied_from_id' => $queryRequest->copied_from_id,
             ]);
 
             if ($usesEmergencySqlFallback) {
@@ -189,7 +191,7 @@ class QueryRequestWorkflow
     }
 
     /**
-     * @param  array{database_connection_id?:int,database_connection_ids?:array<int, int>,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}  $data
+     * @param  array{database_connection_id?:int,database_connection_ids?:array<int, int>,copied_from_id?:int|null,request_kind:string,title:string,description?:string|null,sql?:string|null,statements?:array<int, array{sql:string,database_connection_id:int}>,scheduled_at?:string|null,access_duration_minutes?:int|null}  $data
      *
      * @throws ValidationException
      */
@@ -220,6 +222,7 @@ class QueryRequestWorkflow
             $queryRequest = QueryRequest::query()->create([
                 'requester_id' => $requester->id,
                 'database_connection_id' => $databaseConnection->id,
+                'copied_from_id' => $data['copied_from_id'] ?? null,
                 'title' => $data['title'],
                 'description' => $data['description'] ?? null,
                 'sql' => $statements[0]['sql'],
@@ -245,6 +248,7 @@ class QueryRequestWorkflow
                     ->unique()
                     ->values()
                     ->all(),
+                'copied_from_id' => $queryRequest->copied_from_id,
             ]);
 
             return $queryRequest;
@@ -634,6 +638,56 @@ class QueryRequestWorkflow
                 return $review;
             });
         });
+    }
+
+    /**
+     * @throws ValidationException
+     */
+    public function withdrawFromReview(QueryRequest $queryRequest, User $actor, string $reason): QueryRequest
+    {
+        $withdrawnRequest = Cache::lock('query-request:review:'.$queryRequest->id, 120)->block(5, function () use ($queryRequest, $actor, $reason): QueryRequest {
+            return DB::transaction(function () use ($queryRequest, $actor, $reason): QueryRequest {
+                $lockedQueryRequest = QueryRequest::query()
+                    ->lockForUpdate()
+                    ->findOrFail($queryRequest->id);
+
+                Gate::forUser($actor)->authorize('withdrawReview', $lockedQueryRequest);
+
+                if ($lockedQueryRequest->request_kind !== QueryRequestKind::SingleExecution
+                    || $lockedQueryRequest->status !== QueryRequestStatus::PendingReview
+                    || $lockedQueryRequest->dispatched_at !== null) {
+                    throw ValidationException::withMessages([
+                        'query_request' => 'Only a pending Deployment Batch can be withdrawn from review.',
+                    ]);
+                }
+
+                $previousRevision = $lockedQueryRequest->revision;
+
+                $lockedQueryRequest->forceFill([
+                    'status' => QueryRequestStatus::Draft,
+                    'requires_approval' => true,
+                    'approved_by_id' => null,
+                    'approved_at' => null,
+                    'dispatched_by_id' => null,
+                    'dispatched_at' => null,
+                    'completed_at' => null,
+                    'revision' => $previousRevision + 1,
+                ])->save();
+
+                $this->auditLogger->log('query_request.review_withdrawn', $actor, $lockedQueryRequest, [
+                    'reason' => $reason,
+                    'previous_status' => QueryRequestStatus::PendingReview->value,
+                    'previous_revision' => $previousRevision,
+                    'revision' => $lockedQueryRequest->revision,
+                ]);
+
+                return $lockedQueryRequest->refresh();
+            });
+        });
+
+        $this->notificationDispatcher->reviewWithdrawn($withdrawnRequest, $actor, $reason);
+
+        return $withdrawnRequest;
     }
 
     public function dispatch(QueryRequest $queryRequest, ?User $actor = null): bool

@@ -88,6 +88,31 @@ class NotificationDispatcher
         );
     }
 
+    public function reviewWithdrawn(QueryRequest $queryRequest, User $actor, string $reason): void
+    {
+        if (! $this->settings->notificationEventEnabled('review')) {
+            return;
+        }
+
+        $recipients = $this->reviewersFor($queryRequest)
+            ->push($queryRequest->requester)
+            ->merge($this->subscribersForQueryRequest($queryRequest))
+            ->unique('id')
+            ->values();
+
+        $this->notify(
+            $recipients,
+            $this->requestPayload(
+                'query_request.review_withdrawn',
+                'info',
+                'Review withdrawn',
+                "{$queryRequest->title} was withdrawn from review by {$actor->name}. Reason: {$reason}",
+                $queryRequest,
+            ),
+            'approvals',
+        );
+    }
+
     public function sqlPolicyReviewRequested(QueryRequest $queryRequest, int $candidateCount, int $firstCandidateId): void
     {
         if (! $this->settings->notificationEventEnabled('policy_review')) {

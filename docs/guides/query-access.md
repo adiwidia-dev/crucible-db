@@ -39,6 +39,10 @@ When an active session already exists, the request action changes to **Resume Se
 
 You can end a session early. Once it ends or expires, it cannot execute more SQL. A follow-up request must be evaluated against current policy again.
 
+For **Completed** or **Cancelled** Query Access, choose **Request access again** when you want an immediate linked renewal with the same scope. Choose **Create similar** when you first need to edit the targets, transport, access level, duration, title, or context. **Create similar** opens the normal request form and does not create a record until you submit it. The current user becomes the requester, and current permissions, feature settings, duration limits, and approval policy are evaluated again.
+
+If a previous target is now inactive or unavailable to you, the form names it and leaves it unselected. Select an authorized replacement before submitting. Approval decisions, sessions, query history, cancellation details, and notifications from the original request are never copied.
+
 ## Why a query can still be blocked
 
 Every query is checked at execution time. It may be blocked because:

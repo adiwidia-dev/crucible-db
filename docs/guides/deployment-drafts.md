@@ -45,6 +45,12 @@ When the batch is ready:
 3. Choose **Submit for review**.
 4. Resolve any fresh blocking message instead of assuming the saved report is still valid.
 
+## Withdraw a submitted batch
+
+If a Deployment Batch must be postponed while it is **Pending review**, its requester or an administrator can choose **Withdraw from review** and record a reason. The batch returns to **Draft** immediately, leaves the reviewer queue, and cannot be approved or executed until it is explicitly submitted again.
+
+The withdrawal preserves the statements, targets, schedule, preflight results, and review history. Review the schedule and run fresh preflight checks before resubmitting because either may have become stale while the batch was postponed.
+
 ## Cancel a draft
 
 Use **Cancel request** only when the work should not continue. Cancellation records a reason and leaves an audit trail. It does not delete the historical request record.

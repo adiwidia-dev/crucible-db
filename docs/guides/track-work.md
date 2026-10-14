@@ -10,7 +10,7 @@ Your notification preferences control optional email delivery. Workspace adminis
 
 ## Understand the audit trail
 
-Audit records preserve meaningful user and system events. Expect them for request creation, preflight, review, dispatch, execution, cancellation, retry, session lifecycle, connection administration, and policy changes.
+Audit records preserve meaningful user and system events. Expect them for request creation and reuse, preflight, review withdrawal and decisions, dispatch, execution, cancellation, retry, session lifecycle, connection administration, and policy changes.
 
 Credentials are encrypted at rest and are not exposed in request details, notifications, exports, or audit payloads.
 
@@ -20,5 +20,6 @@ Credentials are encrypted at rest and are not exposed in request details, notifi
 2. Confirm the target connection and current request state.
 3. Check whether the action is blocked by policy, approval, schedule, or expired access.
 4. Use a linked retry only when it represents the appropriate next work item.
-5. When recording a handled failure, search all visible newer Deployment Batches by ID, title, status, or connection and link the actual replacement, even when it already completed.
-6. Escalate with the request URL and audit context, never by copying credentials into a ticket.
+5. Use **Create similar** for editable new work based on a completed or cancelled request; it receives fresh current-policy evaluation and does not inherit operational state.
+6. When recording a handled failure, search all visible newer Deployment Batches by ID, title, status, or connection and link the actual replacement, even when it already completed.
+7. Escalate with the request URL and audit context, never by copying credentials into a ticket.

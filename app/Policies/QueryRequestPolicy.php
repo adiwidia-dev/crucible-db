@@ -31,6 +31,16 @@ class QueryRequestPolicy
         return true;
     }
 
+    public function createSimilar(User $user, QueryRequest $queryRequest): bool
+    {
+        return in_array($queryRequest->status, [
+            QueryRequestStatus::Completed,
+            QueryRequestStatus::Cancelled,
+        ], true)
+            && $this->create($user)
+            && $this->view($user, $queryRequest);
+    }
+
     public function update(User $user, QueryRequest $queryRequest): bool
     {
         return $queryRequest->request_kind === QueryRequestKind::SingleExecution
@@ -61,6 +71,14 @@ class QueryRequestPolicy
         && $this->scopedConnections($queryRequest)->every(
             fn ($connection): bool => $user->canReviewDatabase($connection),
         );
+    }
+
+    public function withdrawReview(User $user, QueryRequest $queryRequest): bool
+    {
+        return $queryRequest->request_kind === QueryRequestKind::SingleExecution
+            && $queryRequest->status === QueryRequestStatus::PendingReview
+            && $queryRequest->dispatched_at === null
+            && ($user->isAdmin() || $queryRequest->requester_id === $user->id);
     }
 
     public function dispatch(User $user, QueryRequest $queryRequest): bool

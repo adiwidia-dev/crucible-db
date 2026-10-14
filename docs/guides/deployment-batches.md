@@ -58,6 +58,10 @@ Where recorded rows exist, use **Export CSV** from the execution result. The exp
 
 Eligible work can be cancelled with a reason. A failed request may offer a linked retry. Write-impacting retry work receives fresh policy and approval evaluation.
 
+For a **Completed** or **Cancelled** Deployment Batch, use **Create similar** when the old batch is a useful starting point for separate work. Crucible opens the normal request form with the title, context, ordered statements, and targets copied. It does not copy the schedule, approval and review decisions, preflight or execution results, cancellation details, or notifications. Review and edit the new request before saving it as a draft or submitting it; the current user becomes its requester, and current permissions and approval policy apply.
+
+If an old target is now inactive or unavailable to you, Crucible keeps the affected SQL visible, clears that statement's target, and identifies the unavailable connection. Choose an authorized replacement before saving or submitting. The old request remains unchanged, and both request detail pages retain the **Created from** relationship for audit context.
+
 When a failure has been handled outside a retry, an authorized user can record its resolution, optionally link the replacement Deployment Batch, and add an operational note. Search replacement candidates by request ID, title, status, or connection. The selector includes every visible, newer, non-failed Deployment Batch, including a replacement that already completed. The failed batch leaves the live Operational queue, while its execution history and resolution record remain available for audit.
 
 Cancellation and queued execution use atomic state transitions. If cancellation wins while a worker is preparing or finishing the batch, the request remains cancelled rather than being overwritten by a later running, completed, or failed update.
