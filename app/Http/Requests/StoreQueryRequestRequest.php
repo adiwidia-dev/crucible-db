@@ -63,7 +63,19 @@ class StoreQueryRequestRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return $this->user()?->can('create', QueryRequest::class) ?? false;
+        $user = $this->user();
+
+        if ($user === null || ! $user->can('create', QueryRequest::class)) {
+            return false;
+        }
+
+        if (! $this->filled('copied_from_id')) {
+            return true;
+        }
+
+        $sourceRequest = QueryRequest::query()->find($this->integer('copied_from_id'));
+
+        return $sourceRequest !== null && $user->can('createSimilar', $sourceRequest);
     }
 
     /**
@@ -73,6 +85,7 @@ class StoreQueryRequestRequest extends FormRequest
     {
         return [
             'intent' => ['nullable', Rule::in(['submit', 'draft', 'policy_review'])],
+            'copied_from_id' => ['nullable', 'integer', 'exists:query_requests,id'],
             'access_transport' => ['required', Rule::enum(AccessTransport::class)],
             'database_connection_id' => ['nullable', 'integer', 'exists:database_connections,id'],
             'database_connection_ids' => ['nullable', 'required_if:request_kind,'.QueryRequestKind::QueryAccess->value, 'array', 'min:1', 'max:10'],

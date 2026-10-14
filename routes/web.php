@@ -100,6 +100,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('query-requests/policy-preview', DeploymentPolicyPreviewController::class)
         ->middleware('throttle:120,1')
         ->name('query-requests.policy-preview');
+    Route::get('query-requests/{query_request}/create-similar', [QueryRequestController::class, 'createSimilar'])
+        ->name('query-requests.create-similar');
     Route::resource('query-requests', QueryRequestController::class)
         ->parameters(['query-requests' => 'query_request']);
     Route::post('query-requests/{query_request}/reviews', [QueryReviewController::class, 'store'])
@@ -108,6 +110,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('query-requests.dispatch');
     Route::post('query-requests/{query_request}/preflight', [QueryRequestController::class, 'preflight'])
         ->name('query-requests.preflight');
+    Route::post('query-requests/{query_request}/withdraw-review', [QueryRequestController::class, 'withdrawReview'])
+        ->name('query-requests.withdraw-review');
     Route::post('query-requests/{query_request}/cancel', [QueryRequestController::class, 'cancel'])
         ->name('query-requests.cancel');
     Route::post('query-requests/{query_request}/retry', [QueryRequestController::class, 'retry'])

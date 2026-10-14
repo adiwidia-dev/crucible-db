@@ -8,6 +8,7 @@ import {
     CircleStop,
     CircleX,
     ChevronDown,
+    CopyPlus,
     Download,
     FileCode2,
     FileSearch,
@@ -17,6 +18,7 @@ import {
     RotateCcw,
     Send,
     Trash2,
+    Undo2,
 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -181,6 +183,15 @@ type QueryRequest = {
         title: string;
         status: QueryRequestStatus;
     }>;
+    copied_from: {
+        id: number;
+        title: string;
+    } | null;
+    copies: Array<{
+        id: number;
+        title: string;
+        status: QueryRequestStatus;
+    }>;
     connection: {
         id: number;
         name: string;
@@ -236,10 +247,12 @@ function TargetConnectionBadge({
 type Props = {
     query_request: QueryRequest;
     can_review: boolean;
+    can_withdraw_review: boolean;
     can_update: boolean;
     can_dispatch: boolean;
     can_cancel: boolean;
     can_retry: boolean;
+    can_create_similar: boolean;
     can_resolve_failure: boolean;
     replacement_candidates: ReplacementQueryRequestOption[];
     retry_strategy:
@@ -359,10 +372,12 @@ function ExecutionResult({ execution }: { execution: Execution }) {
 export default function QueryRequestShow({
     query_request,
     can_review,
+    can_withdraw_review,
     can_update,
     can_dispatch,
     can_cancel,
     can_retry,
+    can_create_similar,
     can_resolve_failure,
     replacement_candidates,
     retry_strategy,
@@ -532,27 +547,29 @@ export default function QueryRequestShow({
             : query_request.status === 'cancelled' ||
                 (can_retry && retry_strategy === 'renew_access')
               ? null
-              : can_review
-                ? 'Review is required before this request can proceed.'
-                : approvedAfterSchedule
-                  ? `Scheduled for ${scheduledAtLabel}. It was approved after the planned time and will not run automatically.`
-                  : query_request.active_session
-                    ? isNativeClientAccess
-                        ? 'A native client session is active.'
-                        : 'A Query Access session is active.'
-                    : can_start_session
-                      ? 'This approved request is ready to start a session.'
-                      : can_dispatch
-                        ? 'This approved batch is ready for ordered execution.'
-                        : can_retry && retry_strategy === 'resume_read_only'
-                          ? 'Execution stopped. Retry from the failed read-only statement.'
-                          : can_retry
-                            ? 'Create a linked retry request for fresh approval.'
-                            : query_request.status === 'failed'
-                              ? 'Execution stopped. Review the failed statement below.'
-                              : query_request.status === 'completed'
-                                ? 'This request has completed.'
-                                : 'No action is currently available.';
+              : query_request.status === 'draft'
+                ? 'This draft cannot be reviewed or executed until it is submitted.'
+                : can_review
+                  ? 'Review is required before this request can proceed.'
+                  : approvedAfterSchedule
+                    ? `Scheduled for ${scheduledAtLabel}. It was approved after the planned time and will not run automatically.`
+                    : query_request.active_session
+                      ? isNativeClientAccess
+                          ? 'A native client session is active.'
+                          : 'A Query Access session is active.'
+                      : can_start_session
+                        ? 'This approved request is ready to start a session.'
+                        : can_dispatch
+                          ? 'This approved batch is ready for ordered execution.'
+                          : can_retry && retry_strategy === 'resume_read_only'
+                            ? 'Execution stopped. Retry from the failed read-only statement.'
+                            : can_retry
+                              ? 'Create a linked retry request for fresh approval.'
+                              : query_request.status === 'failed'
+                                ? 'Execution stopped. Review the failed statement below.'
+                                : query_request.status === 'completed'
+                                  ? 'This request has completed.'
+                                  : 'No action is currently available.';
 
     function toggleExecutionSql(executionId: number): void {
         setExpandedExecutionIds((current) =>
@@ -857,6 +874,18 @@ export default function QueryRequestShow({
                                     </DialogContent>
                                 </Dialog>
                             )}
+                            {can_create_similar && (
+                                <Button variant="outline" size="sm" asChild>
+                                    <Link
+                                        href={QueryRequestController.createSimilar(
+                                            query_request.id,
+                                        )}
+                                    >
+                                        <CopyPlus />
+                                        Create similar
+                                    </Link>
+                                </Button>
+                            )}
                             {can_resolve_failure && (
                                 <Dialog
                                     open={isFailureResolutionDialogOpen}
@@ -1009,6 +1038,78 @@ export default function QueryRequestShow({
                                                             {processing
                                                                 ? 'Recording...'
                                                                 : 'Record resolution'}
+                                                        </Button>
+                                                    </DialogFooter>
+                                                </>
+                                            )}
+                                        </Form>
+                                    </DialogContent>
+                                </Dialog>
+                            )}
+                            {can_withdraw_review && (
+                                <Dialog>
+                                    <DialogTrigger asChild>
+                                        <Button variant="outline" size="sm">
+                                            <Undo2 />
+                                            Withdraw from review
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent>
+                                        <DialogHeader>
+                                            <DialogTitle>
+                                                Withdraw this batch from review?
+                                            </DialogTitle>
+                                            <DialogDescription>
+                                                This returns the Deployment
+                                                Batch to Draft immediately.
+                                                Reviewers can no longer approve
+                                                it, and it cannot execute until
+                                                you submit it again.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <Form
+                                            {...QueryRequestController.withdrawReview.form(
+                                                query_request.id,
+                                            )}
+                                            options={{ preserveScroll: true }}
+                                            className="grid gap-2"
+                                        >
+                                            {({ processing, errors }) => (
+                                                <>
+                                                    <Label htmlFor="review-withdrawal-reason">
+                                                        Reason
+                                                    </Label>
+                                                    <textarea
+                                                        id="review-withdrawal-reason"
+                                                        name="reason"
+                                                        rows={3}
+                                                        required
+                                                        className="min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-[color,box-shadow] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                                        placeholder="Why is this deployment being postponed?"
+                                                    />
+                                                    <InputError
+                                                        message={errors.reason}
+                                                    />
+                                                    <InputError
+                                                        message={
+                                                            errors.query_request
+                                                        }
+                                                    />
+                                                    <DialogFooter className="mt-2">
+                                                        <DialogClose asChild>
+                                                            <Button variant="outline">
+                                                                Keep in review
+                                                            </Button>
+                                                        </DialogClose>
+                                                        <Button
+                                                            disabled={
+                                                                processing
+                                                            }
+                                                        >
+                                                            <Undo2 />
+                                                            {processing
+                                                                ? 'Withdrawing...'
+                                                                : 'Return to Draft'}
                                                         </Button>
                                                     </DialogFooter>
                                                 </>
@@ -1345,7 +1446,9 @@ export default function QueryRequestShow({
                         )}
 
                         {(query_request.retry_of ||
-                            query_request.retries.length > 0) && (
+                            query_request.retries.length > 0 ||
+                            query_request.copied_from ||
+                            query_request.copies.length > 0) && (
                             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-t pt-3 text-sm">
                                 <span className="text-xs text-muted-foreground">
                                     Related requests
@@ -1379,6 +1482,37 @@ export default function QueryRequestShow({
                                             #{retry.id}: {retry.title}
                                         </Link>{' '}
                                         <StatusBadge value={retry.status} />
+                                    </span>
+                                ))}
+                                {query_request.copied_from && (
+                                    <span className="text-muted-foreground">
+                                        Created from{' '}
+                                        <Link
+                                            href={QueryRequestController.show(
+                                                query_request.copied_from.id,
+                                            )}
+                                            className="font-medium text-primary hover:underline"
+                                        >
+                                            #{query_request.copied_from.id}:{' '}
+                                            {query_request.copied_from.title}
+                                        </Link>
+                                    </span>
+                                )}
+                                {query_request.copies.map((copy) => (
+                                    <span
+                                        key={copy.id}
+                                        className="text-muted-foreground"
+                                    >
+                                        Similar request{' '}
+                                        <Link
+                                            href={QueryRequestController.show(
+                                                copy.id,
+                                            )}
+                                            className="font-medium text-primary hover:underline"
+                                        >
+                                            #{copy.id}: {copy.title}
+                                        </Link>{' '}
+                                        <StatusBadge value={copy.status} />
                                     </span>
                                 ))}
                             </div>

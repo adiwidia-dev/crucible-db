@@ -31,6 +31,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $execution_source_ip_address
  * @property int|null $cancelled_by_id
  * @property int|null $retry_of_id
+ * @property int|null $copied_from_id
  * @property int|null $failure_resolved_by_id
  * @property int|null $replacement_query_request_id
  * @property string $title
@@ -65,6 +66,8 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $cancelledBy
  * @property-read QueryRequest|null $retryOf
  * @property-read Collection<int, QueryRequest> $retries
+ * @property-read QueryRequest|null $copiedFrom
+ * @property-read Collection<int, QueryRequest> $copies
  * @property-read User|null $failureResolvedBy
  * @property-read QueryRequest|null $replacementQueryRequest
  * @property-read DatabaseConnection $databaseConnection
@@ -74,7 +77,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, SqlPolicyCandidateOccurrence> $sqlPolicyCandidateOccurrences
  * @property-read QuerySession|null $latestSession
  */
-#[Fillable(['requester_id', 'database_connection_id', 'approved_by_id', 'dispatched_by_id', 'execution_source_ip_address', 'cancelled_by_id', 'retry_of_id', 'failure_resolved_by_id', 'replacement_query_request_id', 'title', 'description', 'sql', 'query_type', 'request_kind', 'access_transport', 'requested_access_mode', 'status', 'requires_approval', 'preflight_status', 'preflight_report', 'preflight_checked_at', 'scheduled_at', 'access_duration_minutes', 'approved_at', 'dispatched_at', 'completed_at', 'cancelled_at', 'cancellation_reason', 'result_summary', 'last_error', 'failure_resolved_at', 'failure_resolution', 'failure_resolution_note'])]
+#[Fillable(['requester_id', 'database_connection_id', 'approved_by_id', 'dispatched_by_id', 'execution_source_ip_address', 'cancelled_by_id', 'retry_of_id', 'copied_from_id', 'failure_resolved_by_id', 'replacement_query_request_id', 'title', 'description', 'sql', 'query_type', 'request_kind', 'access_transport', 'requested_access_mode', 'status', 'requires_approval', 'preflight_status', 'preflight_report', 'preflight_checked_at', 'scheduled_at', 'access_duration_minutes', 'approved_at', 'dispatched_at', 'completed_at', 'cancelled_at', 'cancellation_reason', 'result_summary', 'last_error', 'failure_resolved_at', 'failure_resolution', 'failure_resolution_note'])]
 class QueryRequest extends Model
 {
     /** @use HasFactory<QueryRequestFactory> */
@@ -168,6 +171,22 @@ class QueryRequest extends Model
     public function retries(): HasMany
     {
         return $this->hasMany(self::class, 'retry_of_id')->latest();
+    }
+
+    /**
+     * @return BelongsTo<QueryRequest, $this>
+     */
+    public function copiedFrom(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'copied_from_id');
+    }
+
+    /**
+     * @return HasMany<QueryRequest, $this>
+     */
+    public function copies(): HasMany
+    {
+        return $this->hasMany(self::class, 'copied_from_id')->latest();
     }
 
     /**
