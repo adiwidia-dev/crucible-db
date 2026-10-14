@@ -23,6 +23,8 @@ For Query Access, confirm:
 
 Choose **Approve** only when the stated scope is appropriate. Choose **Reject** with a clear reason when it is not. The decision creates notifications and an audit record.
 
+A requester or administrator can withdraw a **Pending review** Deployment Batch to **Draft** when the work is postponed. Withdrawal changes the request revision immediately, removes it from active review, and invalidates a decision submitted from a previously opened reviewer page. Reopen the request rather than acting on stale review context.
+
 Approval does not override later policy changes or safety checks. A Deployment Batch receives fresh preflight immediately before dispatch. Query Access checks each statement against the active session and current policy.
 
 Current policy is also checked when a Deployment Batch is dispatched or claimed by a worker and when a Query Access session starts. This includes the original requester's current account state and every target connection, not only the person initiating the later action. Work returns to review or is blocked when its previous approval or exemption no longer satisfies current policy.

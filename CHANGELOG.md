@@ -4,6 +4,18 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
+### Added
+
+- Let a Deployment Batch requester or administrator withdraw **Pending review** work to **Draft** with a required reason, reviewer notifications, revision protection, and an audit trail so postponed work cannot be approved or executed accidentally.
+- Add **Create similar** for completed or cancelled Deployment Batches and Query Access requests, opening an editable new-request form with safe scope defaults, current-policy target validation, and distinct source lineage.
+
+### Changed
+
+- Refresh the frontend development and runtime dependencies, including React DOM 19.3, Vite 8.3, current Node.js type definitions, and supporting build packages.
+- Document how withdrawal, editable request reuse, retries, and Query Access renewal differ so operators can choose the correct follow-up workflow.
+
 ## [0.2.14] - 2026-10-02
 
 ### Added
@@ -239,7 +251,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.14...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.14...v0.3.0
 [0.2.14]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.11...v0.2.12

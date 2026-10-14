@@ -28,10 +28,10 @@ Approval, when required, approves the access scope. Current account and policy s
 ## The main states you will see
 
 - **Draft**: saved only. It cannot be reviewed or executed.
-- **Pending review**: waiting for an eligible independent reviewer.
+- **Pending review**: waiting for an eligible independent reviewer; a postponed Deployment Batch can be withdrawn to Draft by its requester or an administrator.
 - **Approved / ready**: allowed to run now or when an authorized person dispatches it.
 - **Scheduled**: approved and waiting for its requested execution time.
 - **Running / completed / failed**: execution is in progress or has an immutable result.
-- **Cancelled / rejected**: work will not run. Use the audit record to understand why.
+- **Cancelled / rejected**: work will not run. Use the audit record to understand why, or create a separate similar request when cancelled scope is useful again.
 
 See the full [status and state reference](../reference/statuses.md) for transitions and next actions.
