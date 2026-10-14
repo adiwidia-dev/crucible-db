@@ -14,6 +14,7 @@ All notable changes to Crucible DB are documented in this file. The project foll
 ### Changed
 
 - Refresh the frontend development and runtime dependencies, including React DOM 19.3, Vite 8.3, current Node.js type definitions, and supporting build packages.
+- Refresh the native build and compatibility toolchains to Go 1.27.2 and Go 1.26.9, and update `golang.org/x/text` to 0.41.0 for current security fixes.
 - Document how withdrawal, editable request reuse, retries, and Query Access renewal differ so operators can choose the correct follow-up workflow.
 
 ## [0.2.14] - 2026-10-02
