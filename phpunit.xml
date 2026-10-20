@@ -30,6 +30,7 @@
         <server name="CRUCIBLE_INITIAL_SETUP_TOKEN" value="test-initial-setup-token-32-characters"/>
         <server name="MAIL_MAILER" value="array"/>
         <server name="QUEUE_CONNECTION" value="sync"/>
+        <server name="QUERY_ACCESS_QUEUE_CONNECTION" value="sync"/>
         <server name="SESSION_DRIVER" value="array"/>
         <server name="PULSE_ENABLED" value="false"/>
         <server name="TELESCOPE_ENABLED" value="false"/>
@@ -48,6 +49,7 @@
         <env name="CRUCIBLE_INITIAL_SETUP_TOKEN" value="test-initial-setup-token-32-characters" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="QUERY_ACCESS_QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="PULSE_ENABLED" value="false" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false" force="true"/>

@@ -22,6 +22,8 @@ class ApplicationSettings
 
     public const QueryAccessEnabled = 'query_access_enabled';
 
+    public const QueryAccessTimeoutSeconds = 'query_access_timeout_seconds';
+
     public const NativeClientAccessEnabled = 'native_client_access_enabled';
 
     public const NativeProxyUsernamePrefix = 'native_proxy_username_prefix';
@@ -109,12 +111,14 @@ class ApplicationSettings
     }
 
     /**
-     * @return array{query_access_enabled: bool, native_client_access_enabled: bool, native_proxy_username_prefix: string}
+     * @return array{query_access_enabled: bool, query_access_timeout_seconds: int, query_access_timeout_max_seconds: int, native_client_access_enabled: bool, native_proxy_username_prefix: string}
      */
     public function accessWorkflowFormValues(): array
     {
         return [
             'query_access_enabled' => $this->queryAccessEnabled(),
+            'query_access_timeout_seconds' => $this->queryAccessTimeoutSeconds(),
+            'query_access_timeout_max_seconds' => (int) config('query_access.maximum_timeout_seconds'),
             'native_client_access_enabled' => $this->nativeClientAccessEnabled(),
             'native_proxy_username_prefix' => $this->nativeProxyUsernamePrefix(),
         ];
@@ -155,6 +159,20 @@ class ApplicationSettings
     public function queryAccessEnabled(): bool
     {
         return $this->boolean(self::QueryAccessEnabled, true);
+    }
+
+    public function queryAccessTimeoutSeconds(): int
+    {
+        return min(
+            max(
+                $this->integer(
+                    self::QueryAccessTimeoutSeconds,
+                    (int) config('query_access.default_timeout_seconds'),
+                ),
+                (int) config('query_access.minimum_timeout_seconds'),
+            ),
+            (int) config('query_access.maximum_timeout_seconds'),
+        );
     }
 
     public function nativeClientAccessEnabled(): bool

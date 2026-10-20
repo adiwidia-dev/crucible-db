@@ -54,3 +54,9 @@ Schedule::command('crucible:prune-native-proxy-state')
     ->withoutOverlapping()
     ->onOneServer()
     ->skip(fn (): bool => app(ApplicationDatabaseMigrationFence::class)->isActive());
+
+Schedule::command('crucible:reconcile-browser-query-executions')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->skip(fn (): bool => app(ApplicationDatabaseMigrationFence::class)->isActive());

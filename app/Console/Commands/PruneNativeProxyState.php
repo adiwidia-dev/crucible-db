@@ -67,6 +67,7 @@ class PruneNativeProxyState extends Command
             ]);
         $statementCutoff = $now->copy()->subSeconds((int) config('native_proxy.statement_stale_seconds'));
         $abandonedSessionStatements = QuerySessionQuery::query()
+            ->whereNotNull('native_proxy_connection_id')
             ->where('status', ExecutionStatus::Running)
             ->where('started_at', '<=', $statementCutoff)
             ->update([
@@ -76,6 +77,7 @@ class PruneNativeProxyState extends Command
                 'updated_at' => $now,
             ]);
         $abandonedExecutions = QueryExecution::query()
+            ->whereNotNull('native_proxy_connection_id')
             ->where('status', ExecutionStatus::Running)
             ->where('started_at', '<=', $statementCutoff)
             ->update([

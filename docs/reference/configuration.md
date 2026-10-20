@@ -125,6 +125,19 @@ The supplied Compose topology uses Redis for queues, cache, sessions, Horizon me
 
 Do not override the Compose-managed Redis, queue, cache, or session values unless you deliberately redesign and test the runtime topology. Every Laravel runtime must share these services.
 
+### Browser Query Access execution
+
+The workspace administrator sets the active per-statement runtime at **Manage → Administration → Access & identity → Access Workflows**. The deployment values below establish its safe ceiling and the dedicated Redis worker contract. Keep the worker timeout shorter than `retry_after`; the supplied defaults provide that margin.
+
+| Variable | Default | Explanation |
+| --- | --- | --- |
+| `QUERY_ACCESS_MAX_TIMEOUT_SECONDS` | `900` | Deployment hard ceiling, in seconds, for one browser Query Access statement. Administrators may choose a lower active limit but cannot exceed this value. PostgreSQL and MySQL receive the active value as a target-database statement timeout. |
+| `QUERY_ACCESS_QUEUE_CONNECTION` | `redis-query-sessions` | Laravel connection used only for browser Query Access work. Keep it isolated from normal governed executions. |
+| `QUERY_ACCESS_QUEUE` | `query-sessions` | Queue name consumed by the dedicated Horizon supervisor. |
+| `QUERY_ACCESS_QUEUE_RETRY_AFTER` | active hard ceiling + `60` seconds | Redis visibility timeout. It must remain longer than the worker timeout to prevent duplicate processing. |
+| `QUERY_ACCESS_QUEUE_BLOCK_FOR` | `1` | Redis blocking-pop interval for browser-query workers. |
+| `QUERY_ACCESS_QUEUE_SLEEP_SECONDS` | `0` | Idle sleep applied by the dedicated Horizon supervisor. |
+
 ## Logging, mail, and storage
 
 | Variable | Development default | Production default | Explanation |

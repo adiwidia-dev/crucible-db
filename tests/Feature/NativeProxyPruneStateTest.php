@@ -30,11 +30,25 @@ class NativeProxyPruneStateTest extends TestCase
             'last_activity_at' => now()->subSeconds(61),
         ]);
         $staleSessionQuery = QuerySessionQuery::factory()->create([
+            'native_proxy_connection_id' => $staleConnection->id,
             'status' => ExecutionStatus::Running,
             'started_at' => now()->subSeconds(61),
             'finished_at' => null,
         ]);
         $staleExecution = QueryExecution::factory()->create([
+            'native_proxy_connection_id' => $staleConnection->id,
+            'status' => ExecutionStatus::Running,
+            'started_at' => now()->subSeconds(61),
+            'finished_at' => null,
+        ]);
+        $browserSessionQuery = QuerySessionQuery::factory()->create([
+            'native_proxy_connection_id' => null,
+            'status' => ExecutionStatus::Running,
+            'started_at' => now()->subSeconds(61),
+            'finished_at' => null,
+        ]);
+        $browserExecution = QueryExecution::factory()->create([
+            'native_proxy_connection_id' => null,
             'status' => ExecutionStatus::Running,
             'started_at' => now()->subSeconds(61),
             'finished_at' => null,
@@ -59,5 +73,7 @@ class NativeProxyPruneStateTest extends TestCase
         ]);
         $this->assertSame(ExecutionStatus::Failed, $staleSessionQuery->fresh()->status);
         $this->assertSame(ExecutionStatus::Failed, $staleExecution->fresh()->status);
+        $this->assertSame(ExecutionStatus::Running, $browserSessionQuery->fresh()->status);
+        $this->assertSame(ExecutionStatus::Running, $browserExecution->fresh()->status);
     }
 }

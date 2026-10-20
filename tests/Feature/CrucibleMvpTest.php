@@ -34,6 +34,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Support\SessionKey;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -1593,8 +1594,14 @@ SQL;
 
         $this->app->bind(DatabaseQueryExecutor::class, fn () => new class(app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
         {
-            public function execute(DatabaseConnection $connection, string $sql, QueryType $queryType): array
-            {
+            public function executeTracked(
+                DatabaseConnection $databaseConnection,
+                string $sql,
+                QueryType $queryType,
+                ?int $timeoutSeconds = null,
+                ?\Closure $onConnected = null,
+                ?string $executionTag = null,
+            ): array {
                 throw new RuntimeException('syntax error at or near "limi"');
             }
         });
@@ -1611,11 +1618,11 @@ SQL;
                 'sql' => 'select * from bulk_activity_log limi 49',
             ])
             ->assertRedirect()
-            ->assertSessionHasErrors('sql')
+            ->assertSessionHasNoErrors()
             ->assertSessionHas(SessionKey::FLASH_DATA, [
                 'toast' => [
-                    'type' => 'error',
-                    'message' => 'Query failed. Check the result panel for details.',
+                    'type' => 'success',
+                    'message' => 'Query queued for execution.',
                 ],
             ]);
 
@@ -1730,11 +1737,30 @@ SQL;
             'expires_at' => now()->subMinute(),
             'ended_at' => null,
         ]);
+        $queuedQuery = QuerySessionQuery::factory()->create([
+            'query_session_id' => $session->id,
+            'database_connection_id' => $session->database_connection_id,
+            'user_id' => $session->user_id,
+            'status' => ExecutionStatus::Queued,
+            'execution_token' => (string) Str::uuid(),
+            'timeout_seconds' => 120,
+            'finished_at' => null,
+            'duration_ms' => null,
+            'row_count' => null,
+        ]);
+        QueryExecution::factory()->create([
+            'query_request_id' => $queryRequest->id,
+            'query_session_query_id' => $queuedQuery->id,
+            'status' => ExecutionStatus::Queued,
+            'started_at' => null,
+            'finished_at' => null,
+        ]);
 
         $this->artisan('crucible:expire-query-sessions')->assertSuccessful();
 
         $this->assertNotNull($session->refresh()->ended_at);
         $this->assertSame(QueryRequestStatus::Completed, $queryRequest->refresh()->status);
+        $this->assertSame(ExecutionStatus::Cancelled, $queuedQuery->refresh()->status);
         $auditLog = AuditLog::query()->where('action', 'query_session.expired')->firstOrFail();
 
         $this->assertNull($auditLog->ip_address);

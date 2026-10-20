@@ -4,6 +4,24 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-20
+
+### Added
+
+- Queue browser Query Access statements on dedicated Redis workers, with visible queued, running, cancellation-requested, succeeded, failed, cancelled, and timed-out history states.
+- Let authorized session users cancel a queued or running browser query without ending the session.
+- Add an administrator-controlled maximum browser-query runtime, enforced by PostgreSQL and MySQL at the target database as well as by Horizon and Redis worker limits.
+
+### Fixed
+
+- Reconcile abandoned browser-query queue and execution state so transport failures cannot leave history indefinitely marked as running.
+- Preserve query cancellation when it races with dispatch, target-database preflight, or completion.
+
+### Changed
+
+- Update the browser query lifecycle, result polling, and execution history so the editor stays responsive while work runs outside the web request.
+- Refresh React/Vite, Radix UI, ESLint, Prometheus, Redis, and GitHub Actions dependencies; native modules now require Go 1.26.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added
@@ -252,7 +270,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.14...v0.3.0
 [0.2.14]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.12...v0.2.13

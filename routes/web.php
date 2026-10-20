@@ -128,6 +128,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('query-sessions.show');
     Route::post('query-sessions/{query_session}/queries', [QuerySessionQueryController::class, 'store'])
         ->name('query-sessions.queries.store');
+    Route::post('query-session-queries/{query_session_query}/cancel', [QuerySessionQueryController::class, 'cancel'])
+        ->name('query-session-queries.cancel');
     Route::get('query-session-queries/{query_session_query}/export', QuerySessionQueryExportController::class)
         ->name('query-session-queries.export');
     Route::get('query-session-queries/{query_session_query}/results', QuerySessionQueryResultController::class)

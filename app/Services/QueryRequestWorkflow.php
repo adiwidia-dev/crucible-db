@@ -14,6 +14,7 @@ use App\Jobs\ExecuteQueryRequest;
 use App\Models\DatabaseConnection;
 use App\Models\QueryRequest;
 use App\Models\QueryReview;
+use App\Models\QuerySession;
 use App\Models\SqlPolicyCandidateOccurrence;
 use App\Models\User;
 use App\Services\NativeProxy\LeaseWorkflow;
@@ -38,6 +39,7 @@ class QueryRequestWorkflow
         private readonly LeaseWorkflow $nativeProxyLeaseWorkflow,
         private readonly ApplicationSettings $applicationSettings,
         private readonly EffectiveQueryRequestPolicy $effectiveQueryRequestPolicy,
+        private readonly QuerySessionWorkflow $querySessionWorkflow,
     ) {}
 
     /**
@@ -830,6 +832,13 @@ class QueryRequestWorkflow
 
         $this->notificationDispatcher->requestCancelled($cancelledRequest, $actor);
         $this->resultSnapshotStore->forgetForQueryRequest($cancelledRequest);
+        if ($cancelledRequest->request_kind === QueryRequestKind::QueryAccess) {
+            $cancelledRequest->sessions()
+                ->get()
+                ->each(function (QuerySession $session) use ($actor): void {
+                    $this->querySessionWorkflow->cancelForSession($session, $actor);
+                });
+        }
         $this->nativeProxyLeaseWorkflow->revokeForQueryRequest(
             $cancelledRequest,
             $actor,

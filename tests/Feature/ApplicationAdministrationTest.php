@@ -121,6 +121,8 @@ class ApplicationAdministrationTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('settings/admin/access-workflows')
                 ->where('settings.query_access_enabled', true)
+                ->where('settings.query_access_timeout_seconds', 120)
+                ->where('settings.query_access_timeout_max_seconds', 900)
                 ->where('settings.native_client_access_enabled', true)
                 ->where('settings.native_proxy_username_prefix', 'crucible_')
                 ->where('usage.active_query_sessions', 0)
@@ -129,6 +131,7 @@ class ApplicationAdministrationTest extends TestCase
         $this->actingAs($admin)
             ->patch(route('access-workflows.update'), [
                 'query_access_enabled' => false,
+                'query_access_timeout_seconds' => 45,
                 'native_client_access_enabled' => false,
                 'native_proxy_username_prefix' => 'operations_',
             ])
@@ -137,6 +140,7 @@ class ApplicationAdministrationTest extends TestCase
         $settings = app(ApplicationSettings::class);
 
         $this->assertFalse($settings->queryAccessEnabled());
+        $this->assertSame(45, $settings->queryAccessTimeoutSeconds());
         $this->assertFalse($settings->nativeClientAccessEnabled());
         $this->assertSame('operations_', $settings->nativeProxyUsernamePrefix());
         $auditLog = AuditLog::query()
@@ -156,6 +160,7 @@ class ApplicationAdministrationTest extends TestCase
             ->from(route('access-workflows.edit'))
             ->patch(route('access-workflows.update'), [
                 'query_access_enabled' => true,
+                'query_access_timeout_seconds' => 120,
                 'native_client_access_enabled' => true,
                 'native_proxy_username_prefix' => 'Invalid Prefix!',
             ])

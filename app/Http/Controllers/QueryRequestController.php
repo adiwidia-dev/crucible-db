@@ -531,8 +531,11 @@ class QueryRequestController extends Controller
         return back();
     }
 
-    public function cancel(CancelQueryRequestRequest $request, QueryRequest $queryRequest, QueryRequestWorkflow $workflow): RedirectResponse
-    {
+    public function cancel(
+        CancelQueryRequestRequest $request,
+        QueryRequest $queryRequest,
+        QueryRequestWorkflow $workflow,
+    ): RedirectResponse {
         $cancelledRequest = $workflow->cancel(
             $queryRequest,
             $request->user(),

@@ -6,6 +6,7 @@ use App\Enums\DatabaseDriver;
 use App\Enums\DatabaseTlsMode;
 use App\Enums\QueryType;
 use App\Models\DatabaseConnection;
+use Closure;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +27,82 @@ class DatabaseQueryExecutor
      */
     public function execute(DatabaseConnection $databaseConnection, string $sql, QueryType $queryType): array
     {
+        return $this->executeTracked($databaseConnection, $sql, $queryType);
+    }
+
+    /**
+     * @param  (Closure(string, ?string): void)|null  $onConnected
+     * @return array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_rows:array<int, array<string, mixed>>, result_byte_count:int, result_truncated?:bool}
+     */
+    public function executeTracked(
+        DatabaseConnection $databaseConnection,
+        string $sql,
+        QueryType $queryType,
+        ?int $timeoutSeconds = null,
+        ?Closure $onConnected = null,
+        ?string $executionTag = null,
+    ): array {
+        return $this->withRuntimeConnection(
+            $databaseConnection,
+            function (ConnectionInterface $connection) use ($databaseConnection, $sql, $queryType, $timeoutSeconds, $onConnected, $executionTag): array {
+                $applicationName = $executionTag === null
+                    ? null
+                    : mb_substr('crucible-browser:'.$executionTag, 0, 63);
+                if ($onConnected !== null || $executionTag !== null || $timeoutSeconds !== null) {
+                    $backendProcessId = $this->prepareConnection(
+                        $connection,
+                        $databaseConnection->driver,
+                        $queryType,
+                        $timeoutSeconds,
+                        $applicationName,
+                    );
+
+                    if ($onConnected !== null) {
+                        $onConnected($backendProcessId, $applicationName);
+                    }
+                }
+
+                $executableSql = $executionTag === null
+                    ? $sql
+                    : '/* crucible-query:'.$executionTag." */\n".$sql;
+
+                if ($queryType === QueryType::Read) {
+                    return $this->executeReadOnly(
+                        $connection,
+                        $databaseConnection->driver,
+                        $executableSql,
+                        $timeoutSeconds,
+                    );
+                }
+
+                if ($databaseConnection->driver === DatabaseDriver::PostgreSql && $timeoutSeconds !== null) {
+                    $connection->statement('SET statement_timeout TO '.($timeoutSeconds * 1000));
+                }
+
+                $affected = $connection->affectingStatement($executableSql);
+
+                return [
+                    'row_count' => $affected,
+                    'sample_rows' => [],
+                    'result_rows' => [],
+                    'result_byte_count' => 0,
+                    'result_truncated' => false,
+                ];
+            },
+            $executionTag,
+        );
+    }
+
+    public function withRuntimeConnection(
+        DatabaseConnection $databaseConnection,
+        Closure $callback,
+        ?string $connectionSuffix = null,
+    ): mixed {
         $connectionName = 'crucible_runtime_'.$databaseConnection->id;
+
+        if ($connectionSuffix !== null) {
+            $connectionName .= '_'.substr(hash('sha256', $connectionSuffix), 0, 12);
+        }
         $tlsMaterial = $this->tlsMaterializer->materialize($databaseConnection);
 
         try {
@@ -43,19 +119,7 @@ class DatabaseQueryExecutor
 
             DB::purge($connectionName);
 
-            if ($queryType === QueryType::Read) {
-                return $this->executeReadOnly(DB::connection($connectionName), $databaseConnection->driver, $sql);
-            }
-
-            $affected = DB::connection($connectionName)->affectingStatement($sql);
-
-            return [
-                'row_count' => $affected,
-                'sample_rows' => [],
-                'result_rows' => [],
-                'result_byte_count' => 0,
-                'result_truncated' => false,
-            ];
+            return $callback(DB::connection($connectionName));
         } finally {
             DB::disconnect($connectionName);
             DB::purge($connectionName);
@@ -66,8 +130,12 @@ class DatabaseQueryExecutor
     /**
      * @return array{row_count:int, sample_rows:array<int, array<string, mixed>>, result_rows:array<int, array<string, mixed>>, result_byte_count:int, result_truncated:bool}
      */
-    private function executeReadOnly(ConnectionInterface $connection, DatabaseDriver $driver, string $sql): array
-    {
+    private function executeReadOnly(
+        ConnectionInterface $connection,
+        DatabaseDriver $driver,
+        string $sql,
+        ?int $timeoutSeconds,
+    ): array {
         $transactionStarted = false;
         $rows = null;
 
@@ -81,6 +149,10 @@ class DatabaseQueryExecutor
 
             if ($driver === DatabaseDriver::PostgreSql) {
                 $connection->statement('SET TRANSACTION READ ONLY');
+
+                if ($timeoutSeconds !== null) {
+                    $connection->statement('SET LOCAL statement_timeout TO '.($timeoutSeconds * 1000));
+                }
             }
 
             $rowCount = 0;
@@ -129,6 +201,32 @@ class DatabaseQueryExecutor
                 $connection->rollBack();
             }
         }
+    }
+
+    private function prepareConnection(
+        ConnectionInterface $connection,
+        DatabaseDriver $driver,
+        QueryType $queryType,
+        ?int $timeoutSeconds,
+        ?string $applicationName,
+    ): string {
+        if ($driver === DatabaseDriver::PostgreSql) {
+            if ($applicationName !== null) {
+                $connection->selectOne("select set_config('application_name', ?, false)", [$applicationName]);
+            }
+
+            $row = $connection->selectOne('select pg_backend_pid() as process_id');
+
+            return (string) $row->process_id;
+        }
+
+        if ($queryType === QueryType::Read && $timeoutSeconds !== null) {
+            $connection->statement('SET SESSION max_execution_time = '.($timeoutSeconds * 1000));
+        }
+
+        $row = $connection->selectOne('select connection_id() as process_id');
+
+        return (string) $row->process_id;
     }
 
     /**

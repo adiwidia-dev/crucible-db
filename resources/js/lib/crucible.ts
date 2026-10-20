@@ -13,7 +13,14 @@ export type QueryRequestStatus =
 export type QueryType = 'read' | 'write';
 export type QueryRequestKind = 'single_execution' | 'query_access';
 export type AccessTransport = 'browser' | 'native_proxy';
-export type ExecutionStatus = 'running' | 'succeeded' | 'failed';
+export type ExecutionStatus =
+    | 'queued'
+    | 'running'
+    | 'cancelling'
+    | 'succeeded'
+    | 'failed'
+    | 'cancelled'
+    | 'timed_out';
 
 export type Paginated<T> = {
     data: T[];
@@ -168,7 +175,11 @@ export function driverLabel(value: DatabaseDriver | string): string {
 export function statusTone(
     status: QueryRequestStatus | ExecutionStatus,
 ): 'default' | 'secondary' | 'destructive' | 'outline' {
-    if (status === 'failed' || status === 'rejected') {
+    if (
+        status === 'failed' ||
+        status === 'rejected' ||
+        status === 'timed_out'
+    ) {
         return 'destructive';
     }
 
@@ -176,7 +187,12 @@ export function statusTone(
         return 'default';
     }
 
-    if (status === 'running' || status === 'approved') {
+    if (
+        status === 'queued' ||
+        status === 'running' ||
+        status === 'cancelling' ||
+        status === 'approved'
+    ) {
         return 'secondary';
     }
 

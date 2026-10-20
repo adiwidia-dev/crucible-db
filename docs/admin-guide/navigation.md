@@ -19,7 +19,7 @@ Administration starts collapsed unless the current page is inside it. Its four s
 
 - **People** manages invitations, role assignment order, and user enablement.
 - **Access Roles** defines connection and group policy.
-- **Access Workflows** controls workspace approval behavior.
+- **Access Workflows** controls browser and native Query Access availability, workspace approval behavior, and the maximum runtime allowed for each browser query.
 
 ### Security & policy
 

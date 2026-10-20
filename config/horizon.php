@@ -99,6 +99,7 @@ return [
     'waits' => [
         'redis:default' => 60,
         'redis:queries' => 60,
+        'redis-query-sessions:query-sessions' => 60,
         'redis:notifications' => 60,
         'redis:mail' => 120,
     ],
@@ -200,6 +201,19 @@ return [
     */
 
     'defaults' => [
+        'query-session-executions' => [
+            'connection' => 'redis-query-sessions',
+            'queue' => ['query-sessions'],
+            'balance' => 'simple',
+            'maxProcesses' => 2,
+            'maxTime' => 3600,
+            'maxJobs' => 100,
+            'memory' => 192,
+            'tries' => 1,
+            'sleep' => max(0, (int) env('QUERY_ACCESS_QUEUE_SLEEP_SECONDS', 0)),
+            'timeout' => min(65_535, max(5, (int) env('QUERY_ACCESS_MAX_TIMEOUT_SECONDS', 900))) + 30,
+            'nice' => 0,
+        ],
         'query-executions' => [
             'connection' => 'redis',
             'queue' => ['queries'],
@@ -252,6 +266,9 @@ return [
 
     'environments' => [
         'production' => [
+            'query-session-executions' => [
+                'maxProcesses' => 2,
+            ],
             'query-executions' => [
                 'maxProcesses' => 1,
             ],
@@ -267,6 +284,9 @@ return [
         ],
 
         'local' => [
+            'query-session-executions' => [
+                'maxProcesses' => 2,
+            ],
             'query-executions' => [
                 'maxProcesses' => 1,
             ],
