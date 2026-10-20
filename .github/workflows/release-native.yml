@@ -272,7 +272,7 @@ jobs:
           GOBIN="$RUNNER_TEMP/bin" go install github.com/sigstore/cosign/v3/cmd/cosign@v3.0.3
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Install SBOM generator
-        uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        uses: anchore/sbom-action/download-syft@66cbf4f142a4f90bc87bcf9950be5518b55ce975 # v0.24.3
         with:
           syft-version: v1.51.1
       - name: Validate release configuration
