@@ -167,7 +167,7 @@ jobs:
       - name: Verify the runtime binary on a read-only filesystem
         run: docker run --rm --read-only --tmpfs /tmp crucible-native:test version
       - name: Generate native image SBOM
-        uses: anchore/sbom-action@66cbf4f142a4f90bc87bcf9950be5518b55ce975 # v0.24.3
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           image: crucible-native:test
           artifact-name: native-proxy-sbom
