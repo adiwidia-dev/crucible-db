@@ -7,9 +7,12 @@ use App\Enums\DatabaseTlsMode;
 use App\Enums\QueryType;
 use App\Enums\SqlStatementFamily;
 use App\Models\DatabaseConnection;
+use App\Models\QuerySessionQuery;
 use App\Services\ApplicationSettings;
+use App\Services\DatabaseQueryCanceller;
 use App\Services\DatabaseQueryExecutor;
 use App\Services\DatabaseSchemaBrowser;
+use App\Services\DatabaseTlsMaterializer;
 use App\Services\QueryGuard;
 use Closure;
 use Generator;
@@ -254,6 +257,133 @@ SQL;
         );
     }
 
+    public function test_postgresql_tracked_query_sets_backend_identity_and_database_timeout(): void
+    {
+        $connection = Mockery::mock(ConnectionInterface::class);
+        $executionTag = '41:query-token';
+        $applicationName = 'crucible-browser:'.$executionTag;
+        $connection->shouldReceive('selectOne')
+            ->with("select set_config('application_name', ?, false)", [$applicationName])
+            ->once()
+            ->ordered()
+            ->andReturn((object) ['set_config' => $applicationName]);
+        $connection->shouldReceive('selectOne')
+            ->with('select pg_backend_pid() as process_id')
+            ->once()
+            ->ordered()
+            ->andReturn((object) ['process_id' => 7788]);
+        $connection->shouldReceive('beginTransaction')->once()->ordered();
+        $connection->shouldReceive('statement')->with('SET TRANSACTION READ ONLY')->once()->ordered()->andReturnTrue();
+        $connection->shouldReceive('statement')->with('SET LOCAL statement_timeout TO 30000')->once()->ordered()->andReturnTrue();
+        $connection->shouldReceive('cursor')
+            ->with("/* crucible-query:{$executionTag} */\nselect 1 as value")
+            ->once()
+            ->ordered()
+            ->andReturn($this->rows());
+        $connection->shouldReceive('rollBack')->once()->ordered();
+        $this->mockDatabaseFacade($connection, 904, null, $executionTag);
+        $backendProcessId = null;
+
+        app(DatabaseQueryExecutor::class)->executeTracked(
+            $this->databaseConnection(904, DatabaseDriver::PostgreSql),
+            'select 1 as value',
+            QueryType::Read,
+            30,
+            function (string $processId) use (&$backendProcessId): void {
+                $backendProcessId = $processId;
+            },
+            $executionTag,
+        );
+
+        $this->assertSame('7788', $backendProcessId);
+    }
+
+    public function test_mysql_tracked_read_sets_database_timeout_and_connection_identity(): void
+    {
+        $connection = Mockery::mock(ConnectionInterface::class);
+        $executionTag = '42:query-token';
+        $connection->shouldReceive('statement')->with('SET SESSION max_execution_time = 30000')->once()->ordered()->andReturnTrue();
+        $connection->shouldReceive('selectOne')
+            ->with('select connection_id() as process_id')
+            ->once()
+            ->ordered()
+            ->andReturn((object) ['process_id' => 8899]);
+        $connection->shouldReceive('statement')->with('SET TRANSACTION READ ONLY')->once()->ordered()->andReturnTrue();
+        $connection->shouldReceive('beginTransaction')->once()->ordered();
+        $connection->shouldReceive('cursor')
+            ->with("/* crucible-query:{$executionTag} */\nselect 1 as value")
+            ->once()
+            ->ordered()
+            ->andReturn($this->rows());
+        $connection->shouldReceive('rollBack')->once()->ordered();
+        $this->mockDatabaseFacade($connection, 905, null, $executionTag);
+        $backendProcessId = null;
+
+        app(DatabaseQueryExecutor::class)->executeTracked(
+            $this->databaseConnection(905, DatabaseDriver::MySql),
+            'select 1 as value',
+            QueryType::Read,
+            30,
+            function (string $processId) use (&$backendProcessId): void {
+                $backendProcessId = $processId;
+            },
+            $executionTag,
+        );
+
+        $this->assertSame('8899', $backendProcessId);
+    }
+
+    public function test_postgresql_cancellation_verifies_the_tracked_application_before_cancelling(): void
+    {
+        $connection = Mockery::mock(ConnectionInterface::class);
+        $connection->shouldReceive('selectOne')
+            ->with(
+                'select pid from pg_stat_activity where pid = ? and application_name = ?',
+                [7788, 'crucible-browser:41:query-token'],
+            )
+            ->once()
+            ->andReturn((object) ['pid' => 7788]);
+        $connection->shouldReceive('selectOne')
+            ->with('select pg_cancel_backend(?) as cancelled', [7788])
+            ->once()
+            ->andReturn((object) ['cancelled' => true]);
+        $databaseConnection = $this->databaseConnection(906, DatabaseDriver::PostgreSql);
+        $query = (new QuerySessionQuery)->forceFill([
+            'id' => 41,
+            'backend_process_id' => '7788',
+            'backend_application_name' => 'crucible-browser:41:query-token',
+            'execution_token' => 'query-token',
+        ]);
+        $query->setRelation('databaseConnection', $databaseConnection);
+
+        $this->assertTrue($this->cancellerWithConnection($connection)->cancel($query));
+    }
+
+    public function test_mysql_cancellation_verifies_the_tagged_process_before_killing_it(): void
+    {
+        $connection = Mockery::mock(ConnectionInterface::class);
+        $connection->shouldReceive('selectOne')
+            ->with(
+                'select id from information_schema.processlist where id = ? and user = ? and db = ? and info like ?',
+                [8899, 'crucible', 'application', '%crucible-query:42:query-token%'],
+            )
+            ->once()
+            ->andReturn((object) ['id' => 8899]);
+        $connection->shouldReceive('unprepared')
+            ->with('KILL QUERY 8899')
+            ->once()
+            ->andReturnTrue();
+        $databaseConnection = $this->databaseConnection(907, DatabaseDriver::MySql);
+        $query = (new QuerySessionQuery)->forceFill([
+            'id' => 42,
+            'backend_process_id' => '8899',
+            'execution_token' => 'query-token',
+        ]);
+        $query->setRelation('databaseConnection', $databaseConnection);
+
+        $this->assertTrue($this->cancellerWithConnection($connection)->cancel($query));
+    }
+
     public function test_read_only_transaction_is_rolled_back_when_the_query_fails(): void
     {
         $connection = Mockery::mock(ConnectionInterface::class);
@@ -368,9 +498,17 @@ SQL;
         $this->assertTemporaryTlsFilesWereCleaned($temporaryPaths);
     }
 
-    private function mockDatabaseFacade(ConnectionInterface $connection, int $connectionId, ?Closure $assertConfiguration = null): void
-    {
+    private function mockDatabaseFacade(
+        ConnectionInterface $connection,
+        int $connectionId,
+        ?Closure $assertConfiguration = null,
+        ?string $connectionSuffix = null,
+    ): void {
         $connectionName = 'crucible_runtime_'.$connectionId;
+
+        if ($connectionSuffix !== null) {
+            $connectionName .= '_'.substr(hash('sha256', $connectionSuffix), 0, 12);
+        }
 
         DB::shouldReceive('purge')->with($connectionName)->twice();
         DB::shouldReceive('connection')->with($connectionName)->once()->andReturnUsing(function () use ($connection, $assertConfiguration): ConnectionInterface {
@@ -379,6 +517,29 @@ SQL;
             return $connection;
         });
         DB::shouldReceive('disconnect')->with($connectionName)->once();
+    }
+
+    private function cancellerWithConnection(ConnectionInterface $connection): DatabaseQueryCanceller
+    {
+        $executor = new class($connection, app(DatabaseTlsMaterializer::class)) extends DatabaseQueryExecutor
+        {
+            public function __construct(
+                private readonly ConnectionInterface $connection,
+                DatabaseTlsMaterializer $tlsMaterializer,
+            ) {
+                parent::__construct($tlsMaterializer);
+            }
+
+            public function withRuntimeConnection(
+                DatabaseConnection $databaseConnection,
+                Closure $callback,
+                ?string $connectionSuffix = null,
+            ): mixed {
+                return $callback($this->connection);
+            }
+        };
+
+        return new DatabaseQueryCanceller($executor);
     }
 
     private function mockSchemaBrowserDatabaseFacade(ConnectionInterface $connection, int $connectionId, Closure $assertConfiguration): void

@@ -1,5 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
-import { AlertTriangle, KeyRound, Save, Terminal } from 'lucide-react';
+import { AlertTriangle, Clock3, KeyRound, Save, Terminal } from 'lucide-react';
 import { useState } from 'react';
 import AccessWorkflowSettingsController from '@/actions/App/Http/Controllers/Settings/AccessWorkflowSettingsController';
 import { PageHeader } from '@/components/crucible/page-header';
@@ -22,6 +22,8 @@ import { edit } from '@/routes/access-workflows';
 type Props = {
     settings: {
         query_access_enabled: boolean;
+        query_access_timeout_seconds: number;
+        query_access_timeout_max_seconds: number;
         native_client_access_enabled: boolean;
         native_proxy_username_prefix: string;
     };
@@ -99,6 +101,9 @@ export default function AccessWorkflows({ settings, usage }: Props) {
     const [nativeClientAccessEnabled, setNativeClientAccessEnabled] = useState(
         settings.native_client_access_enabled,
     );
+    const [queryAccessTimeoutSeconds, setQueryAccessTimeoutSeconds] = useState(
+        String(settings.query_access_timeout_seconds),
+    );
     const [nativeProxyUsernamePrefix, setNativeProxyUsernamePrefix] = useState(
         settings.native_proxy_username_prefix,
     );
@@ -171,6 +176,69 @@ export default function AccessWorkflows({ settings, usage }: Props) {
                                         message={
                                             errors.query_access_enabled ??
                                             errors.native_client_access_enabled
+                                        }
+                                    />
+                                </CardContent>
+                            </Card>
+
+                            <Card className="gap-0 overflow-hidden border-y py-0 sm:rounded-lg sm:border">
+                                <CardHeader className="border-b px-4 py-3 sm:px-5">
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Clock3 className="size-4 text-blue-700 dark:text-blue-300" />
+                                        Browser query execution
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Limit each Query Access statement at the
+                                        database session and worker layers.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="grid gap-2 px-4 py-5 sm:px-5">
+                                    <Label htmlFor="query_access_timeout_seconds">
+                                        Maximum query runtime
+                                    </Label>
+                                    <div className="flex max-w-sm items-center gap-2">
+                                        <Input
+                                            id="query_access_timeout_seconds"
+                                            name="query_access_timeout_seconds"
+                                            type="number"
+                                            min={5}
+                                            max={
+                                                settings.query_access_timeout_max_seconds
+                                            }
+                                            step={1}
+                                            value={queryAccessTimeoutSeconds}
+                                            onChange={(event) =>
+                                                setQueryAccessTimeoutSeconds(
+                                                    event.target.value,
+                                                )
+                                            }
+                                            required
+                                            aria-describedby="query_access_timeout_seconds_help"
+                                            aria-invalid={
+                                                errors.query_access_timeout_seconds
+                                                    ? true
+                                                    : undefined
+                                            }
+                                        />
+                                        <span className="shrink-0 text-sm text-muted-foreground">
+                                            seconds
+                                        </span>
+                                    </div>
+                                    <p
+                                        id="query_access_timeout_seconds_help"
+                                        className="max-w-2xl text-xs leading-5 text-muted-foreground"
+                                    >
+                                        Applies to every browser query. The
+                                        deployment hard ceiling is{' '}
+                                        {
+                                            settings.query_access_timeout_max_seconds
+                                        }{' '}
+                                        seconds and cannot be raised from this
+                                        page.
+                                    </p>
+                                    <InputError
+                                        message={
+                                            errors.query_access_timeout_seconds
                                         }
                                     />
                                 </CardContent>

@@ -7,6 +7,7 @@ import {
     useForm,
     useHttp,
     usePage,
+    usePoll,
 } from '@inertiajs/react';
 import {
     ArrowLeft,
@@ -67,6 +68,8 @@ type SessionQuery = {
     sql: string;
     query_type: QueryType;
     status: ExecutionStatus;
+    timeout_seconds: number | null;
+    can_cancel: boolean;
     duration_ms: number | null;
     row_count: number | null;
     result_truncated: boolean;
@@ -163,6 +166,10 @@ type Props = {
     native_proxy_cli_download_url?: string;
 };
 
+const RAPID_QUERY_POLL_INTERVAL_MS = 150;
+const RAPID_QUERY_POLL_DURATION_MS = 2000;
+const STEADY_QUERY_POLL_INTERVAL_MS = 1000;
+
 function remainingSeconds(expiresAt: string): number {
     return Math.max(
         0,
@@ -175,6 +182,45 @@ function remainingLabel(seconds: number): string {
     const remainder = seconds % 60;
 
     return `${minutes}:${remainder.toString().padStart(2, '0')}`;
+}
+
+function QueryExecutionPollingInterval({
+    interval,
+}: {
+    interval: number;
+}): null {
+    usePoll(
+        interval,
+        {
+            only: ['session'],
+        },
+        {
+            mode: 'rest',
+        },
+    );
+
+    return null;
+}
+
+function QueryExecutionPoller() {
+    const [pollInterval, setPollInterval] = useState(
+        RAPID_QUERY_POLL_INTERVAL_MS,
+    );
+
+    useEffect(() => {
+        const timeout = window.setTimeout(() => {
+            setPollInterval(STEADY_QUERY_POLL_INTERVAL_MS);
+        }, RAPID_QUERY_POLL_DURATION_MS);
+
+        return () => window.clearTimeout(timeout);
+    }, []);
+
+    return (
+        <QueryExecutionPollingInterval
+            key={pollInterval}
+            interval={pollInterval}
+        />
+    );
 }
 
 function ResultTable({
@@ -389,6 +435,13 @@ export default function QuerySessionShow({
         sql: defaultSql,
     });
     const isSessionActive = session.is_active && secondsRemaining > 0;
+    const activeQuery = session.queries.find((query) =>
+        ['queued', 'running', 'cancelling'].includes(query.status),
+    );
+    const hasActiveQuery = activeQuery !== undefined;
+    const [cancellingQueryId, setCancellingQueryId] = useState<number | null>(
+        null,
+    );
     const remaining = remainingLabel(secondsRemaining);
     const formatterLanguage =
         session.connection.driver === 'mysql' ? 'mysql' : 'postgresql';
@@ -480,7 +533,7 @@ export default function QuerySessionShow({
     }
 
     function runQuery(): void {
-        if (!isSessionActive) {
+        if (!isSessionActive || hasActiveQuery) {
             return;
         }
 
@@ -501,6 +554,18 @@ export default function QuerySessionShow({
         post(QuerySessionQueryController.store.url(session.id), {
             preserveScroll: true,
         });
+    }
+
+    function cancelQuery(queryId: number): void {
+        setCancellingQueryId(queryId);
+        router.post(
+            QuerySessionQueryController.cancel.url(queryId),
+            {},
+            {
+                preserveScroll: true,
+                onFinish: () => setCancellingQueryId(null),
+            },
+        );
     }
 
     function switchConnection(databaseConnectionId: string): void {
@@ -611,6 +676,7 @@ export default function QuerySessionShow({
     return (
         <>
             <Head title={`Session: ${session.request.title}`} />
+            {hasActiveQuery && <QueryExecutionPoller />}
 
             <div className="flex min-h-[calc(100vh-6rem)] flex-col">
                 <div className="border-b px-4 py-4 sm:px-6 lg:px-8">
@@ -724,15 +790,19 @@ export default function QuerySessionShow({
                                         <Button
                                             type="button"
                                             disabled={
-                                                processing || !isSessionActive
+                                                processing ||
+                                                !isSessionActive ||
+                                                hasActiveQuery
                                             }
                                             onClick={runQuery}
                                             className="w-44 justify-center"
                                         >
                                             <Play />
-                                            {selectedSql.trim() === ''
-                                                ? 'Run'
-                                                : 'Run selected'}
+                                            {hasActiveQuery
+                                                ? 'Query in progress'
+                                                : selectedSql.trim() === ''
+                                                  ? 'Run'
+                                                  : 'Run selected'}
                                         </Button>
                                     </div>
                                 </div>
@@ -767,16 +837,41 @@ export default function QuerySessionShow({
                                             )}
                                             <span className="text-sm text-muted-foreground">
                                                 {session.latest_query
-                                                    .row_count ?? 0}
+                                                    .row_count ?? '—'}
                                                 {session.latest_query
                                                     .result_truncated
                                                     ? '+'
                                                     : ''}{' '}
                                                 rows /{' '}
                                                 {session.latest_query
-                                                    .duration_ms ?? 0}{' '}
+                                                    .duration_ms ?? '—'}{' '}
                                                 ms
                                             </span>
+                                            {session.latest_query
+                                                .can_cancel && (
+                                                <Button
+                                                    type="button"
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    disabled={
+                                                        cancellingQueryId ===
+                                                        session.latest_query.id
+                                                    }
+                                                    onClick={() =>
+                                                        cancelQuery(
+                                                            session
+                                                                .latest_query!
+                                                                .id,
+                                                        )
+                                                    }
+                                                >
+                                                    <CircleStop />
+                                                    {cancellingQueryId ===
+                                                    session.latest_query.id
+                                                        ? 'Cancelling...'
+                                                        : 'Cancel query'}
+                                                </Button>
+                                            )}
                                             {resultPage !== null &&
                                                 isSessionActive && (
                                                     <Button
@@ -808,7 +903,20 @@ export default function QuerySessionShow({
                                 )}
                             </CardHeader>
                             <CardContent className="min-h-0 overflow-hidden p-0">
-                                {session.latest_query?.error_message ? (
+                                {session.latest_query?.status === 'queued' ||
+                                session.latest_query?.status === 'running' ||
+                                session.latest_query?.status ===
+                                    'cancelling' ? (
+                                    <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                                        {session.latest_query.status ===
+                                        'queued'
+                                            ? 'Starting query…'
+                                            : session.latest_query.status ===
+                                                'cancelling'
+                                              ? 'Cancelling the database query…'
+                                              : `Running with a ${session.latest_query.timeout_seconds ?? 'configured'} second time limit…`}
+                                    </div>
+                                ) : session.latest_query?.error_message ? (
                                     <div className="h-full overflow-auto p-4">
                                         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300">
                                             {session.latest_query.error_message}
@@ -931,6 +1039,27 @@ export default function QuerySessionShow({
                                                     {query.connection.name}
                                                 </span>
                                             )}
+                                            {query.can_cancel && (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="ml-auto"
+                                                    disabled={
+                                                        cancellingQueryId ===
+                                                        query.id
+                                                    }
+                                                    onClick={() =>
+                                                        cancelQuery(query.id)
+                                                    }
+                                                >
+                                                    <CircleStop />
+                                                    {cancellingQueryId ===
+                                                    query.id
+                                                        ? 'Cancelling…'
+                                                        : 'Cancel'}
+                                                </Button>
+                                            )}
                                         </div>
                                         <code className="line-clamp-3 font-mono text-xs text-muted-foreground">
                                             {query.sql}
@@ -941,11 +1070,12 @@ export default function QuerySessionShow({
                                             </div>
                                         )}
                                         <div className="text-xs text-muted-foreground">
-                                            {query.row_count ?? 0}
+                                            {query.row_count ?? '—'}
                                             {query.result_truncated
                                                 ? '+'
                                                 : ''}{' '}
-                                            rows / {query.duration_ms ?? 0} ms /{' '}
+                                            rows / {query.duration_ms ?? '—'} ms
+                                            /{' '}
                                             {formatDate(
                                                 query.created_at,
                                                 userTimezone,

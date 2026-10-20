@@ -56,12 +56,6 @@ class QuerySessionController extends Controller
             $latestQuery = null;
         }
 
-        try {
-            $tables = $schemaBrowser->tables($activeConnection);
-        } catch (Throwable) {
-            $tables = [];
-        }
-
         return Inertia::render('query-sessions/show', [
             'session' => [
                 'id' => $querySession->id,
@@ -69,6 +63,7 @@ class QuerySessionController extends Controller
                 'expires_at' => $querySession->expires_at->toIso8601String(),
                 'ended_at' => $querySession->ended_at?->toIso8601String(),
                 'is_active' => $querySession->isActive(),
+                'transport' => AccessTransport::Browser->value,
                 'request' => [
                     'id' => $querySession->queryRequest->id,
                     'title' => $querySession->queryRequest->title,
@@ -84,6 +79,9 @@ class QuerySessionController extends Controller
                     'sql' => $latestQuery->sql,
                     'query_type' => $latestQuery->query_type->value,
                     'status' => $latestQuery->status->value,
+                    'timeout_seconds' => $latestQuery->timeout_seconds,
+                    'can_cancel' => $latestQuery->status->isActive()
+                        && request()->user()->can('submitQuery', $querySession),
                     'duration_ms' => $latestQuery->duration_ms,
                     'row_count' => $latestQuery->row_count,
                     'result_truncated' => $latestQuery->result_truncated,
@@ -93,12 +91,18 @@ class QuerySessionController extends Controller
                         : null,
                     'error_message' => $latestQuery->error_message,
                     'created_at' => $latestQuery->created_at?->toIso8601String(),
+                    'connection' => $latestQuery->databaseConnection
+                        ? $this->connectionSummary($latestQuery->databaseConnection)
+                        : null,
                 ] : null,
                 'queries' => $queries->map(fn ($query): array => [
                     'id' => $query->id,
                     'sql' => $query->sql,
                     'query_type' => $query->query_type->value,
                     'status' => $query->status->value,
+                    'timeout_seconds' => $query->timeout_seconds,
+                    'can_cancel' => $query->status->isActive()
+                        && request()->user()->can('submitQuery', $querySession),
                     'row_count' => $query->row_count,
                     'result_truncated' => $query->result_truncated,
                     'duration_ms' => $query->duration_ms,
@@ -109,12 +113,21 @@ class QuerySessionController extends Controller
                         : null,
                 ])->values(),
             ],
-            'tables' => $tables,
+            'tables' => function () use ($activeConnection, $schemaBrowser): array {
+                try {
+                    return $schemaBrowser->tables($activeConnection);
+                } catch (Throwable) {
+                    return [];
+                }
+            },
         ]);
     }
 
-    public function end(EndQuerySessionRequest $request, QuerySession $querySession, QueryRequestWorkflow $workflow): RedirectResponse
-    {
+    public function end(
+        EndQuerySessionRequest $request,
+        QuerySession $querySession,
+        QueryRequestWorkflow $workflow,
+    ): RedirectResponse {
         $queryRequest = $querySession->queryRequest;
 
         Gate::authorize('cancel', $queryRequest);

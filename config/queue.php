@@ -73,6 +73,18 @@ return [
             'after_commit' => false,
         ],
 
+        'redis-query-sessions' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('QUERY_ACCESS_QUEUE', 'query-sessions'),
+            'retry_after' => (int) env(
+                'QUERY_ACCESS_QUEUE_RETRY_AFTER',
+                min(65_535, max(5, (int) env('QUERY_ACCESS_MAX_TIMEOUT_SECONDS', 900))) + 60,
+            ),
+            'block_for' => max(1, (int) env('QUERY_ACCESS_QUEUE_BLOCK_FOR', 1)),
+            'after_commit' => false,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],

@@ -24,6 +24,12 @@ class UpdateAccessWorkflowSettingsRequest extends FormRequest
     {
         return [
             'query_access_enabled' => ['required', 'boolean'],
+            'query_access_timeout_seconds' => [
+                'required',
+                'integer',
+                'min:'.config('query_access.minimum_timeout_seconds'),
+                'max:'.config('query_access.maximum_timeout_seconds'),
+            ],
             'native_client_access_enabled' => ['required', 'boolean'],
             'native_proxy_username_prefix' => [
                 'required',

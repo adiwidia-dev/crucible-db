@@ -19,6 +19,11 @@ use Illuminate\Support\Carbon;
  * @property string $sql
  * @property QueryType $query_type
  * @property ExecutionStatus $status
+ * @property string|null $execution_token
+ * @property int|null $timeout_seconds
+ * @property string|null $backend_process_id
+ * @property string|null $backend_application_name
+ * @property Carbon|null $cancel_requested_at
  * @property Carbon|null $started_at
  * @property Carbon|null $finished_at
  * @property int|null $duration_ms
@@ -48,6 +53,11 @@ class QuerySessionQuery extends Model
         'native_parameter_count',
         'query_type',
         'status',
+        'execution_token',
+        'timeout_seconds',
+        'backend_process_id',
+        'backend_application_name',
+        'cancel_requested_at',
         'started_at',
         'finished_at',
         'duration_ms',
@@ -58,15 +68,17 @@ class QuerySessionQuery extends Model
     ];
 
     /**
-     * @return array{query_type: class-string<QueryType>, status: class-string<ExecutionStatus>, started_at: 'datetime', finished_at: 'datetime', duration_ms: 'integer', row_count: 'integer', result_truncated: 'boolean', sample_rows: 'array'}
+     * @return array{query_type: class-string<QueryType>, status: class-string<ExecutionStatus>, timeout_seconds: 'integer', started_at: 'datetime', finished_at: 'datetime', cancel_requested_at: 'datetime', duration_ms: 'integer', row_count: 'integer', result_truncated: 'boolean', sample_rows: 'array'}
      */
     protected function casts(): array
     {
         return [
             'query_type' => QueryType::class,
             'status' => ExecutionStatus::class,
+            'timeout_seconds' => 'integer',
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
+            'cancel_requested_at' => 'datetime',
             'duration_ms' => 'integer',
             'row_count' => 'integer',
             'result_truncated' => 'boolean',
