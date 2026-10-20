@@ -405,7 +405,7 @@ class QuerySessionWorkflow
                 $sessionQuery->databaseConnection,
             );
             $executionTag = $sessionQuery->id.':'.$sessionQuery->execution_token;
-            $executionStartedAt = hrtime(true);
+            $executionStartedAt = (int) hrtime(true);
             $result = $this->executor->executeTracked(
                 $databaseConnection,
                 $normalizedSql,

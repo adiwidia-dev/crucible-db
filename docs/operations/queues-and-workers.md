@@ -16,12 +16,13 @@ The production application container uses Supervisor to keep three processes run
 
 | Queue | Work | Current worker policy |
 | --- | --- | --- |
+| `query-sessions` | Browser Query Access statements. | Two processes, one attempt, a database-enforced timeout plus a 30-second worker margin, recycled after 100 jobs or one hour. |
 | `queries` | Governed target-database execution. | One process, one attempt, 270-second timeout, recycled after 250 jobs or one hour. |
 | `default` | General queued application work. | One process, one attempt, 60-second timeout. |
 | `notifications` | In-app database notifications. | One process, three attempts, 60-second timeout. |
 | `mail` | Optional email delivery. | One process, three attempts, 60-second timeout. |
 
-All four queues use Redis. Query execution is deliberately isolated so email or notification work cannot execute SQL and query concurrency remains controlled. A query worker atomically claims eligible work, re-evaluates the original requester's active account and current target policy, and preserves cancellation if it races with preflight or completion.
+All five queues use Redis. Browser Query Access uses its own connection and queue so a target database never holds an Octane request worker. The worker atomically claims eligible work, re-evaluates the original requester's active account and current target policy, applies the administrator-selected runtime limit at the target database, and preserves cancellation if it races with preflight or completion.
 
 ## Scheduled lifecycle commands
 
@@ -32,6 +33,7 @@ Every minute, the scheduler runs:
 - `crucible:expire-native-proxy-leases` to revoke expired native-client leases;
 - `crucible:check-native-proxy-health` to refresh the bounded native-proxy readiness snapshot and notify operators if its state changes;
 - `crucible:prune-native-proxy-state` to remove expired native-proxy state; and
+- `crucible:reconcile-browser-query-executions` to mark abandoned queued or active browser queries terminal after their bounded timeout; and
 - an independent system-status heartbeat plus `crucible:check-system-status` to publish the cached administrator System Status snapshot.
 
 These scheduled tasks prevent overlap and use the single-server scheduler lock. The supplied Compose topology is single-node.

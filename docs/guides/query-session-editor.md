@@ -37,7 +37,13 @@ Without a selection, the shortcut runs the whole editor and therefore requires e
 
 ## Results and history
 
-Each execution is retained in the session query history. For a successful browser query, Crucible retains an encrypted temporary result snapshot while the session remains active. The result panel shows 100 rows per page, status, connection, total row count, truncation marker, duration, rows, or a database error. You can page through captured results and use **Export CSV** for the complete captured result; it does not expose connection credentials.
+Each execution is retained in the session query history. Browser work moves through **Queued**, **Running**, **Cancelling**, and a terminal **Succeeded**, **Failed**, **Cancelled**, or **Timed out** state. The editor remains usable while a statement is queued or running, and the current execution polls for its updated state and result.
+
+Use **Cancel query** in the result panel or the history row when a queued or running statement should stop. Cancellation is authorized as the original session user, requests target-database cancellation when the statement is already running, and never ends the Query Access session. Wait for the terminal history state before submitting another statement to the same target.
+
+An administrator sets the maximum runtime for every browser statement at **Manage → Administration → Access & identity → Access Workflows**. The limit is enforced at the target database and by the queue worker; a database timeout is recorded as **Timed out** rather than leaving the browser request open.
+
+For a successful browser query, Crucible retains an encrypted temporary result snapshot while the session remains active. The result panel shows 100 rows per page, status, connection, total row count, truncation marker, duration, rows, or a database error. You can page through captured results and use **Export CSV** for the complete captured result; it does not expose connection credentials.
 
 To protect the control plane, capture stops at 5,000 rows or 25 MiB. When either limit is reached, the result count indicates truncation. Ended, cancelled, or expired sessions remove their temporary result snapshots.
 

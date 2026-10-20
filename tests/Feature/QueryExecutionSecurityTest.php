@@ -369,7 +369,7 @@ SQL;
             )
             ->once()
             ->andReturn((object) ['id' => 8899]);
-        $connection->shouldReceive('unprepared')
+        $connection->shouldReceive('statement')
             ->with('KILL QUERY 8899')
             ->once()
             ->andReturnTrue();

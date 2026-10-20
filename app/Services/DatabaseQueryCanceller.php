@@ -68,7 +68,7 @@ class DatabaseQueryCanceller
             return false;
         }
 
-        $connection->unprepared('KILL QUERY '.$processId);
+        $connection->statement(sprintf('KILL QUERY %d', $processId));
 
         return true;
     }
