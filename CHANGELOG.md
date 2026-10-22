@@ -9,6 +9,7 @@ All notable changes to Crucible DB are documented in this file. The project foll
 ### Security
 
 - Pin every development and production FrankenPHP build stage to the immutable PHP 8.5.12 image, remediating CVE-2026-109618 and CVE-2026-109619.
+- Update the native proxy build image to Go 1.27.3 and its compatibility checks to Go 1.26.10, remediating CVE-2026-111943.
 
 ## [0.4.0] - 2026-10-20
 
