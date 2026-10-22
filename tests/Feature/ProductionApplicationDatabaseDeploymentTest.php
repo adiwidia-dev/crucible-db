@@ -6,6 +6,34 @@ use PHPUnit\Framework\TestCase;
 
 class ProductionApplicationDatabaseDeploymentTest extends TestCase
 {
+    public function test_every_frankenphp_stage_uses_the_patched_php_runtime(): void
+    {
+        $dockerfiles = glob(dirname(__DIR__, 2).'/Dockerfile*');
+        $patchedImage = 'dunglas/frankenphp:1-php8.5.12@sha256:8a7a935deb33959200628497b8201423c8b777d513a62ac1b69a91c624afdb3d';
+        $frankenPhpImages = [];
+
+        $this->assertIsArray($dockerfiles);
+
+        foreach ($dockerfiles as $dockerfile) {
+            $contents = file_get_contents($dockerfile);
+
+            $this->assertIsString($contents);
+            preg_match_all('/^\s*FROM(?:\s+--\S+)*\s+(?<image>\S+)/mi', $contents, $matches);
+
+            foreach ($matches['image'] as $image) {
+                if (str_starts_with($image, 'dunglas/frankenphp:')) {
+                    $frankenPhpImages[] = $image;
+                }
+            }
+        }
+
+        $this->assertNotEmpty($frankenPhpImages);
+
+        foreach ($frankenPhpImages as $frankenPhpImage) {
+            $this->assertSame($patchedImage, $frankenPhpImage);
+        }
+    }
+
     public function test_production_compose_offers_isolated_optional_database_profiles(): void
     {
         $compose = (string) file_get_contents(dirname(__DIR__, 2).'/compose.production.yaml');

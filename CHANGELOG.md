@@ -4,6 +4,13 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-22
+
+### Security
+
+- Pin every development and production FrankenPHP build stage to the immutable PHP 8.5.12 image, remediating CVE-2026-109618 and CVE-2026-109619.
+- Update the native proxy build image to Go 1.27.3 and its compatibility checks to Go 1.26.10, remediating CVE-2026-111943.
+
 ## [0.4.0] - 2026-10-20
 
 ### Added
@@ -270,7 +277,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.14...v0.3.0
 [0.2.14]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.13...v0.2.14
