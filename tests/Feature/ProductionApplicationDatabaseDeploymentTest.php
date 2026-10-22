@@ -115,7 +115,7 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         $this->assertSame(3, substr_count($workflow, 'ref: ${{ needs.release-preflight.outputs.release_tag }}'));
         $this->assertStringContainsString('anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c', $workflow);
         $this->assertStringContainsString('syft-version: v1.51.1', $workflow);
-        $this->assertStringContainsString('goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94', $workflow);
+        $this->assertStringContainsString('goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de', $workflow);
         $this->assertStringContainsString('actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8', $workflow);
         $this->assertStringContainsString('name: attest published native cli', $workflow);
         $this->assertStringContainsString('gh release download "$RELEASE_TAG"', $workflow);

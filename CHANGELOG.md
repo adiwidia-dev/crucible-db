@@ -4,6 +4,10 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+### Changed
+
+- Refresh Inertia Vite, Radix UI label/select/dropdown, Rollup Linux, and GoReleaser Action dependencies.
+
 ## [0.4.1] - 2026-10-22
 
 ### Security
