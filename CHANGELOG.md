@@ -4,6 +4,12 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-22
+
+### Changed
+
+- Refresh Inertia Vite, Radix UI label/select/dropdown, Rollup Linux, and GoReleaser Action dependencies.
+
 ## [0.4.1] - 2026-10-22
 
 ### Security
@@ -277,7 +283,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.2.14...v0.3.0
