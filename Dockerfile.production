@@ -15,7 +15,7 @@ RUN composer install \
     --ignore-platform-req=ext-pcntl \
     --no-scripts
 
-FROM dunglas/frankenphp:1-php8.5 AS frontend
+FROM dunglas/frankenphp:1-php8.5.12@sha256:8a7a935deb33959200628497b8201423c8b777d513a62ac1b69a91c624afdb3d AS frontend
 
 WORKDIR /app
 
@@ -44,7 +44,7 @@ RUN mkdir -p \
     && APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= php artisan wayfinder:generate --with-form --no-interaction \
     && APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= npm run build
 
-FROM dunglas/frankenphp:1-php8.5 AS production
+FROM dunglas/frankenphp:1-php8.5.12@sha256:8a7a935deb33959200628497b8201423c8b777d513a62ac1b69a91c624afdb3d AS production
 
 WORKDIR /app
 
