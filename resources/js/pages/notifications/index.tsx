@@ -24,6 +24,7 @@ type NotificationItem = {
     severity: 'info' | 'success' | 'warning' | 'critical';
     title: string;
     message: string;
+    request_id?: number | null;
     action_label: string;
     url: string;
     created_at: string | null;
@@ -95,6 +96,15 @@ export default function NotificationsIndex({
                                         />
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                {notification.request_id !=
+                                                    null && (
+                                                    <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                                                        #
+                                                        {
+                                                            notification.request_id
+                                                        }
+                                                    </span>
+                                                )}
                                                 <h2 className="text-sm font-semibold">
                                                     {notification.title}
                                                 </h2>

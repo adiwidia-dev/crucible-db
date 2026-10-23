@@ -40,7 +40,7 @@ export function QueryRequestFilters({
                             <Input
                                 name="search"
                                 defaultValue={filters.search}
-                                placeholder="Request, requester, connection"
+                                placeholder="ID, request, requester, connection"
                                 className="pl-9"
                                 aria-label="Search requests"
                             />

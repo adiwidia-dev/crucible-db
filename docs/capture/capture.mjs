@@ -109,7 +109,8 @@ async function captureRequesterPages() {
                 name: /unread notifications|notifications/i,
             })
             .click();
-        await screenshot(page, 'notification-menu.png');
+        await page.getByRole('menu').waitFor({ state: 'visible' });
+        await screenshot(page, 'notification-menu.png', false, false);
 
         await visit(page, '/connections');
         await visitLinkedPage(page, 'Production Orders');
@@ -460,12 +461,19 @@ async function visit(page, path) {
     await page.waitForTimeout(450);
 }
 
-async function screenshot(page, filename, fullPage = false) {
-    await page.evaluate(() => {
-        if (document.activeElement instanceof HTMLElement) {
-            document.activeElement.blur();
-        }
-    });
+async function screenshot(
+    page,
+    filename,
+    fullPage = false,
+    blurActiveElement = true,
+) {
+    if (blurActiveElement) {
+        await page.evaluate(() => {
+            if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+            }
+        });
+    }
     await page.screenshot({
         path: resolve(outputDirectory, filename),
         animations: 'disabled',

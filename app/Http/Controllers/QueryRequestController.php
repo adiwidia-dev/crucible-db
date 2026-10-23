@@ -677,13 +677,21 @@ class QueryRequestController extends Controller
         $query
             ->when($filters['search'] !== '', function (Builder $query) use ($filters): void {
                 $search = $filters['search'];
+                $matchedRequestId = Str::of($search)
+                    ->match('/(?:^#?|\/query-requests\/)(\d+)(?:[\/?#]|$)/')
+                    ->toString();
+                $requestId = $matchedRequestId !== '' ? (int) $matchedRequestId : null;
 
-                $query->where(function (Builder $query) use ($search): void {
+                $query->where(function (Builder $query) use ($requestId, $search): void {
                     $query->where('title', 'like', "%{$search}%")
                         ->orWhereHas('requester', fn (Builder $requesters) => $requesters->where('name', 'like', "%{$search}%"))
                         ->orWhereHas('databaseConnection', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"))
                         ->orWhereHas('accessConnections', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"))
                         ->orWhereHas('statements.databaseConnection', fn (Builder $connections) => $connections->where('name', 'like', "%{$search}%"));
+
+                    if ($requestId !== null) {
+                        $query->orWhere('query_requests.id', $requestId);
+                    }
                 });
             })
             ->when($filters['status'] !== '', fn (Builder $query) => $query->where('status', $filters['status']))

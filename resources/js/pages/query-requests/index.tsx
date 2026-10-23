@@ -192,10 +192,13 @@ export default function QueryRequestsIndex({
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full min-w-[760px] text-sm">
+                                <table className="w-full min-w-[820px] text-sm">
                                     <thead>
                                         <tr className="border-b bg-muted/35 text-left text-xs text-muted-foreground">
-                                            <th className="py-3 pr-4 pl-4 font-medium sm:pl-6">
+                                            <th className="w-20 py-3 pr-4 pl-4 font-medium sm:pl-6">
+                                                ID
+                                            </th>
+                                            <th className="py-3 pr-4 font-medium">
                                                 Request
                                             </th>
                                             <th className="py-3 pr-4 font-medium">
@@ -222,6 +225,15 @@ export default function QueryRequestsIndex({
                                                 className="border-b transition-colors last:border-0 hover:bg-accent/55"
                                             >
                                                 <td className="py-3.5 pr-4 pl-4 sm:pl-6">
+                                                    <Link
+                                                        href={show(request.id)}
+                                                        className="font-mono text-xs text-muted-foreground tabular-nums hover:text-primary"
+                                                        aria-label={`Open request #${request.id}`}
+                                                    >
+                                                        {`#${request.id}`}
+                                                    </Link>
+                                                </td>
+                                                <td className="py-3.5 pr-4">
                                                     <Link
                                                         href={show(request.id)}
                                                         className="font-medium hover:text-primary"
