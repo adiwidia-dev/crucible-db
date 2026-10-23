@@ -4,7 +4,7 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
-## [0.4.2] - 2026-10-22
+## [0.4.2] - 2026-10-23
 
 ### Changed
 
