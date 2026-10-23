@@ -857,6 +857,35 @@ SQL;
                 ->where('query_requests.data.0.title', 'Customer export'));
     }
 
+    public function test_query_request_index_search_accepts_request_ids_and_urls(): void
+    {
+        $admin = $this->adminUser();
+        $queryRequest = QueryRequest::factory()->create([
+            'requester_id' => $admin->id,
+            'title' => 'Request found by identifier',
+        ]);
+        QueryRequest::factory()->create([
+            'requester_id' => $admin->id,
+            'title' => 'Unrelated request',
+        ]);
+
+        $searchValues = [
+            (string) $queryRequest->id,
+            '#'.$queryRequest->id,
+            route('query-requests.show', $queryRequest),
+        ];
+
+        foreach ($searchValues as $search) {
+            $this->actingAs($admin)
+                ->get(route('query-requests.index', ['search' => $search]))
+                ->assertOk()
+                ->assertInertia(fn (Assert $page) => $page
+                    ->where('filters.search', $search)
+                    ->has('query_requests.data', 1)
+                    ->where('query_requests.data.0.id', $queryRequest->id));
+        }
+    }
+
     public function test_query_request_index_lists_and_filters_every_target_connection(): void
     {
         $admin = $this->adminUser();

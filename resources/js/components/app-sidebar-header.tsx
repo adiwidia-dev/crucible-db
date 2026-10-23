@@ -40,6 +40,7 @@ type NotificationPreview = {
     severity: 'info' | 'success' | 'warning' | 'critical';
     title: string;
     message: string;
+    request_id?: number | null;
     url: string;
     read_at: string | null;
 };
@@ -207,13 +208,22 @@ export function AppSidebarHeader({
                                                 severity={notification.severity}
                                             />
                                             <span className="min-w-0 flex-1">
-                                                <span className="flex items-center gap-2">
-                                                    <span className="truncate text-sm font-medium">
+                                                <span className="flex min-w-0 items-baseline gap-1.5">
+                                                    {notification.request_id !=
+                                                        null && (
+                                                        <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+                                                            #
+                                                            {
+                                                                notification.request_id
+                                                            }
+                                                        </span>
+                                                    )}
+                                                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
                                                         {notification.title}
                                                     </span>
                                                     {notification.read_at ===
                                                         null && (
-                                                        <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+                                                        <span className="size-1.5 shrink-0 self-center rounded-full bg-primary" />
                                                     )}
                                                 </span>
                                                 <span className="mt-0.5 line-clamp-2 block text-xs leading-5 text-muted-foreground">

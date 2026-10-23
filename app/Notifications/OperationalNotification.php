@@ -56,8 +56,14 @@ class OperationalNotification extends Notification implements ShouldQueue
      */
     public function toMail(object $notifiable): MailMessage
     {
+        $requestId = $this->payload['request_id'] ?? null;
+        $subject = $requestId === null
+            ? $this->payload['title'].' · Crucible DB'
+            : "[#{$requestId}] {$this->payload['title']} · Crucible DB";
+
         return (new MailMessage)
-            ->subject($this->payload['title'].' · Crucible DB')
+            ->subject($subject)
+            ->lineIf($requestId !== null, "Request #{$requestId}")
             ->line($this->payload['message'])
             ->action($this->payload['action_label'], $this->payload['url'])
             ->line('Open Crucible DB to view this governed database operation.');

@@ -112,9 +112,11 @@ class NotificationDeliveryTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('notifications/index')
                 ->has('notifications.data', 1)
+                ->where('notifications.data.0.request_id', 42)
                 ->where('notification_summary.unread_count', 1)
                 ->has('notification_summary.recent', 1)
-                ->where('notification_summary.recent.0.id', $notification->id),
+                ->where('notification_summary.recent.0.id', $notification->id)
+                ->where('notification_summary.recent.0.request_id', 42),
             );
 
         $this->actingAs($user)
@@ -236,9 +238,36 @@ class NotificationDeliveryTest extends TestCase
 
         app(NotificationDispatcher::class)->requestSubmitted($request);
 
-        Notification::assertSentTo($reviewer, OperationalNotification::class, function (OperationalNotification $notification): bool {
-            return $notification->toArray($this)['event'] === 'query_request.review_required';
+        Notification::assertSentTo($reviewer, OperationalNotification::class, function (OperationalNotification $notification) use ($request): bool {
+            $payload = $notification->toArray($this);
+
+            return $payload['event'] === 'query_request.review_required'
+                && $payload['request_id'] === $request->id;
         });
+    }
+
+    public function test_operational_notification_mail_surfaces_the_request_id_when_available(): void
+    {
+        $user = User::factory()->create();
+        $notification = new OperationalNotification([
+            'event' => 'query_request.execution_failed',
+            'severity' => 'critical',
+            'title' => 'Batch execution failed',
+            'message' => 'Voucher outlet deployment failed at statement 4.',
+            'action_label' => 'Open request',
+            'url' => route('query-requests.show', 45),
+            'request_id' => 45,
+            'connection_count' => 1,
+            'statement_position' => 4,
+        ], true, true);
+
+        $mail = $notification->toMail($user);
+
+        $this->assertSame('[#45] Batch execution failed · Crucible DB', $mail->subject);
+        $this->assertSame([
+            'Request #45',
+            'Voucher outlet deployment failed at statement 4.',
+        ], $mail->introLines);
     }
 
     private function adminUser(): User
@@ -259,6 +288,7 @@ class NotificationDeliveryTest extends TestCase
                 'severity' => 'critical',
                 'title' => 'Batch execution failed',
                 'message' => 'DEP-42 failed at statement 2.',
+                'request_id' => 42,
                 'action_label' => 'Open request',
                 'url' => route('dashboard'),
             ],

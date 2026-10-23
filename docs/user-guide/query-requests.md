@@ -6,7 +6,9 @@
 
 ## Find work
 
-Use the search and filters to narrow requests by workflow, status, requester, or target when those filters are available to your role. Status labels distinguish draft, review, schedule, execution, and terminal states.
+Every row starts with its stable request ID. Use this ID when a teammate shares a request URL or asks you to find specific work. The detail page repeats the same ID beneath the request title.
+
+Use the search and filters to narrow requests by workflow, status, requester, or target when those filters are available to your role. Search also accepts a numeric ID such as `45`, a `#`-prefixed ID such as `#45`, or a copied URL ending in `/query-requests/45`. Status labels distinguish draft, review, schedule, execution, and terminal states.
 
 The **Connections** column summarizes the complete target scope. Multi-connection requests show the total, two connection names, and a **+N more** action below the preview. Open it to inspect every target without making the table row grow with the full list.
 

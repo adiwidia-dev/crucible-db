@@ -4,7 +4,7 @@ Use the request detail page as the source of truth for work state. It keeps pref
 
 ## Watch important work
 
-Use **Watch** on a request or connection to receive resource-specific in-app notifications. Notifications can include approval requests, SQL policy-review requests and decisions, execution outcomes, session lifecycle events, preflight blocks, retries, and connection test failures.
+Use **Watch** on a request or connection to receive resource-specific in-app notifications. Notifications can include approval requests, SQL policy-review requests and decisions, execution outcomes, session lifecycle events, preflight blocks, retries, and connection test failures. Request notifications show the same stable `#ID` as the Query Requests table and request detail page, including in optional email delivery.
 
 Your notification preferences control optional email delivery. Workspace administrators can also enable or disable workspace email delivery.
 
@@ -22,4 +22,4 @@ Credentials are encrypted at rest and are not exposed in request details, notifi
 4. Use a linked retry only when it represents the appropriate next work item.
 5. Use **Create similar** for editable new work based on a completed or cancelled request; it receives fresh current-policy evaluation and does not inherit operational state.
 6. When recording a handled failure, search all visible newer Deployment Batches by ID, title, status, or connection and link the actual replacement, even when it already completed.
-7. Escalate with the request URL and audit context, never by copying credentials into a ticket.
+7. Escalate with the request `#ID`, request URL, and audit context, never by copying credentials into a ticket.

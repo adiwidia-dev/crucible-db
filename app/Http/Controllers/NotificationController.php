@@ -23,6 +23,7 @@ class NotificationController extends Controller
                     'severity' => $notification->data['severity'] ?? 'info',
                     'title' => $notification->data['title'] ?? 'Operational notification',
                     'message' => $notification->data['message'] ?? '',
+                    'request_id' => $notification->data['request_id'] ?? null,
                     'action_label' => $notification->data['action_label'] ?? 'Open',
                     'url' => $notification->data['url'] ?? route('dashboard'),
                     'created_at' => $notification->created_at?->toIso8601String(),
