@@ -4,6 +4,13 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-23
+
+### Added
+
+- Show stable request IDs in the Query Requests table, request details, recent notifications, notification history, and operational email notifications.
+- Let users find visible requests by a numeric ID, a `#`-prefixed ID, or a copied Query Request URL.
+
 ## [0.4.2] - 2026-10-23
 
 ### Changed
@@ -283,7 +290,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.3.0...v0.4.0
