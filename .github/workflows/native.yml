@@ -83,9 +83,9 @@ jobs:
         run: go test -race ./...
       - name: Bounded protocol fuzz smoke
         run: |
-          go test -run '^$' -fuzz=FuzzFrontendMessage -fuzztime=5s ./internal/postgres
-          go test -run '^$' -fuzz=FuzzCommandPacket -fuzztime=5s ./internal/mysql
-          go test -run '^$' -fuzz=FuzzNegotiate -fuzztime=5s ./internal/tunnel
+          go test -run '^$' -fuzz=FuzzFrontendMessage -fuzztime=10000x ./internal/postgres
+          go test -run '^$' -fuzz=FuzzCommandPacket -fuzztime=10000x ./internal/mysql
+          go test -run '^$' -fuzz=FuzzNegotiate -fuzztime=10000x ./internal/tunnel
 
   integration:
     runs-on: ubuntu-latest
