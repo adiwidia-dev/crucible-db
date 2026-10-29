@@ -16,6 +16,18 @@ return new class extends Migration
             $table->dropUnique(['provider']);
         });
 
+        if (! Schema::hasIndex('user_identities', 'user_identities_user_id_index')) {
+            Schema::table('user_identities', function (Blueprint $table) {
+                $table->index('user_id');
+            });
+        }
+
+        if (! Schema::hasIndex('user_identities', 'user_identities_auth_provider_id_index')) {
+            Schema::table('user_identities', function (Blueprint $table) {
+                $table->index('auth_provider_id');
+            });
+        }
+
         Schema::table('user_identities', function (Blueprint $table) {
             $table->dropUnique(['provider', 'provider_user_id']);
             $table->dropUnique(['user_id', 'provider']);
@@ -34,6 +46,10 @@ return new class extends Migration
             $table->dropUnique(['user_id', 'auth_provider_id']);
             $table->unique(['provider', 'provider_user_id']);
             $table->unique(['user_id', 'provider']);
+        });
+
+        Schema::table('user_identities', function (Blueprint $table) {
+            $table->dropIndex(['user_id']);
         });
 
         Schema::table('auth_providers', function (Blueprint $table) {

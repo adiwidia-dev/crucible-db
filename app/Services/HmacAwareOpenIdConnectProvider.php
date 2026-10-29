@@ -7,10 +7,11 @@ use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use InvalidArgumentException;
 use SocialiteProviders\OpenIDConnect\Provider;
+use stdClass;
 
 class HmacAwareOpenIdConnectProvider extends Provider
 {
-    protected function verifyAndDecodeJWT(string $jwt, ?string $alg)
+    protected function verifyAndDecodeJWT(string $jwt, ?string $alg): stdClass
     {
         if ($alg === null || ! $this->isHmacAlgorithm($alg)) {
             return parent::verifyAndDecodeJWT($jwt, $alg);
@@ -30,7 +31,7 @@ class HmacAwareOpenIdConnectProvider extends Provider
         try {
             JWT::$leeway = (int) ($this->getConfig('clock_skew') ?? 0);
 
-            return json_decode(json_encode(JWT::decode($jwt, new Key($this->clientSecret, $alg))));
+            return JWT::decode($jwt, new Key($this->clientSecret, $alg));
         } catch (Exception $exception) {
             throw new InvalidArgumentException('JWT: Verification failed - '.$exception->getMessage(), 401);
         } finally {
