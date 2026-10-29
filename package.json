@@ -19,7 +19,7 @@
         "docs:capture": "node docs/capture/capture.mjs"
     },
     "devDependencies": {
-        "@eslint-react/eslint-plugin": "^5.24.10",
+        "@eslint-react/eslint-plugin": "^5.28.5",
         "@eslint/js": "^10.0.1",
         "@laravel/vite-plugin-wayfinder": "^0.1.10",
         "@playwright/test": "^1.63.0",
@@ -32,7 +32,7 @@
         "eslint-plugin-import-x": "^4.17.1",
         "eslint-plugin-react-hooks": "^7.0.0",
         "fontaine": "^0.8.0",
-        "prettier": "^3.4.2",
+        "prettier": "^3.9.10",
         "prettier-plugin-tailwindcss": "^0.8.1",
         "typescript": "npm:@typescript/typescript6@^6.0.2",
         "typescript-eslint": "^8.71.0",
@@ -55,8 +55,8 @@
         "@radix-ui/react-select": "^2.4.1",
         "@radix-ui/react-separator": "^1.1.2",
         "@radix-ui/react-slot": "^1.4.0",
-        "@radix-ui/react-toggle": "^1.1.2",
-        "@radix-ui/react-toggle-group": "^1.1.2",
+        "@radix-ui/react-toggle": "^1.2.1",
+        "@radix-ui/react-toggle-group": "^1.2.1",
         "@radix-ui/react-tooltip": "^1.1.8",
         "@tailwindcss/vite": "^4.1.11",
         "@types/react": "^19.2.0",
@@ -81,7 +81,7 @@
     },
     "optionalDependencies": {
         "@rollup/rollup-linux-x64-gnu": "4.64.7",
-        "@rollup/rollup-win32-x64-msvc": "4.9.5",
+        "@rollup/rollup-win32-x64-msvc": "4.65.0",
         "@tailwindcss/oxide-linux-x64-gnu": "^4.0.1",
         "@tailwindcss/oxide-win32-x64-msvc": "^4.0.1",
         "lightningcss-linux-x64-gnu": "^1.29.1",
