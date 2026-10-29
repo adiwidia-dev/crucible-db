@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="https://github.com/adiwidia-dev/crucible-db/actions/workflows/tests.yml"><img src="https://github.com/adiwidia-dev/crucible-db/actions/workflows/tests.yml/badge.svg" alt="CI status"></a>
-  <a href="https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.4.3"><img src="https://img.shields.io/badge/release-v0.4.3-2563EB" alt="Crucible DB v0.4.3"></a>
+  <a href="https://github.com/adiwidia-dev/crucible-db/releases/tag/v0.5.0"><img src="https://img.shields.io/badge/release-v0.5.0-2563EB" alt="Crucible DB v0.5.0"></a>
   <a href="https://adiwidia-dev.github.io/crucible-db/"><img src="https://img.shields.io/badge/docs-read-2563EB?logo=readthedocs&logoColor=white" alt="Read the documentation"></a>
   <img src="https://img.shields.io/badge/PHP-8.5%2B-777BB4?logo=php&logoColor=white" alt="PHP 8.5 or later">
   <img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13">
@@ -70,7 +70,7 @@ Crucible DB gives engineering teams a safer path to production database work wit
 - **Controlled SQL surface** — administrators enable governed statement families individually. An audited emergency fallback can admit one otherwise unsupported Deployment Batch statement as write access, while administrative, file-access, security-management, procedural, transaction-control, and EXPLAIN ANALYZE SQL remain blocked.
 - **Operational guardrails** — show conservative per-statement preflight findings, require fresh preflight immediately before a deployment runs, and block definite safety violations.
 - **Follow-up and visibility** — withdraw a pending Deployment Batch to Draft, create a similar request from completed or cancelled work, create linked retries with fresh policy evaluation, watch important requests or connections, and receive in-app or optional email notifications.
-- **Practical authentication** — support password login, invitations, passkeys, two-factor authentication, and Google, GitHub, or Microsoft sign-in.
+- **Practical authentication** — support password login, invitations, passkeys, two-factor authentication, built-in Google, GitHub, and Microsoft sign-in, plus any standards-compliant OpenID Connect provider.
 - **Portable operations** — deploy the complete control plane as one application container with an embedded loopback HTTP origin and native-tunnel route, Redis, and the private native proxy. Store control-plane data in SQLite, PostgreSQL, or MySQL and move between supported drivers through a fenced, verified administrator workflow.
 
 ## How it works

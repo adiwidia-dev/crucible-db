@@ -4,6 +4,18 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-29
+
+### Added
+
+- Add a provider-agnostic OpenID Connect (OIDC) SSO option for standards-compliant issuers, with discovery, verified identity claims, and invitation-gated account linking.
+- Show the workflow identifier beside every status in the Operational queue, matching the request lookup convention used elsewhere.
+
+### Changed
+
+- Refresh the OIDC provider package, frontend tooling dependencies, the Windows Rollup optional binary, and the pinned documentation setup action.
+- Update administrator and release documentation for generic OIDC setup and the required authentication-provider schema migration.
+
 ## [0.4.3] - 2026-10-23
 
 ### Added
@@ -290,7 +302,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.0...v0.4.1
