@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\AuthProviderType;
 use App\Models\AuthProvider;
+use App\Rules\OidcIssuerUrl;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -20,28 +21,39 @@ class StoreAuthProviderRequest extends FormRequest
      */
     public function rules(): array
     {
+        $provider = AuthProviderType::tryFrom($this->string('provider')->toString());
+        $providerRules = ['required', Rule::enum(AuthProviderType::class)];
+
+        if ($provider !== AuthProviderType::OpenIdConnect) {
+            $providerRules[] = Rule::unique((new AuthProvider)->getTable(), 'provider');
+        }
+
         return [
-            'provider' => [
-                'required',
-                Rule::enum(AuthProviderType::class),
-                Rule::unique((new AuthProvider)->getTable(), 'provider'),
-            ],
+            'provider' => $providerRules,
             'name' => ['required', 'string', 'max:255'],
             'client_id' => ['required', 'string', 'max:1000'],
             'client_secret' => ['required', 'string', 'max:4000'],
             'scopes' => ['nullable', 'string', 'max:2000'],
             'allowed_domains' => ['nullable', 'string', 'max:2000'],
             'tenant' => ['nullable', 'string', 'max:255'],
+            'issuer_url' => [
+                Rule::requiredIf($provider === AuthProviderType::OpenIdConnect),
+                'nullable',
+                'string',
+                'max:2048',
+                new OidcIssuerUrl,
+            ],
             'is_enabled' => ['sometimes', 'boolean'],
         ];
     }
 
     /**
-     * @return array{provider: string, name: string, client_id: string, client_secret: string, scopes: array<int, string>|null, allowed_domains: array<int, string>|null, tenant: string|null, is_enabled: bool}
+     * @return array{provider: string, name: string, client_id: string, client_secret: string, scopes: array<int, string>|null, allowed_domains: array<int, string>|null, tenant: string|null, issuer_url: string|null, is_enabled: bool}
      */
     public function providerAttributes(): array
     {
         $validated = $this->validated();
+        $provider = AuthProviderType::from($validated['provider']);
 
         return [
             'provider' => $validated['provider'],
@@ -50,7 +62,10 @@ class StoreAuthProviderRequest extends FormRequest
             'client_secret' => $validated['client_secret'],
             'scopes' => $this->stringList($validated['scopes'] ?? null),
             'allowed_domains' => $this->domainList($validated['allowed_domains'] ?? null),
-            'tenant' => $validated['tenant'] ?? null,
+            'tenant' => $provider === AuthProviderType::Microsoft ? ($validated['tenant'] ?? null) : null,
+            'issuer_url' => $provider === AuthProviderType::OpenIdConnect
+                ? rtrim(trim((string) $validated['issuer_url']), '/')
+                : null,
             'is_enabled' => (bool) ($validated['is_enabled'] ?? false),
         ];
     }

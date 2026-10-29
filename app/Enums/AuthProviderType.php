@@ -7,6 +7,7 @@ enum AuthProviderType: string
     case Google = 'google';
     case GitHub = 'github';
     case Microsoft = 'microsoft';
+    case OpenIdConnect = 'oidc';
 
     public function label(): string
     {
@@ -14,6 +15,7 @@ enum AuthProviderType: string
             self::Google => 'Google',
             self::GitHub => 'GitHub',
             self::Microsoft => 'Microsoft',
+            self::OpenIdConnect => 'OpenID Connect (OIDC)',
         };
     }
 
@@ -26,6 +28,7 @@ enum AuthProviderType: string
             self::Google => ['openid', 'profile', 'email'],
             self::GitHub => ['read:user', 'user:email'],
             self::Microsoft => ['openid', 'profile', 'User.Read'],
+            self::OpenIdConnect => ['openid', 'profile', 'email'],
         };
     }
 
@@ -68,6 +71,26 @@ enum AuthProviderType: string
                 'documentation_url' => 'https://learn.microsoft.com/en-us/graph/auth-register-app-v2',
                 'documentation_label' => 'Microsoft Entra web app registration guide',
             ],
+            self::OpenIdConnect => [
+                'overview' => 'Connect any standards-compliant OpenID Connect issuer that publishes a discovery document and verified email claims.',
+                'steps' => [
+                    'Create a confidential web application in your identity provider.',
+                    'Copy the issuer URL whose .well-known/openid-configuration document describes the authorization, token, user-info, and JWKS endpoints.',
+                    'After saving this provider, register its callback URL as an allowed redirect URI.',
+                    'Copy the client ID and secret here. Keep the openid, profile, and email scopes unless your provider requires additional scopes.',
+                    'Confirm the provider returns stable sub, email, and email_verified claims, then test the configuration before enabling it.',
+                ],
+                'documentation_url' => 'https://openid.net/specs/openid-connect-discovery-1_0.html',
+                'documentation_label' => 'OpenID Connect Discovery specification',
+            ],
+        };
+    }
+
+    public function socialiteDriver(): string
+    {
+        return match ($this) {
+            self::OpenIdConnect => 'openidconnect',
+            default => $this->value,
         };
     }
 }

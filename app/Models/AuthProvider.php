@@ -19,9 +19,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property array<int, string>|null $scopes
  * @property array<int, string>|null $allowed_domains
  * @property string|null $tenant
+ * @property string|null $issuer_url
  * @property bool $is_enabled
  */
-#[Fillable(['provider', 'name', 'client_id', 'client_secret', 'scopes', 'allowed_domains', 'tenant', 'is_enabled'])]
+#[Fillable(['provider', 'name', 'client_id', 'client_secret', 'scopes', 'allowed_domains', 'tenant', 'issuer_url', 'is_enabled'])]
 #[Hidden(['client_secret'])]
 class AuthProvider extends Model
 {
@@ -68,6 +69,11 @@ class AuthProvider extends Model
     public function callbackUrl(): string
     {
         return route('auth-providers.callback', $this);
+    }
+
+    public function usesOpenIdConnect(): bool
+    {
+        return $this->provider === AuthProviderType::OpenIdConnect;
     }
 
     /**

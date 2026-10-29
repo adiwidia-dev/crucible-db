@@ -8,13 +8,19 @@ use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\SocialiteManager;
 use LogicException;
+use SocialiteProviders\Manager\Config;
+use SocialiteProviders\OpenIDConnect\Provider as OpenIdConnectProvider;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 
 class SsoProviderConfigurator
 {
     public function driver(AuthProvider $authProvider): Provider
     {
-        $provider = $authProvider->provider->value;
+        if ($authProvider->usesOpenIdConnect()) {
+            return $this->openIdConnectDriver($authProvider);
+        }
+
+        $provider = $authProvider->provider->socialiteDriver();
 
         $this->forgetDrivers(app(Factory::class));
 
@@ -52,5 +58,41 @@ class SsoProviderConfigurator
         if ($socialite instanceof SocialiteManager) {
             $socialite->forgetDrivers();
         }
+    }
+
+    private function openIdConnectDriver(AuthProvider $authProvider): OpenIdConnectProvider
+    {
+        $issuerUrl = $authProvider->issuer_url;
+
+        if ($issuerUrl === null || $issuerUrl === '') {
+            throw new LogicException('The OIDC issuer URL is not configured.');
+        }
+
+        $configuration = [
+            'client_id' => $authProvider->client_id,
+            'client_secret' => $authProvider->client_secret,
+            'redirect' => $authProvider->callbackUrl(),
+            'base_url' => $issuerUrl,
+            'scopes' => $authProvider->effectiveScopes(),
+            'require_email' => true,
+            'verify_jwt' => true,
+            'use_nonce' => true,
+            'http_timeout' => 10,
+            'http_connect_timeout' => 5,
+        ];
+
+        $driver = new HmacAwareOpenIdConnectProvider(
+            request(),
+            $authProvider->client_id,
+            $authProvider->client_secret,
+            $authProvider->callbackUrl(),
+        );
+
+        return $driver->setConfig(new Config(
+            $authProvider->client_id,
+            $authProvider->client_secret,
+            $authProvider->callbackUrl(),
+            $configuration,
+        ));
     }
 }

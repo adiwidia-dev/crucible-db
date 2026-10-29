@@ -23,6 +23,7 @@ class SsoIdentityVerifier
             AuthProviderType::Google => ($rawUser['email_verified'] ?? $rawUser['verified_email'] ?? false) === true,
             AuthProviderType::GitHub => in_array('user:email', $authProvider->effectiveScopes(), true),
             AuthProviderType::Microsoft => Str::lower(trim((string) ($rawUser['userPrincipalName'] ?? ''))) === $email,
+            AuthProviderType::OpenIdConnect => ($rawUser['email_verified'] ?? false) === true,
         };
     }
 

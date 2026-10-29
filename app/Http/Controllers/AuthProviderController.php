@@ -46,6 +46,7 @@ class AuthProviderController extends Controller
             'provider' => $authProvider->provider->value,
             'is_enabled' => $authProvider->is_enabled,
             'allowed_domains' => $authProvider->allowed_domains,
+            'issuer_url' => $authProvider->issuer_url,
         ]);
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Auth provider created.']);
@@ -72,14 +73,14 @@ class AuthProviderController extends Controller
 
     public function update(UpdateAuthProviderRequest $request, AuthProvider $authProvider, AuditLogger $auditLogger): RedirectResponse
     {
-        $before = $authProvider->only(['provider', 'name', 'client_id', 'scopes', 'allowed_domains', 'tenant', 'is_enabled']);
+        $before = $authProvider->only(['provider', 'name', 'client_id', 'scopes', 'allowed_domains', 'tenant', 'issuer_url', 'is_enabled']);
 
         $authProvider->update($request->providerAttributes());
 
         $auditLogger->log('auth_provider.updated', $request->user(), $authProvider, [
             'auth_provider_id' => $authProvider->id,
             'before' => $before,
-            'after' => $authProvider->only(['provider', 'name', 'client_id', 'scopes', 'allowed_domains', 'tenant', 'is_enabled']),
+            'after' => $authProvider->only(['provider', 'name', 'client_id', 'scopes', 'allowed_domains', 'tenant', 'issuer_url', 'is_enabled']),
             'secret_rotated' => $request->filled('client_secret'),
         ]);
 
@@ -113,7 +114,7 @@ class AuthProviderController extends Controller
     }
 
     /**
-     * @return array{id: int, provider: string, provider_label: string, name: string, client_id: string, scopes: string, allowed_domains: string, tenant: string|null, is_enabled: bool, callback_url: string, user_identities_count?: int}
+     * @return array{id: int, provider: string, provider_label: string, name: string, client_id: string, scopes: string, allowed_domains: string, tenant: string|null, issuer_url: string|null, is_enabled: bool, callback_url: string, user_identities_count?: int}
      */
     private function providerPayload(AuthProvider $authProvider): array
     {
@@ -126,6 +127,7 @@ class AuthProviderController extends Controller
             'scopes' => implode(' ', $authProvider->effectiveScopes()),
             'allowed_domains' => implode(', ', $authProvider->allowed_domains ?: []),
             'tenant' => $authProvider->tenant,
+            'issuer_url' => $authProvider->issuer_url,
             'is_enabled' => $authProvider->is_enabled,
             'callback_url' => $authProvider->callbackUrl(),
             'user_identities_count' => $authProvider->user_identities_count ?? null,

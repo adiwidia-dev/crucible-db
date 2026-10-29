@@ -72,7 +72,6 @@ class SsoController extends Controller
 
         $identity = $user->identities()
             ->where('auth_provider_id', $authProvider->id)
-            ->where('provider', $authProvider->provider->value)
             ->first();
 
         abort_unless($identity instanceof UserIdentity, 404);
@@ -164,7 +163,7 @@ class SsoController extends Controller
 
         $identity = UserIdentity::query()
             ->with('user')
-            ->where('provider', $authProvider->provider->value)
+            ->whereBelongsTo($authProvider, 'authProvider')
             ->where('provider_user_id', (string) $providerUser->getId())
             ->first();
 
@@ -235,7 +234,6 @@ class SsoController extends Controller
         $identity = $user->identities()
             ->whereKey($passwordConfirmationContext['user_identity_id'] ?? null)
             ->where('auth_provider_id', $authProvider->id)
-            ->where('provider', $authProvider->provider->value)
             ->first();
 
         if (! $identity instanceof UserIdentity || ! hash_equals($identity->provider_user_id, (string) $providerUser->getId())) {
@@ -391,9 +389,9 @@ class SsoController extends Controller
             ])->save();
 
             return $user->identities()->updateOrCreate(
-                ['provider' => $authProvider->provider->value],
+                ['auth_provider_id' => $authProvider->id],
                 [
-                    'auth_provider_id' => $authProvider->id,
+                    'provider' => $authProvider->provider->value,
                     'provider_user_id' => (string) $providerUser->getId(),
                     'email' => Str::lower((string) $providerUser->getEmail()),
                     'name' => $providerUser->getName(),

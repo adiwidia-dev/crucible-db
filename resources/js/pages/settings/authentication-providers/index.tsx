@@ -27,6 +27,7 @@ type AuthProviderRecord = {
     scopes: string;
     allowed_domains: string;
     tenant: string | null;
+    issuer_url: string | null;
     is_enabled: boolean;
     callback_url: string;
     user_identities_count: number;
@@ -44,7 +45,7 @@ export default function AuthProvidersIndex({ providers }: Props) {
             <div className="crucible-page">
                 <PageHeader
                     title="SSO providers"
-                    description="Manage invitation-gated SSO and verify OAuth configuration."
+                    description="Manage invitation-gated SSO and verify OAuth or OIDC configuration."
                     actions={
                         <Button asChild>
                             <Link href={create()}>
@@ -57,14 +58,14 @@ export default function AuthProvidersIndex({ providers }: Props) {
 
                 <DataRegistry
                     title="Provider registry"
-                    description="OAuth credentials are encrypted. Disable a provider to stop new SSO logins."
+                    description="Provider credentials are encrypted. Disable a provider to stop new SSO logins."
                 >
                     {providers.length === 0 ? (
                         <div className="p-6">
                             <EmptyState
                                 icon={BadgeCheck}
                                 title="No SSO providers configured"
-                                detail="Add an OAuth provider when invited users should be able to sign in with SSO."
+                                detail="Add an OAuth or OIDC provider when invited users should be able to sign in with SSO."
                                 action={
                                     <Button size="sm" asChild>
                                         <Link href={create()}>
@@ -121,6 +122,13 @@ export default function AuthProvidersIndex({ providers }: Props) {
                                                         }{' '}
                                                         / {provider.client_id}
                                                     </div>
+                                                    {provider.issuer_url && (
+                                                        <code className="mt-1 block max-w-xs truncate text-xs text-muted-foreground">
+                                                            {
+                                                                provider.issuer_url
+                                                            }
+                                                        </code>
+                                                    )}
                                                 </td>
                                                 <td className="py-3 pr-4">
                                                     <StatusBadge
