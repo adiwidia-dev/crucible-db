@@ -5,11 +5,14 @@ namespace Tests\Feature;
 use App\Enums\AuthProviderType;
 use App\Models\AuthProvider;
 use App\Models\User;
+use App\Services\SsoProviderConfigurator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\URL;
+use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\InvalidStateException;
 use Laravel\Socialite\Two\User as SocialiteUser;
+use Mockery;
 use Tests\TestCase;
 
 class SsoAuthenticationTest extends TestCase
@@ -362,5 +365,77 @@ class SsoAuthenticationTest extends TestCase
             ->assertRedirect(route('dashboard'));
 
         $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_oidc_identity_lookup_is_isolated_by_provider_record(): void
+    {
+        $firstProvider = AuthProvider::factory()->openIdConnect()->create([
+            'name' => 'First issuer',
+            'issuer_url' => 'https://first.example.com',
+        ]);
+        $secondProvider = AuthProvider::factory()->openIdConnect()->create([
+            'name' => 'Second issuer',
+            'issuer_url' => 'https://second.example.com',
+        ]);
+        $firstUser = User::factory()->create(['email' => 'first@example.com']);
+        $secondUser = User::factory()->create(['email' => 'second@example.com']);
+
+        foreach ([[$firstProvider, $firstUser], [$secondProvider, $secondUser]] as [$provider, $user]) {
+            $user->identities()->create([
+                'auth_provider_id' => $provider->id,
+                'provider' => AuthProviderType::OpenIdConnect->value,
+                'provider_user_id' => 'shared-subject',
+                'email' => $user->email,
+            ]);
+        }
+
+        $this->mockOidcUser($secondProvider, SocialiteUser::fake([
+            'id' => 'shared-subject',
+            'email' => $secondUser->email,
+            'email_verified' => true,
+        ]));
+
+        $this->get(route('auth-providers.callback', $secondProvider))
+            ->assertRedirect(route('dashboard'));
+
+        $this->assertAuthenticatedAs($secondUser);
+    }
+
+    public function test_oidc_login_requires_a_verified_email_claim(): void
+    {
+        $provider = AuthProvider::factory()->openIdConnect()->create();
+        $user = User::factory()->create(['email' => 'person@example.com']);
+        $user->identities()->create([
+            'auth_provider_id' => $provider->id,
+            'provider' => AuthProviderType::OpenIdConnect->value,
+            'provider_user_id' => 'oidc-123',
+            'email' => $user->email,
+        ]);
+
+        $this->mockOidcUser($provider, SocialiteUser::fake([
+            'id' => 'oidc-123',
+            'email' => $user->email,
+            'email_verified' => false,
+        ]));
+
+        $this->get(route('auth-providers.callback', $provider))
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors(['email' => 'The provider could not verify this email address.']);
+
+        $this->assertGuest();
+    }
+
+    private function mockOidcUser(AuthProvider $provider, SocialiteUser $providerUser): void
+    {
+        $driver = Mockery::mock(Provider::class);
+        $driver->shouldReceive('user')->once()->andReturn($providerUser);
+
+        $configurator = Mockery::mock(SsoProviderConfigurator::class);
+        $configurator->shouldReceive('driver')
+            ->once()
+            ->withArgs(fn (AuthProvider $configuredProvider): bool => $configuredProvider->is($provider))
+            ->andReturn($driver);
+
+        $this->app->instance(SsoProviderConfigurator::class, $configurator);
     }
 }

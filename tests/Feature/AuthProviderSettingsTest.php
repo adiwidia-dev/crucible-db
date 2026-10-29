@@ -5,11 +5,18 @@ namespace Tests\Feature;
 use App\Models\AuthProvider;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\HmacAwareOpenIdConnectProvider;
+use App\Services\SsoProviderConfigurator;
+use Firebase\JWT\JWT;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Inertia\Support\SessionKey;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\InvalidStateException;
 use Laravel\Socialite\Two\User as SocialiteUser;
+use ReflectionMethod;
+use SocialiteProviders\Manager\Config;
+use SocialiteProviders\OpenIDConnect\Provider as OpenIdConnectProvider;
 use Tests\TestCase;
 
 class AuthProviderSettingsTest extends TestCase
@@ -26,7 +33,8 @@ class AuthProviderSettingsTest extends TestCase
             ->assertInertia(fn ($page) => $page
                 ->component('settings/authentication-providers/index')
                 ->has('providers')
-                ->has('provider_options'));
+                ->has('provider_options', 4)
+                ->where('provider_options.3.value', 'oidc'));
 
         $this->assertSame(
             url('/settings/admin/authentication-providers'),
@@ -151,6 +159,130 @@ class AuthProviderSettingsTest extends TestCase
             'actor_id' => $admin->id,
             'auditable_id' => $provider->id,
         ]);
+    }
+
+    public function test_admin_can_configure_multiple_oidc_issuers(): void
+    {
+        $admin = $this->adminUser();
+
+        foreach ([
+            ['name' => 'Workforce SSO', 'issuer_url' => 'https://identity.example.com/application/o/crucible'],
+            ['name' => 'Partner SSO', 'issuer_url' => 'https://partners.example.com/realms/crucible'],
+        ] as $configuration) {
+            $this->actingAs($admin)
+                ->post(route('auth-providers.store'), [
+                    'provider' => 'oidc',
+                    'name' => $configuration['name'],
+                    'issuer_url' => $configuration['issuer_url'].'/',
+                    'client_id' => 'oidc-client-id',
+                    'client_secret' => 'oidc-client-secret',
+                    'scopes' => 'openid profile email',
+                ])
+                ->assertRedirect(route('auth-providers.index'));
+        }
+
+        $this->assertDatabaseCount('auth_providers', 2);
+        $this->assertSame(
+            [
+                'https://identity.example.com/application/o/crucible',
+                'https://partners.example.com/realms/crucible',
+            ],
+            AuthProvider::query()->orderBy('id')->pluck('issuer_url')->all(),
+        );
+    }
+
+    public function test_oidc_provider_requires_a_secure_or_loopback_issuer_url(): void
+    {
+        $admin = $this->adminUser();
+        $payload = [
+            'provider' => 'oidc',
+            'name' => 'OIDC',
+            'client_id' => 'oidc-client-id',
+            'client_secret' => 'oidc-client-secret',
+        ];
+
+        $this->actingAs($admin)
+            ->post(route('auth-providers.store'), $payload + [
+                'issuer_url' => 'http://identity.example.com/application/o/crucible',
+            ])
+            ->assertSessionHasErrors('issuer_url');
+
+        $this->actingAs($admin)
+            ->post(route('auth-providers.store'), $payload + [
+                'issuer_url' => 'http://authentik.localhost:9000/application/o/crucible',
+            ])
+            ->assertRedirect(route('auth-providers.index'));
+    }
+
+    public function test_oidc_driver_receives_strict_database_backed_configuration(): void
+    {
+        $provider = AuthProvider::factory()->openIdConnect()->create([
+            'issuer_url' => 'https://identity.example.com/application/o/crucible',
+            'client_id' => 'oidc-client-id',
+            'client_secret' => 'oidc-client-secret',
+        ]);
+
+        $driver = app(SsoProviderConfigurator::class)->driver($provider);
+
+        $this->assertInstanceOf(OpenIdConnectProvider::class, $driver);
+        $this->assertSame(['openid', 'profile', 'email'], $driver->getScopes());
+
+        $getConfig = new ReflectionMethod($driver, 'getConfig');
+        $configuration = $getConfig->invoke($driver);
+
+        $this->assertSame($provider->issuer_url, $configuration['base_url']);
+        $this->assertSame($provider->callbackUrl(), $configuration['redirect']);
+        $this->assertTrue($configuration['require_email']);
+        $this->assertTrue($configuration['verify_jwt']);
+        $this->assertTrue($configuration['use_nonce']);
+        $this->assertSame(10, $configuration['http_timeout']);
+        $this->assertSame(5, $configuration['http_connect_timeout']);
+    }
+
+    public function test_oidc_driver_verifies_hmac_id_tokens_with_the_client_secret(): void
+    {
+        $clientSecret = str_repeat('a', 32);
+
+        $driver = new HmacAwareOpenIdConnectProvider(
+            Request::create('/auth-providers/1/callback'),
+            'oidc-client-id',
+            $clientSecret,
+            url('/auth-providers/1/callback'),
+        );
+
+        $driver->setConfig(new Config(
+            'oidc-client-id',
+            $clientSecret,
+            url('/auth-providers/1/callback'),
+            [
+                'base_url' => 'https://identity.example.com/application/o/crucible',
+                'jwt_algorithm' => 'HS256',
+                'verify_jwt' => true,
+            ],
+        ));
+
+        $token = JWT::encode([
+            'sub' => 'oidc-user-123',
+            'aud' => 'oidc-client-id',
+            'exp' => now()->addMinute()->getTimestamp(),
+            'iat' => now()->getTimestamp(),
+            'iss' => 'https://identity.example.com/application/o/crucible',
+        ], $clientSecret, 'HS256');
+
+        $method = new ReflectionMethod($driver, 'verifyAndDecodeJWT');
+        $claims = $method->invoke($driver, $token, 'HS256');
+
+        $this->assertSame('oidc-user-123', $claims->sub);
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $method->invoke($driver, JWT::encode([
+            'sub' => 'oidc-user-123',
+            'aud' => 'oidc-client-id',
+            'exp' => now()->addMinute()->getTimestamp(),
+            'iat' => now()->getTimestamp(),
+            'iss' => 'https://identity.example.com/application/o/crucible',
+        ], str_repeat('b', 32), 'HS256'), 'HS256');
     }
 
     public function test_failed_provider_test_returns_admin_to_provider_settings(): void

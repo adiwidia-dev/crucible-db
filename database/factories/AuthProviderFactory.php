@@ -28,6 +28,7 @@ class AuthProviderFactory extends Factory
             'scopes' => $provider->defaultScopes(),
             'allowed_domains' => null,
             'tenant' => $provider === AuthProviderType::Microsoft ? 'common' : null,
+            'issuer_url' => $provider === AuthProviderType::OpenIdConnect ? 'https://identity.example.com/application/o/crucible' : null,
             'is_enabled' => true,
         ];
     }
@@ -59,6 +60,17 @@ class AuthProviderFactory extends Factory
             'name' => 'Microsoft',
             'scopes' => AuthProviderType::Microsoft->defaultScopes(),
             'tenant' => 'common',
+        ]);
+    }
+
+    public function openIdConnect(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'provider' => AuthProviderType::OpenIdConnect,
+            'name' => 'Corporate SSO',
+            'scopes' => AuthProviderType::OpenIdConnect->defaultScopes(),
+            'tenant' => null,
+            'issuer_url' => 'https://identity.example.com/application/o/crucible',
         ]);
     }
 }

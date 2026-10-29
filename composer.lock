@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "034e5532071fa6b240cdcd44740a6a53",
+    "content-hash": "c7e8ab5a2c29e03b7c82188b340a1bd5",
     "packages": [
         {
             "name": "bacon/bacon-qr-code",
@@ -4932,6 +4932,68 @@
                 "source": "https://github.com/socialiteproviders/providers"
             },
             "time": "2026-07-21T22:20:53+00:00"
+        },
+        {
+            "name": "socialiteproviders/openidconnect",
+            "version": "1.0.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/SocialiteProviders/OpenIDConnect.git",
+                "reference": "7ed0f8b87c4feaa9bf1ec8704574b11e16c572d7"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/SocialiteProviders/OpenIDConnect/zipball/7ed0f8b87c4feaa9bf1ec8704574b11e16c572d7",
+                "reference": "7ed0f8b87c4feaa9bf1ec8704574b11e16c572d7",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "ext-openssl": "*",
+                "firebase/php-jwt": "^7.0",
+                "illuminate/http": "^11.0 | ^12.0 | ^13.0",
+                "illuminate/support": "^11.0 | ^12.0 | ^13.0",
+                "php": "^8.2",
+                "socialiteproviders/manager": "^4.4"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "SocialiteProviders\\OpenIDConnect\\OpenIDConnectServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "SocialiteProviders\\OpenIDConnect\\": ""
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "adrum"
+                }
+            ],
+            "description": "Generic OpenID Connect Provider for Laravel Socialite",
+            "keywords": [
+                "OpenId",
+                "laravel",
+                "oauth",
+                "oidc",
+                "openid-connect",
+                "provider",
+                "socialite"
+            ],
+            "support": {
+                "docs": "https://socialiteproviders.com/openidconnect",
+                "issues": "https://github.com/socialiteproviders/providers/issues",
+                "source": "https://github.com/socialiteproviders/providers"
+            },
+            "time": "2026-09-23T00:57:48+00:00"
         },
         {
             "name": "spomky-labs/cbor-php",

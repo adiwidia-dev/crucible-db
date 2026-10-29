@@ -38,6 +38,7 @@ type AuthProviderRecord = {
     scopes: string;
     allowed_domains: string;
     tenant: string | null;
+    issuer_url: string | null;
     is_enabled: boolean;
     callback_url: string;
 };
@@ -75,7 +76,7 @@ export default function AuthProviderForm({
             <div className="crucible-page">
                 <PageHeader
                     title={isEditing ? 'Edit SSO provider' : 'New SSO provider'}
-                    description="Configure an invitation-gated OAuth provider."
+                    description="Configure an invitation-gated OAuth or OpenID Connect provider."
                 />
 
                 <Form {...action} disableWhileProcessing className="grid gap-6">
@@ -85,8 +86,8 @@ export default function AuthProviderForm({
                                 <CardHeader className="border-b px-4 py-3 sm:px-5">
                                     <CardTitle>Provider</CardTitle>
                                     <CardDescription>
-                                        Use the callback URL in the OAuth app
-                                        registration for this provider.
+                                        Register the generated callback URL in
+                                        the provider application.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="grid max-w-3xl gap-5 px-4 py-5 sm:px-5">
@@ -122,6 +123,11 @@ export default function AuthProviderForm({
                                             Display Name
                                         </Label>
                                         <Input
+                                            key={
+                                                isEditing
+                                                    ? provider.id
+                                                    : selectedProvider
+                                            }
                                             id="name"
                                             name="name"
                                             defaultValue={
@@ -132,6 +138,39 @@ export default function AuthProviderForm({
                                         />
                                         <InputError message={errors.name} />
                                     </div>
+
+                                    {selectedProvider === 'oidc' && (
+                                        <div className="grid gap-2">
+                                            <Label htmlFor="issuer_url">
+                                                Issuer URL
+                                            </Label>
+                                            <Input
+                                                id="issuer_url"
+                                                name="issuer_url"
+                                                type="url"
+                                                defaultValue={
+                                                    provider?.issuer_url ?? ''
+                                                }
+                                                placeholder="https://sso.example.com/application/o/crucible"
+                                                required
+                                            />
+                                            <p className="max-w-[70ch] text-xs leading-5 text-muted-foreground">
+                                                Crucible discovers the provider
+                                                endpoints and signing keys from{' '}
+                                                <code>
+                                                    /.well-known/openid-configuration
+                                                </code>
+                                                . The provider must return{' '}
+                                                <code>sub</code>,{' '}
+                                                <code>email</code>, and a true{' '}
+                                                <code>email_verified</code>{' '}
+                                                claim.
+                                            </p>
+                                            <InputError
+                                                message={errors.issuer_url}
+                                            />
+                                        </div>
+                                    )}
 
                                     <div className="grid gap-2">
                                         <Label htmlFor="client_id">

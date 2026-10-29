@@ -24,7 +24,7 @@ Administration starts collapsed unless the current page is inside it. Its four s
 ### Security & policy
 
 - **Sign-in Methods** controls password and passkey availability.
-- **SSO Providers** manages Google, GitHub, and Microsoft provider configuration.
+- **SSO Providers** manages Google, GitHub, Microsoft, and generic OpenID Connect provider configuration.
 - **SQL Policy** controls governed statement families and Emergency SQL fallback.
 
 ### Application

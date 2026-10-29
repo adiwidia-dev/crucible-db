@@ -297,6 +297,9 @@ function OperationalQueue({
                                         value={presentation.status}
                                         label={presentation.label}
                                     />
+                                    <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+                                        #{item.id}
+                                    </span>
                                     <span className="min-w-0 truncate text-sm font-medium group-hover:text-primary">
                                         {item.title}
                                     </span>
