@@ -42,6 +42,34 @@ class ApplicationDatabaseMigrationCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_plan_rejects_missing_destination_options_before_connecting(): void
+    {
+        $this->artisan('crucible:application-database:plan', [
+            '--driver' => 'sqlite',
+        ])
+            ->expectsOutputToContain('The --database option is required.')
+            ->assertFailed();
+    }
+
+    public function test_plan_rejects_a_non_numeric_network_port(): void
+    {
+        putenv('CRUCIBLE_TEST_MIGRATION_PASSWORD=secret');
+
+        try {
+            $this->artisan('crucible:application-database:plan', [
+                '--driver' => 'pgsql',
+                '--database' => 'crucible',
+                '--username' => 'crucible',
+                '--password-env' => 'CRUCIBLE_TEST_MIGRATION_PASSWORD',
+                '--port' => 'not-a-port',
+            ])
+                ->expectsOutputToContain('The destination port must be between 1 and 65535.')
+                ->assertFailed();
+        } finally {
+            putenv('CRUCIBLE_TEST_MIGRATION_PASSWORD');
+        }
+    }
+
     public function test_migration_plans_are_encrypted_and_reject_a_second_in_progress_plan(): void
     {
         $store = app(ApplicationDatabaseMigrationStore::class);

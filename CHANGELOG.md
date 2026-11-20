@@ -4,6 +4,23 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-20
+
+### Security
+
+- Upgrade every development and production FrankenPHP build stage to the immutable PHP 8.5.13 image, remediating CVE-2026-115560 and CVE-2026-126714.
+- Upgrade the native build image to Go 1.27.4, the Go 1.26 compatibility and release toolchain to 1.26.11, `github.com/klauspost/compress` to 1.20.2, `phpseclib/phpseclib` to 3.0.58, and the affected npm dependency graph to patched releases, remediating CVE-2026-97054 and the corresponding package advisories.
+
+### Changed
+
+- Refresh PostgreSQL and SCRAM native dependencies, Laravel Fortify, Horizon, Sail, PHPUnit, Mockery, Vite React, Radix UI, Rollup, Wayfinder, and supporting transitive dependencies.
+- Pin the Docker login release action to its reviewed immutable revision.
+
+### Fixed
+
+- Reject malformed application-database migration manager state and non-numeric port options instead of coercing invalid values.
+- Keep legacy settings redirects GET-only so Laravel 13 route generation and Wayfinder TypeScript definitions remain compatible.
+
 ## [0.5.0] - 2026-10-29
 
 ### Added
@@ -302,7 +319,8 @@ All notable changes to Crucible DB are documented in this file. The project foll
 - Deployment Batches are sequential and stop at the first failure, but are not user-controlled atomic transactions.
 - Production Horizon dashboard access is denied by default until trusted operator identities are configured.
 
-[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/adiwidia-dev/crucible-db/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/adiwidia-dev/crucible-db/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.3...v0.5.0
 [0.4.3]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/adiwidia-dev/crucible-db/compare/v0.4.1...v0.4.2

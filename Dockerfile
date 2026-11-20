@@ -1,6 +1,6 @@
 FROM node:26-bookworm-slim AS node
 
-FROM dunglas/frankenphp:1-php8.5.12@sha256:8a7a935deb33959200628497b8201423c8b777d513a62ac1b69a91c624afdb3d AS base
+FROM dunglas/frankenphp:1-php8.5.13@sha256:17ff6554ba6de527d17aa5ec37e2a3bc3b182d7dbea9362f9a02eb5b4a1c4b95 AS base
 
 WORKDIR /app
 

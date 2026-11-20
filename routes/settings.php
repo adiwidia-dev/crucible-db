@@ -21,10 +21,11 @@ use App\Http\Controllers\Settings\SystemStatusController;
 use App\Http\Controllers\SsoController;
 use App\Http\Controllers\UserInvitationController;
 use App\Http\Controllers\UserRoleController;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
-    Route::redirect('settings', '/settings/profile');
+    Route::get('settings', static fn (): RedirectResponse => redirect()->route('profile.edit'));
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
@@ -43,8 +44,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('settings/preferences', [PreferencesController::class, 'edit'])->name('preferences.edit');
     Route::patch('settings/preferences/timezone', [PreferencesController::class, 'updateTimezone'])->name('preferences.timezone.update');
-    Route::redirect('settings/appearance', '/settings/preferences')->name('appearance.edit');
-    Route::redirect('settings/notifications', '/settings/preferences')->name('user-notifications.edit');
+    Route::get('settings/appearance', static fn (): RedirectResponse => redirect()->route('preferences.edit'))->name('appearance.edit');
+    Route::get('settings/notifications', static fn (): RedirectResponse => redirect()->route('preferences.edit'))->name('user-notifications.edit');
     Route::patch('settings/notifications', [NotificationPreferencesController::class, 'update'])->name('user-notifications.update');
 
     Route::prefix('settings/admin')->group(function (): void {
@@ -104,12 +105,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('audit-logs/export', [AuditLogController::class, 'export'])->name('audit-logs.export');
     });
 
-    Route::redirect('auth-providers', '/settings/admin/authentication-providers');
-    Route::redirect('settings/authentication-providers', '/settings/admin/authentication-providers');
-    Route::redirect('users', '/settings/admin/users');
-    Route::redirect('roles', '/settings/admin/roles');
-    Route::redirect('connection-groups', '/settings/admin/connection-groups');
-    Route::redirect('audit-logs', '/settings/admin/audit-logs');
+    Route::get('auth-providers', static fn (): RedirectResponse => redirect()->route('auth-providers.index'));
+    Route::get('settings/authentication-providers', static fn (): RedirectResponse => redirect()->route('auth-providers.index'));
+    Route::get('users', static fn (): RedirectResponse => redirect()->route('users.index'));
+    Route::get('roles', static fn (): RedirectResponse => redirect()->route('roles.index'));
+    Route::get('connection-groups', static fn (): RedirectResponse => redirect()->route('connection-groups.index'));
+    Route::get('audit-logs', static fn (): RedirectResponse => redirect()->route('audit-logs.index'));
 });
 
 Route::get('.well-known/passkey-endpoints', function () {
