@@ -20,6 +20,7 @@ All notable changes to Crucible DB are documented in this file. The project foll
 
 - Reject malformed application-database migration manager state and non-numeric port options instead of coercing invalid values.
 - Keep legacy settings redirects GET-only so Laravel 13 route generation and Wayfinder TypeScript definitions remain compatible.
+- Install production Composer dependencies against the pinned PHP 8.5.13 runtime so a newer PHP version in the Composer tool image cannot change release builds.
 
 ## [0.5.0] - 2026-10-29
 

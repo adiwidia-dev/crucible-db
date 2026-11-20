@@ -34,6 +34,16 @@ class ProductionApplicationDatabaseDeploymentTest extends TestCase
         }
     }
 
+    public function test_production_dependencies_are_installed_against_the_patched_php_runtime(): void
+    {
+        $dockerfile = (string) file_get_contents(dirname(__DIR__, 2).'/Dockerfile.production');
+        $patchedImage = 'dunglas/frankenphp:1-php8.5.13@sha256:17ff6554ba6de527d17aa5ec37e2a3bc3b182d7dbea9362f9a02eb5b4a1c4b95';
+
+        $this->assertStringContainsString($patchedImage.' AS vendor', $dockerfile);
+        $this->assertStringContainsString('COPY --from=composer /usr/bin/composer /usr/bin/composer', $dockerfile);
+        $this->assertStringNotContainsString('FROM composer:2 AS vendor', $dockerfile);
+    }
+
     public function test_production_compose_offers_isolated_optional_database_profiles(): void
     {
         $compose = (string) file_get_contents(dirname(__DIR__, 2).'/compose.production.yaml');
