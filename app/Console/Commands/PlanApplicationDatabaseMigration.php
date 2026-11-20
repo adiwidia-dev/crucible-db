@@ -27,6 +27,13 @@ class PlanApplicationDatabaseMigration extends Command
     {
         try {
             $state = $manager->plan($this->destinationPayload());
+
+            $id = $state['id'] ?? null;
+            $plannedTables = $state['planned_tables'] ?? null;
+
+            if (! is_string($id) || ! is_array($plannedTables)) {
+                throw new RuntimeException('The created migration plan is invalid.');
+            }
         } catch (Throwable $exception) {
             $this->components->error($exception->getMessage());
 
@@ -34,9 +41,9 @@ class PlanApplicationDatabaseMigration extends Command
         }
 
         $this->components->info('Migration plan created. No data was copied and the active database was not changed.');
-        $this->components->twoColumnDetail('Migration', (string) $state['id']);
-        $this->components->twoColumnDetail('Tables', (string) count($state['planned_tables']));
-        $this->components->twoColumnDetail('Next', 'crucible:application-database:migrate '.$state['id']);
+        $this->components->twoColumnDetail('Migration', $id);
+        $this->components->twoColumnDetail('Tables', (string) count($plannedTables));
+        $this->components->twoColumnDetail('Next', 'crucible:application-database:migrate '.$id);
 
         return self::SUCCESS;
     }
@@ -44,10 +51,10 @@ class PlanApplicationDatabaseMigration extends Command
     /** @return array<string, mixed> */
     private function destinationPayload(): array
     {
-        $driverValue = (string) ($this->option('driver') ?: '');
+        $driverValue = $this->stringOption('driver');
         $driver = ApplicationDatabaseDriver::tryFrom($driverValue)
             ?? throw new RuntimeException('The --driver option must be sqlite, pgsql, or mysql.');
-        $database = trim((string) $this->option('database'));
+        $database = trim($this->stringOption('database'));
 
         if ($database === '') {
             throw new RuntimeException('The --database option is required.');
@@ -66,13 +73,13 @@ class PlanApplicationDatabaseMigration extends Command
             ];
         }
 
-        $username = trim((string) $this->option('username'));
+        $username = trim($this->stringOption('username'));
 
         if ($username === '') {
             throw new RuntimeException('The --username option is required for a network database.');
         }
 
-        $passwordEnvironment = trim((string) $this->option('password-env'));
+        $passwordEnvironment = trim($this->stringOption('password-env'));
         $password = $passwordEnvironment === '' ? false : getenv($passwordEnvironment);
 
         if ($password === false && $this->input->isInteractive()) {
@@ -83,16 +90,17 @@ class PlanApplicationDatabaseMigration extends Command
             throw new RuntimeException("Set {$passwordEnvironment} or run interactively to provide the destination password securely.");
         }
 
-        $port = (int) ($this->option('port') ?: $driver->defaultPort());
+        $portValue = $this->stringOption('port');
+        $port = $portValue === '' ? $driver->defaultPort() : filter_var($portValue, FILTER_VALIDATE_INT);
 
-        if ($port < 1 || $port > 65535) {
+        if (! is_int($port) || $port < 1 || $port > 65535) {
             throw new RuntimeException('The destination port must be between 1 and 65535.');
         }
 
         $payload = [
             'version' => ApplicationDatabaseBootstrap::CurrentVersion,
             'driver' => $driver->value,
-            'host' => trim((string) $this->option('host')),
+            'host' => trim($this->stringOption('host')),
             'port' => $port,
             'database' => $database,
             'username' => $username,
@@ -100,9 +108,9 @@ class PlanApplicationDatabaseMigration extends Command
         ];
 
         if ($driver === ApplicationDatabaseDriver::PostgreSql) {
-            $payload['pgsql_sslmode'] = (string) $this->option('pgsql-sslmode');
+            $payload['pgsql_sslmode'] = $this->stringOption('pgsql-sslmode');
         } else {
-            $sslCa = trim((string) $this->option('mysql-ssl-ca'));
+            $sslCa = trim($this->stringOption('mysql-ssl-ca'));
 
             if ($sslCa !== '') {
                 $payload['mysql_ssl_ca'] = $sslCa;
@@ -110,5 +118,20 @@ class PlanApplicationDatabaseMigration extends Command
         }
 
         return $payload;
+    }
+
+    private function stringOption(string $name): string
+    {
+        $value = $this->option($name);
+
+        if ($value === null) {
+            return '';
+        }
+
+        if (! is_string($value)) {
+            throw new RuntimeException("The --{$name} option must be a string.");
+        }
+
+        return $value;
     }
 }

@@ -506,6 +506,8 @@ SQL;
     ): void {
         $connectionName = 'crucible_runtime_'.$connectionId;
 
+        DB::shouldReceive('getConnections')->zeroOrMoreTimes()->andReturn([]);
+
         if ($connectionSuffix !== null) {
             $connectionName .= '_'.substr(hash('sha256', $connectionSuffix), 0, 12);
         }
@@ -546,6 +548,7 @@ SQL;
     {
         $connectionName = 'crucible_schema_'.$connectionId;
 
+        DB::shouldReceive('getConnections')->zeroOrMoreTimes()->andReturn([]);
         DB::shouldReceive('purge')->with($connectionName)->twice();
         DB::shouldReceive('connection')->with($connectionName)->once()->andReturnUsing(function () use ($connection, $assertConfiguration): ConnectionInterface {
             $assertConfiguration();
