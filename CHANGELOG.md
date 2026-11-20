@@ -9,7 +9,7 @@ All notable changes to Crucible DB are documented in this file. The project foll
 ### Security
 
 - Upgrade every development and production FrankenPHP build stage to the immutable PHP 8.5.13 image, remediating CVE-2026-115560 and CVE-2026-126714.
-- Upgrade the Go 1.26 compatibility and release toolchain to 1.26.11, `github.com/klauspost/compress` to 1.20.2, `phpseclib/phpseclib` to 3.0.58, and the affected npm dependency graph to patched releases.
+- Upgrade the native build image to Go 1.27.4, the Go 1.26 compatibility and release toolchain to 1.26.11, `github.com/klauspost/compress` to 1.20.2, `phpseclib/phpseclib` to 3.0.58, and the affected npm dependency graph to patched releases, remediating CVE-2026-97054 and the corresponding package advisories.
 
 ### Changed
 
