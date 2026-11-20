@@ -1,9 +1,16 @@
 FROM node:26-bookworm-slim AS node
 
-FROM composer:2 AS vendor
+FROM composer:2@sha256:919efe8e62179c71dfd31fad035fd671fe7454211c6b2aa30a10af0ab4acedba AS composer
+
+FROM dunglas/frankenphp:1-php8.5.13@sha256:17ff6554ba6de527d17aa5ec37e2a3bc3b182d7dbea9362f9a02eb5b4a1c4b95 AS vendor
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer /usr/bin/composer /usr/bin/composer
 COPY composer.json composer.lock ./
 
 RUN composer install \
