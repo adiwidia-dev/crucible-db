@@ -57,7 +57,7 @@
         "@radix-ui/react-slot": "^1.4.0",
         "@radix-ui/react-toggle": "^1.2.1",
         "@radix-ui/react-toggle-group": "^1.2.1",
-        "@radix-ui/react-tooltip": "^1.1.8",
+        "@radix-ui/react-tooltip": "^1.4.1",
         "@tailwindcss/vite": "^4.1.11",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.3.0",
